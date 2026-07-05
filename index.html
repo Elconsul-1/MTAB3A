@@ -510,6 +510,7 @@ function doLogout() {
 const NAV_ITEMS = [
   { key:'dashboard', label:'لوحة التحكم', icon:'📊', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'attendance', label:'الحضور والانصراف', icon:'🕒', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
+  { key:'assignments', label:'متابعة المأموريات', icon:'🧭', roles:['CENTER_ADMIN','SYSTEM_ADMIN'] },
   { key:'missions', label:'المأموريات اليومية', icon:'🗺️', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'tasks', label:'المهام المنفذة', icon:'📋', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'equipment', label:'الأجهزة المساحية', icon:'📡', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER'] },
@@ -559,9 +560,9 @@ function goPage(key) {
   const navEl = document.getElementById('nav-' + key);
   if (navEl) navEl.classList.add('active');
   toggleSidebar(false);
-  const titles = { dashboard:'لوحة التحكم', attendance:'الحضور والانصراف', missions:'المأموريات اليومية', tasks:'المهام المنفذة', equipment:'الأجهزة المساحية', reports:'التقارير', users:'إدارة المستخدمين', audit:'سجل العمليات' };
+  const titles = { dashboard:'لوحة التحكم', attendance:'الحضور والانصراف', assignments:'متابعة المأموريات', missions:'المأموريات اليومية', tasks:'المهام المنفذة', equipment:'الأجهزة المساحية', reports:'التقارير', users:'إدارة المستخدمين', audit:'سجل العمليات' };
   document.getElementById('pageTitle').textContent = titles[key] || '';
-  const renderers = { dashboard:renderDashboard, attendance:renderAttendance, missions:renderMissions, tasks:renderTasks, equipment:renderEquipment, reports:renderReports, users:renderUsers, audit:renderAudit };
+  const renderers = { dashboard:renderDashboard, attendance:renderAttendance, assignments:renderAssignments, missions:renderMissions, tasks:renderTasks, equipment:renderEquipment, reports:renderReports, users:renderUsers, audit:renderAudit };
   const content = document.getElementById('pageContent');
   content.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
   (renderers[key] || renderDashboard)(content);
@@ -613,6 +614,9 @@ function listBars(arr) {
 async function renderAttendance(root) {
   const status = await api('todayAttendanceStatus', { userId: CURRENT_USER.id });
   const my = await api('listAttendance', { userId: CURRENT_USER.id });
+  const isFieldRole = ['ENGINEER','TECHNICIAN'].includes(CURRENT_USER.role);
+  const isCenterAdmin = CURRENT_USER.role === 'CENTER_ADMIN';
+
   root.innerHTML = `
     <div class="panel" style="text-align:center;padding:34px 20px">
       <div style="font-size:14px;color:var(--ink-600);margin-bottom:6px">${new Date().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
@@ -623,16 +627,74 @@ async function renderAttendance(root) {
       </div>
       <div class="gps-box" id="gpsBox" style="justify-content:center">📍 سيتم تحديد موقعك تلقائيًا عند التسجيل</div>
     </div>
+
+    ${isFieldRole ? `
+    <div class="panel">
+      <div class="panel-head"><h3>أعمال اليوم</h3><button class="btn btn-gold btn-sm" onclick="openTaskModal()">+ تسجيل عمل اليوم</button></div>
+      <div id="todayWorkBox"><div class="loader"><div class="spinner"></div></div></div>
+    </div>` : ''}
+
     <div class="panel">
       <div class="panel-head"><h3>سجل حضوري الأخير</h3></div>
       <div class="table-wrap">
         <table><thead><tr><th>النوع</th><th>التاريخ والوقت</th><th>الموقع (GPS)</th></tr></thead>
         <tbody>${my.slice(0,15).map(a => `<tr><td><span class="chip ${a.type==='IN'?'approved':'rejected'}">${a.type==='IN'?'حضور':'انصراف'}</span></td><td>${fmtDate(a.timestamp)}</td><td>${a.lat?`${Number(a.lat).toFixed(4)}, ${Number(a.lng).toFixed(4)}`:'-'}</td></tr>`).join('') || `<tr><td colspan="3"><div class="empty-state">لا يوجد سجل حضور بعد</div></td></tr>`}</tbody></table>
       </div>
-    </div>`;
+    </div>
+
+    ${isCenterAdmin ? `
+    <div class="panel">
+      <div class="panel-head"><h3>حضور موظفي المركز اليوم (${CURRENT_USER.center || '-'})</h3></div>
+      <p style="color:var(--ink-600);font-size:12.5px;margin-top:-8px">عرض للاطلاع فقط - لا يمكن التعديل من هنا</p>
+      <div id="centerAttendanceBox"><div class="loader"><div class="spinner"></div></div></div>
+    </div>` : ''}
+  `;
+
   setInterval(() => { const c = document.getElementById('clockNow'); if (c) c.textContent = new Date().toLocaleTimeString('ar-EG'); }, 1000);
   document.getElementById('checkInBtn').onclick = () => doAttendance('checkIn');
   document.getElementById('checkOutBtn').onclick = () => doAttendance('checkOut');
+
+  if (isFieldRole) loadTodayWork();
+  if (isCenterAdmin) loadCenterAttendance();
+}
+
+async function loadTodayWork() {
+  const box = document.getElementById('todayWorkBox');
+  if (!box) return;
+  const today = new Date().toISOString().slice(0,10);
+  const [tasks, missions] = await Promise.all([
+    api('listTasks', { engineerName: CURRENT_USER.fullName }),
+    api('listMissions', { engineerName: CURRENT_USER.fullName })
+  ]);
+  const todayTasks = tasks.filter(t => t.startTime && t.startTime.slice(0,10) === today);
+  const todayMissions = missions.filter(m => m.startTime && m.startTime.slice(0,10) === today);
+
+  let html = '';
+  if (todayMissions.length) {
+    html += `<div style="margin-bottom:16px">
+      <div style="font-size:13px;font-weight:700;color:var(--navy-900);margin-bottom:8px">مأمورية اليوم</div>
+      ${todayMissions.map(m => `<div style="background:#f4f8fb;border-radius:10px;padding:12px 14px;margin-bottom:8px;font-size:13.5px">
+        <b>${m.workType}</b> - ${m.center}${m.village?(' / '+m.village):''}
+        <span class="chip ${m.status==='OPEN'?'open':'closed'}" style="margin-inline-start:8px">${m.status==='OPEN'?'مفتوحة':'مغلقة'}</span>
+        ${m.description?`<div style="color:var(--ink-600);margin-top:4px">${m.description}</div>`:''}
+      </div>`).join('')}
+    </div>`;
+  }
+  html += `<div class="table-wrap"><table><thead><tr><th>نوع العمل</th><th>طريقة التنفيذ</th><th>الموقع</th><th>عدد الحالات</th><th>الوقت</th><th>ملاحظات</th></tr></thead>
+    <tbody>${todayTasks.map(t => `<tr><td>${t.taskType}</td><td><span class="chip ${t.execMode==='FIELD'?'open':'maintenance'}">${execModeLabel(t.execMode)}</span></td><td>${t.location||'-'}</td><td>${t.casesCount}</td><td>${fmtDate(t.startTime)}</td><td>${t.notes||'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📋</div>لم يتم تسجيل أي عمل اليوم بعد</div></td></tr>`}</tbody></table></div>`;
+  box.innerHTML = html;
+}
+
+function execModeLabel(mode) {
+  return { FIELD:'ميداني', OFFICE:'مكتبي', OTHER:'أخرى' }[mode] || mode;
+}
+
+async function loadCenterAttendance() {
+  const box = document.getElementById('centerAttendanceBox');
+  if (!box) return;
+  const list = await api('listCenterEmployeesAttendanceToday', { center: CURRENT_USER.center });
+  box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة/الدور</th><th>حالة الحضور</th><th>وقت الحضور</th><th>وقت الانصراف</th></tr></thead>
+  <tbody>${list.map(e => `<tr><td>${e.fullName}</td><td>${roleLabel(e.role)}</td><td><span class="chip ${e.present?'approved':'rejected'}">${e.present?'حاضر':'غائب'}</span></td><td>${e.checkInTime?fmtDate(e.checkInTime):'-'}</td><td>${e.checkOutTime?fmtDate(e.checkOutTime):'-'}</td></tr>`).join('') || `<tr><td colspan="5"><div class="empty-state">لا يوجد موظفون مرتبطون بالمركز حتى الآن</div></td></tr>`}</tbody></table></div>`;
 }
 
 function doAttendance(action) {
@@ -731,8 +793,9 @@ window.openTaskModal = () => {
       <select id="tType"><option>رفع مساحي</option><option>تحديد منسوب</option><option>أملاك دولة</option><option>مرافق</option><option>أعمال مكتبية</option><option>أخرى</option></select>
     </div>
     <div class="field"><label>طريقة التنفيذ *</label>
-      <select id="tMode"><option value="FIELD">ميداني (تمت المعاينة)</option><option value="OFFICE">مكتبي (تم الإدخال)</option></select>
+      <select id="tMode"><option value="FIELD">ميداني (تمت المعاينة)</option><option value="OFFICE">مكتبي (تم الإدخال)</option><option value="OTHER">أخرى</option></select>
     </div>
+    <div class="field"><label>الموقع (القرية / المكان الذي تم العمل فيه)</label><input id="tLocation" placeholder="مثال: قرية كذا - مركز كذا"></div>
     <div class="field-row">
       <div class="field"><label>وقت البداية *</label><input id="tStart" type="datetime-local"></div>
       <div class="field"><label>وقت النهاية</label><input id="tEnd" type="datetime-local"></div>
@@ -747,10 +810,11 @@ window.submitTask = async () => {
   if (!start) { showToast('يرجى إدخال وقت البداية','err'); return; }
   await api('createTask', {
     engineerName: CURRENT_USER.fullName, center: CURRENT_USER.center, taskType: val('tType'), execMode: val('tMode'),
-    startTime: start, endTime: val('tEnd'), casesCount: Number(val('tCases'))||0, notes: val('tNotes'),
+    location: val('tLocation'), startTime: start, endTime: val('tEnd'), casesCount: Number(val('tCases'))||0, notes: val('tNotes'),
     createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
   });
-  closeModal(); showToast('تم حفظ المهمة','ok'); goPage('tasks');
+  closeModal(); showToast('تم حفظ المهمة','ok');
+  if (currentPage === 'attendance') loadTodayWork(); else goPage('tasks');
 };
 
 /* ========================================================================
