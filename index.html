@@ -1137,7 +1137,7 @@ async function loadReport() {
     headers = [['engineerName','المهندس'],['center','المركز'],['village','القرية'],['workType','نوع العمل'],['status','الحالة']];
   } else if (type === 'tasks') {
     rows = await api('listTasks', {});
-    headers = [['engineerName','الاسم'],['taskType','نوع المهمة'],['execMode','طريقة التنفيذ'],['location','الموقع'],['casesCount','عدد الحالات'],['startTime','البداية']];
+    headers = [['engineerName','الاسم'],['taskType','نوع المهمة'],['execMode','طريقة التنفيذ'],['location','الموقع'],['notes','عدد الحالات'],['startTime','البداية']];
   } else if (type === 'equipment') {
     rows = await api('listEquipment', {});
     headers = [['custodyNumber','رقم العهدة'],['type','النوع'],['model','الموديل'],['status','الحالة']];
