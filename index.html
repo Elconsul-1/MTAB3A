@@ -527,12 +527,24 @@ function hideAllScreens() {
 
 function showScreenLoader() { /* يمكن إضافة مؤشر تحميل عام هنا إذا رغبت */ }
 
-/* تحويل ملف صورة إلى Base64 لرفعه على جوجل درايف */
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = reject;
+    reader.onload = () => {
+      try {
+        // استخراج البيانات النقية (بدون الـ data:image/...;base64,)
+        const base64String = reader.result.split(',')[1];
+        if (!base64String) {
+          reject(new Error('فشل في استخراج بيانات الصورة'));
+        }
+        resolve(base64String);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = (err) => {
+      reject(new Error('فشل قراءة الملف: ' + err.message));
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -543,47 +555,92 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async () 
   const phone = document.getElementById('regPhone').value.trim();
   const role = document.getElementById('regRole').value;
   const center = document.getElementById('regCenter').value;
+  
   if (!fullName || !job || !phone || !center) {
-    showToast('يرجى استكمال جميع الحقول الإلزامية (*)', 'err'); return;
+    showToast('يرجى استكمال جميع الحقول الإلزامية (*)', 'err');
+    return;
   }
+  
   const btn = document.getElementById('submitRegisterBtn');
-  btn.disabled = true; btn.textContent = 'جارٍ الإرسال...';
+  btn.disabled = true;
+  btn.textContent = 'جارٍ الإرسال...';
+  
   try {
     let photoUrl = '';
     const fileInput = document.getElementById('regPhotoFile');
+    
     if (fileInput.files && fileInput.files[0]) {
       const file = fileInput.files[0];
+      
+      // التحقق من حجم الصورة (حد أقصى 5 ميجابايت)
+      if (file.size > 5 * 1024 * 1024) {
+        showToast('حجم الصورة كبير جداً. الحد الأقصى 5 ميجابايت', 'err');
+        btn.disabled = false;
+        btn.textContent = 'إرسال طلب الاعتماد';
+        return;
+      }
+      
       try {
+        showToast('جاري رفع الصورة...', 'ok');
+        
+        // قراءة الصورة وتحويلها لـ Base64
         const base64 = await fileToBase64(file);
-        const uploadRes = await api('uploadPhotoToDrive', { imageData: base64, fileName: file.name, mimeType: file.type });
-        photoUrl = uploadRes.url;
+        
+        // التأكد من أن الـ Base64 صحيح
+        if (!base64 || base64.length === 0) {
+          throw new Error('فشل في قراءة الصورة');
+        }
+        
+        // رفع الصورة
+        const uploadRes = await api('uploadPhotoToDrive', { 
+          imageData: base64, 
+          fileName: file.name, 
+          mimeType: file.type 
+        });
+        
+        if (uploadRes && uploadRes.url) {
+          photoUrl = uploadRes.url;
+          showToast('تم رفع الصورة بنجاح', 'ok');
+        } else {
+          throw new Error('لم يتم استلام رابط الصورة');
+        }
       } catch (e) {
-        showToast('تعذر رفع الصورة، سيتم إرسال الطلب بدونها', 'err');
+        console.error('Error uploading photo:', e);
+        showToast('تعذر رفع الصورة: ' + e.message, 'err');
+        // نستمر في التسجيل بدون صورة
       }
     }
+    
+    // تسجيل المستخدم مع رابط الصورة
     const user = await api('registerUser', {
-      fullName, job, phone, email: FIREBASE_USER.email, role,
+      fullName, 
+      job, 
+      phone, 
+      email: FIREBASE_USER.email, 
+      role,
       governorateOffice: center === 'ديوان عام المحافظة' ? center : '',
       center: center === 'ديوان عام المحافظة' ? '' : center,
       cityCouncil: document.getElementById('regCity').value.trim(),
       localUnit: document.getElementById('regUnit').value.trim(),
-      photoUrl
+      photoUrl: photoUrl  // إرسال رابط الصورة للتسجيل
     });
+    
     CURRENT_USER = user;
     showToast('تم إرسال طلبك بنجاح', 'ok');
     refreshMyStatus();
+    
   } catch (e) {
+    console.error('Registration error:', e);
+    showToast('حدث خطأ أثناء التسجيل: ' + e.message, 'err');
   } finally {
-    btn.disabled = false; btn.textContent = 'إرسال طلب الاعتماد';
+    btn.disabled = false;
+    btn.textContent = 'إرسال طلب الاعتماد';
   }
 });
 
-function doLogout() {
-  auth.signOut();
-  CURRENT_USER = null;
-}
-
-/* ---------------------------- إطلاق التطبيق ---------------------------- */
+// ========================================================================
+// إطلاق التطبيق
+// ========================================================================
 const NAV_ITEMS = [
   { key:'dashboard', label:'لوحة التحكم', icon:'📊', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'attendance', label:'الحضور والانصراف', icon:'🕒', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
@@ -596,12 +653,51 @@ const NAV_ITEMS = [
   { key:'audit', label:'سجل العمليات', icon:'🗂️', roles:['SYSTEM_ADMIN'] },
 ];
 
+// دالة تحديث الصورة في الـ Sidebar
+function updateUserAvatar() {
+  const avatar = document.getElementById('sideAvatar');
+  if (CURRENT_USER && CURRENT_USER.photoUrl) {
+    // عرض الصورة
+    avatar.innerHTML = `<img src="${CURRENT_USER.photoUrl}" alt="صورة المستخدم" style="width:100%;height:100%;object-fit:cover">`;
+    
+    // معالجة حالة فشل تحميل الصورة
+    const img = avatar.querySelector('img');
+    if (img) {
+      img.onerror = function() {
+        // إذا فشل تحميل الصورة، اعرض الحرف الأول من الاسم
+        const initial = (CURRENT_USER?.fullName || '?').trim().charAt(0) || '?';
+        avatar.innerHTML = initial;
+        avatar.style.backgroundColor = 'var(--navy-700)';
+        avatar.style.display = 'flex';
+        avatar.style.alignItems = 'center';
+        avatar.style.justifyContent = 'center';
+        avatar.style.fontWeight = '700';
+        avatar.style.fontSize = '13px';
+      };
+    }
+  } else {
+    // عرض الحرف الأول من الاسم
+    const initial = (CURRENT_USER?.fullName || '?').trim().charAt(0) || '?';
+    avatar.innerHTML = initial;
+    avatar.style.backgroundColor = 'var(--navy-700)';
+    avatar.style.display = 'flex';
+    avatar.style.alignItems = 'center';
+    avatar.style.justifyContent = 'center';
+    avatar.style.fontWeight = '700';
+    avatar.style.fontSize = '13px';
+  }
+}
+
+// دالة إطلاق التطبيق (واحدة فقط)
 function launchApp() {
   hideAllScreens();
   document.getElementById('app').style.display = 'block';
   document.getElementById('sideName').textContent = CURRENT_USER.fullName;
   document.getElementById('sideRole').textContent = roleLabel(CURRENT_USER.role) + (CURRENT_USER.center ? ' - ' + CURRENT_USER.center : '');
-  document.getElementById('sideAvatar').textContent = (CURRENT_USER.fullName || '?').trim().charAt(0);
+  
+  // تحديث الصورة الشخصية
+  updateUserAvatar();
+  
   document.getElementById('sideEmail').textContent = CURRENT_USER.email || '';
   document.getElementById('topbarUserInfo').innerHTML = `<b>${CURRENT_USER.fullName}</b><br>${CURRENT_USER.email || ''}`;
   buildNav();
@@ -1323,7 +1419,7 @@ async function loadReport() {
     headers = [['engineerName','المهندس'],['center','المركز'],['village','القرية'],['workType','نوع العمل'],['status','الحالة']];
   } else if (type === 'tasks') {
     rows = await api('listTasks', {});
-    headers = [['engineerName','الاسم'],['taskType','نوع المهمة'],['execMode','طريقة التنفيذ'],['location','الموقع'],['notes','عدد الحالات'],['startTime','البداية']];
+    headers = [['engineerName','الاسم'],['taskType','نوع المهمة'],['execMode','طريقة التنفيذ'],['location','الموقع'],['casesCount','عدد الحالات'],['startTime','البداية']];
   } else if (type === 'equipment') {
     rows = await api('listEquipment', {});
     headers = [['custodyNumber','رقم العهدة'],['type','النوع'],['model','الموديل'],['homeCenter','المركز الأساسي'],['status','الحالة']];
