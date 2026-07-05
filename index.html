@@ -225,6 +225,13 @@ tbody tr:hover{background:#fafcfd}
 
 .gps-box{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-600);background:#f4f8fb;border-radius:8px;padding:9px 12px;margin-top:10px}
 
+.center-overview-row{display:flex;align-items:stretch;gap:10px;padding:14px;border-radius:12px;background:var(--paper);margin-bottom:12px;flex-wrap:wrap;border:1px solid var(--line)}
+.center-overview-name{display:flex;align-items:center;font-weight:800;font-size:14.5px;min-width:110px;color:var(--navy-900)}
+.mini-status{flex:1;min-width:118px;background:#e9ecef;color:var(--ink-600);border-radius:10px;padding:9px 10px;text-align:center;transition:.2s;border:1px solid transparent}
+.mini-status .ms-label{display:block;font-size:11px;font-weight:700;margin-bottom:5px;opacity:.85;white-space:nowrap}
+.mini-status .ms-time{display:block;font-size:13.5px;font-weight:800;font-family:var(--font-display)}
+.mini-status.on{background:#e7f6ee;color:var(--good);border-color:rgba(31,138,85,.25)}
+
 @media (max-width:900px){
   .sidebar{position:fixed;right:0;top:0;z-index:60;transform:translateX(100%);box-shadow:none}
   .sidebar.open{transform:translateX(0);box-shadow:-20px 0 40px rgba(0,0,0,.3)}
@@ -510,7 +517,7 @@ function doLogout() {
 const NAV_ITEMS = [
   { key:'dashboard', label:'لوحة التحكم', icon:'📊', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'attendance', label:'الحضور والانصراف', icon:'🕒', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
-  { key:'assignments', label:'متابعة المأموريات', icon:'🧭', roles:['CENTER_ADMIN','SYSTEM_ADMIN'] },
+  { key:'coordination', label:'المتابعة اليومية للمركز', icon:'🧭', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'missions', label:'المأموريات اليومية', icon:'🗺️', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'tasks', label:'المهام المنفذة', icon:'📋', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'equipment', label:'الأجهزة المساحية', icon:'📡', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER'] },
@@ -560,9 +567,9 @@ function goPage(key) {
   const navEl = document.getElementById('nav-' + key);
   if (navEl) navEl.classList.add('active');
   toggleSidebar(false);
-  const titles = { dashboard:'لوحة التحكم', attendance:'الحضور والانصراف', assignments:'متابعة المأموريات', missions:'المأموريات اليومية', tasks:'المهام المنفذة', equipment:'الأجهزة المساحية', reports:'التقارير', users:'إدارة المستخدمين', audit:'سجل العمليات' };
+  const titles = { dashboard:'لوحة التحكم', attendance:'الحضور والانصراف', coordination:'المتابعة اليومية للمركز', missions:'المأموريات اليومية', tasks:'المهام المنفذة', equipment:'الأجهزة المساحية', reports:'التقارير', users:'إدارة المستخدمين', audit:'سجل العمليات' };
   document.getElementById('pageTitle').textContent = titles[key] || '';
-  const renderers = { dashboard:renderDashboard, attendance:renderAttendance, assignments:renderAssignments, missions:renderMissions, tasks:renderTasks, equipment:renderEquipment, reports:renderReports, users:renderUsers, audit:renderAudit };
+  const renderers = { dashboard:renderDashboard, attendance:renderAttendance, coordination:renderCoordination, missions:renderMissions, tasks:renderTasks, equipment:renderEquipment, reports:renderReports, users:renderUsers, audit:renderAudit };
   const content = document.getElementById('pageContent');
   content.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
   (renderers[key] || renderDashboard)(content);
@@ -573,7 +580,12 @@ function goPage(key) {
    ======================================================================== */
 async function renderDashboard(root) {
   const stats = await api('dashboardStats', {});
+  let centersOverviewHtml = '';
+  if (CURRENT_USER.role === 'SYSTEM_ADMIN') {
+    centersOverviewHtml = await renderCentersOverviewPanel();
+  }
   root.innerHTML = `
+    ${centersOverviewHtml}
     <div class="grid-cards">
       <div class="stat-card good"><div class="stat-label">الحضور اليوم</div><div class="stat-num">${stats.presentToday}</div></div>
       <div class="stat-card bad"><div class="stat-label">الغياب اليوم</div><div class="stat-num">${stats.absentToday}</div></div>
@@ -608,6 +620,38 @@ function listBars(arr) {
     </div>`).join('');
 }
 
+/* الموقف اليومي لجميع المراكز - للإدارة العامة (ديوان المحافظة) */
+async function renderCentersOverviewPanel() {
+  const data = await api('centersOverviewToday', {});
+  return `
+    <div class="panel">
+      <div class="panel-head"><h3>الموقف اليومي لجميع المراكز</h3></div>
+      ${data.map(c => `
+        <div class="center-overview-row">
+          <div class="center-overview-name">${c.center}</div>
+          ${miniStatus('👔 المدير', c.directorPresent, c.directorTime)}
+          ${miniStatus('📐 مهندس المساحة', c.engineerPresent, c.engineerTime)}
+          ${miniStatus('🚗 السيارة', c.vehicleAvailable, c.vehicleTime)}
+          ${miniStatus('▶️ بدء العمل', !!c.workStart, c.workStart)}
+          ${miniStatus('⏹ انتهاء العمل', !!c.workEnd, c.workEnd)}
+          ${miniStatus('📋 أعمال منجزة', c.tasksDone > 0, c.tasksDone > 0 ? (c.tasksDone + ' مهمة') : '')}
+        </div>
+      `).join('') || `<div class="empty-state">لا توجد بيانات مراكز</div>`}
+    </div>`;
+}
+
+function miniStatus(label, on, timeVal) {
+  let timeText = '-';
+  if (timeVal) {
+    if (typeof timeVal === 'string' && timeVal.indexOf('T') > -1) {
+      timeText = new Date(timeVal).toLocaleTimeString('ar-EG', { hour:'2-digit', minute:'2-digit' });
+    } else {
+      timeText = timeVal;
+    }
+  }
+  return `<div class="mini-status ${on ? 'on' : ''}"><span class="ms-label">${label}</span><span class="ms-time">${timeText}</span></div>`;
+}
+
 /* ========================================================================
    الحضور والانصراف
    ======================================================================== */
@@ -616,6 +660,33 @@ async function renderAttendance(root) {
   const my = await api('listAttendance', { userId: CURRENT_USER.id });
   const isFieldRole = ['ENGINEER','TECHNICIAN'].includes(CURRENT_USER.role);
   const isCenterAdmin = CURRENT_USER.role === 'CENTER_ADMIN';
+
+  let extraHtml = '';
+
+  // مهندس / فني: عرض أعمال اليوم (النوع - الموقع - ميداني/مكتبي/أخرى)
+  if (isFieldRole) {
+    const today = new Date().toISOString().slice(0,10);
+    const allMyTasks = await api('listTasks', { engineerName: CURRENT_USER.fullName });
+    const todayTasks = allMyTasks.filter(t => t.startTime && t.startTime.slice(0,10) === today);
+    extraHtml = `
+      <div class="panel">
+        <div class="panel-head"><h3>أعمال اليوم المنفذة</h3><button class="btn btn-gold btn-sm" onclick="openTaskModal()">+ تسجيل عمل جديد</button></div>
+        <div class="table-wrap"><table><thead><tr><th>نوع العمل</th><th>الموقع</th><th>طريقة التنفيذ</th><th>عدد الحالات</th><th>البداية</th><th>النهاية</th></tr></thead>
+        <tbody>${todayTasks.map(t => `<tr><td>${t.taskType}</td><td>${t.location||'-'}</td><td>${execModeChip(t.execMode)}</td><td>${t.casesCount}</td><td>${fmtDate(t.startTime)}</td><td>${t.endTime?fmtDate(t.endTime):'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📋</div>لا توجد أعمال مسجلة اليوم بعد</div></td></tr>`}</tbody></table></div>
+      </div>`;
+  }
+
+  // مدير بنية معلوماتية بالمركز: عرض حالة حضور فريق المركز (بدون إمكانية تعديل)
+  if (isCenterAdmin) {
+    const team = await api('centerAttendanceToday', { center: CURRENT_USER.center });
+    extraHtml = `
+      <div class="panel">
+        <div class="panel-head"><h3>حالة حضور موظفي المركز اليوم</h3></div>
+        <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الحضور</th><th>وقت الحضور</th><th>وقت الانصراف</th></tr></thead>
+        <tbody>${team.map(u => `<tr><td>${u.fullName}</td><td>${roleLabel(u.role)}</td><td><span class="chip ${u.hasCheckedIn?'approved':'rejected'}">${u.hasCheckedIn?'حاضر':'غائب'}</span></td><td>${u.checkInTime?fmtDate(u.checkInTime):'-'}</td><td>${u.checkOutTime?fmtDate(u.checkOutTime):'-'}</td></tr>`).join('') || `<tr><td colspan="5"><div class="empty-state">لا يوجد موظفون بهذا المركز</div></td></tr>`}</tbody></table></div>
+        <p style="color:var(--ink-400);font-size:12px;margin:10px 2px 0">* هذا البيان للعرض فقط ولا يمكن التعديل عليه من هنا.</p>
+      </div>`;
+  }
 
   root.innerHTML = `
     <div class="panel" style="text-align:center;padding:34px 20px">
@@ -627,74 +698,23 @@ async function renderAttendance(root) {
       </div>
       <div class="gps-box" id="gpsBox" style="justify-content:center">📍 سيتم تحديد موقعك تلقائيًا عند التسجيل</div>
     </div>
-
-    ${isFieldRole ? `
-    <div class="panel">
-      <div class="panel-head"><h3>أعمال اليوم</h3><button class="btn btn-gold btn-sm" onclick="openTaskModal()">+ تسجيل عمل اليوم</button></div>
-      <div id="todayWorkBox"><div class="loader"><div class="spinner"></div></div></div>
-    </div>` : ''}
-
+    ${extraHtml}
     <div class="panel">
       <div class="panel-head"><h3>سجل حضوري الأخير</h3></div>
       <div class="table-wrap">
         <table><thead><tr><th>النوع</th><th>التاريخ والوقت</th><th>الموقع (GPS)</th></tr></thead>
         <tbody>${my.slice(0,15).map(a => `<tr><td><span class="chip ${a.type==='IN'?'approved':'rejected'}">${a.type==='IN'?'حضور':'انصراف'}</span></td><td>${fmtDate(a.timestamp)}</td><td>${a.lat?`${Number(a.lat).toFixed(4)}, ${Number(a.lng).toFixed(4)}`:'-'}</td></tr>`).join('') || `<tr><td colspan="3"><div class="empty-state">لا يوجد سجل حضور بعد</div></td></tr>`}</tbody></table>
       </div>
-    </div>
-
-    ${isCenterAdmin ? `
-    <div class="panel">
-      <div class="panel-head"><h3>حضور موظفي المركز اليوم (${CURRENT_USER.center || '-'})</h3></div>
-      <p style="color:var(--ink-600);font-size:12.5px;margin-top:-8px">عرض للاطلاع فقط - لا يمكن التعديل من هنا</p>
-      <div id="centerAttendanceBox"><div class="loader"><div class="spinner"></div></div></div>
-    </div>` : ''}
-  `;
-
+    </div>`;
   setInterval(() => { const c = document.getElementById('clockNow'); if (c) c.textContent = new Date().toLocaleTimeString('ar-EG'); }, 1000);
   document.getElementById('checkInBtn').onclick = () => doAttendance('checkIn');
   document.getElementById('checkOutBtn').onclick = () => doAttendance('checkOut');
-
-  if (isFieldRole) loadTodayWork();
-  if (isCenterAdmin) loadCenterAttendance();
 }
 
-async function loadTodayWork() {
-  const box = document.getElementById('todayWorkBox');
-  if (!box) return;
-  const today = new Date().toISOString().slice(0,10);
-  const [tasks, missions] = await Promise.all([
-    api('listTasks', { engineerName: CURRENT_USER.fullName }),
-    api('listMissions', { engineerName: CURRENT_USER.fullName })
-  ]);
-  const todayTasks = tasks.filter(t => t.startTime && t.startTime.slice(0,10) === today);
-  const todayMissions = missions.filter(m => m.startTime && m.startTime.slice(0,10) === today);
-
-  let html = '';
-  if (todayMissions.length) {
-    html += `<div style="margin-bottom:16px">
-      <div style="font-size:13px;font-weight:700;color:var(--navy-900);margin-bottom:8px">مأمورية اليوم</div>
-      ${todayMissions.map(m => `<div style="background:#f4f8fb;border-radius:10px;padding:12px 14px;margin-bottom:8px;font-size:13.5px">
-        <b>${m.workType}</b> - ${m.center}${m.village?(' / '+m.village):''}
-        <span class="chip ${m.status==='OPEN'?'open':'closed'}" style="margin-inline-start:8px">${m.status==='OPEN'?'مفتوحة':'مغلقة'}</span>
-        ${m.description?`<div style="color:var(--ink-600);margin-top:4px">${m.description}</div>`:''}
-      </div>`).join('')}
-    </div>`;
-  }
-  html += `<div class="table-wrap"><table><thead><tr><th>نوع العمل</th><th>طريقة التنفيذ</th><th>الموقع</th><th>عدد الحالات</th><th>الوقت</th><th>ملاحظات</th></tr></thead>
-    <tbody>${todayTasks.map(t => `<tr><td>${t.taskType}</td><td><span class="chip ${t.execMode==='FIELD'?'open':'maintenance'}">${execModeLabel(t.execMode)}</span></td><td>${t.location||'-'}</td><td>${t.casesCount}</td><td>${fmtDate(t.startTime)}</td><td>${t.notes||'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📋</div>لم يتم تسجيل أي عمل اليوم بعد</div></td></tr>`}</tbody></table></div>`;
-  box.innerHTML = html;
-}
-
-function execModeLabel(mode) {
-  return { FIELD:'ميداني', OFFICE:'مكتبي', OTHER:'أخرى' }[mode] || mode;
-}
-
-async function loadCenterAttendance() {
-  const box = document.getElementById('centerAttendanceBox');
-  if (!box) return;
-  const list = await api('listCenterEmployeesAttendanceToday', { center: CURRENT_USER.center });
-  box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة/الدور</th><th>حالة الحضور</th><th>وقت الحضور</th><th>وقت الانصراف</th></tr></thead>
-  <tbody>${list.map(e => `<tr><td>${e.fullName}</td><td>${roleLabel(e.role)}</td><td><span class="chip ${e.present?'approved':'rejected'}">${e.present?'حاضر':'غائب'}</span></td><td>${e.checkInTime?fmtDate(e.checkInTime):'-'}</td><td>${e.checkOutTime?fmtDate(e.checkOutTime):'-'}</td></tr>`).join('') || `<tr><td colspan="5"><div class="empty-state">لا يوجد موظفون مرتبطون بالمركز حتى الآن</div></td></tr>`}</tbody></table></div>`;
+function execModeChip(mode) {
+  const map = { FIELD:['open','ميداني'], OFFICE:['maintenance','مكتبي'], OTHER:['pending','أخرى'] };
+  const v = map[mode] || ['maintenance', mode || '-'];
+  return `<span class="chip ${v[0]}">${v[1]}</span>`;
 }
 
 function doAttendance(action) {
@@ -716,6 +736,165 @@ function doAttendance(action) {
     goPage('attendance');
   });
 }
+
+/* ========================================================================
+   المتابعة اليومية للمركز (لمدير البنية المعلوماتية بالمركز)
+   ======================================================================== */
+async function renderCoordination(root) {
+  const center = CURRENT_USER.role === 'CENTER_ADMIN' ? CURRENT_USER.center : (CENTERS.find(c=>c!=='ديوان عام المحافظة') || '');
+  const [users, coord, equipment] = await Promise.all([
+    api('listUsers', {}),
+    api('listDailyCoordination', { center }),
+    api('listEquipment', {})
+  ]);
+  const team = users.filter(u => u.status === 'APPROVED' && u.center === center && ['ENGINEER','TECHNICIAN'].includes(u.role));
+  const engineerRecords = {};
+  coord.filter(r => r.recordType === 'ENGINEER').forEach(r => { engineerRecords[r.engineerName] = r; });
+  const vehicleRecord = coord.filter(r => r.recordType === 'VEHICLE')[0] || null;
+
+  root.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h3>تواجد المهندسين / الفنيين اليوم - ${center || '-'}</h3></div>
+      <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>متواجد؟</th><th>وقت التواجد</th><th>إجراء</th></tr></thead>
+      <tbody>${team.map(u => {
+        const rec = engineerRecords[u.fullName];
+        return `<tr>
+          <td>${u.fullName}</td><td>${roleLabel(u.role)}</td>
+          <td>${rec ? `<span class="chip ${rec.isPresent==='true'||rec.isPresent===true?'approved':'rejected'}">${rec.isPresent==='true'||rec.isPresent===true?'متواجد':'غير متواجد'}</span>` : '<span class="chip pending">لم يُسجّل</span>'}</td>
+          <td>${rec && rec.arrivalTime ? rec.arrivalTime : '-'}</td>
+          <td><button class="btn btn-outline btn-sm" onclick="openEngineerStatusModal('${u.fullName.replace(/'/g,"\\'")}')">تحديث</button></td>
+        </tr>`;
+      }).join('') || `<tr><td colspan="5"><div class="empty-state">لا يوجد مهندسون/فنيون بهذا المركز</div></td></tr>`}</tbody></table></div>
+    </div>
+
+    <div class="grid-cards" style="grid-template-columns:1fr 1fr">
+      <div class="panel">
+        <div class="panel-head"><h3>توفر عربة المركز اليوم</h3></div>
+        <p style="margin:0 0 12px;font-size:13.5px;color:var(--ink-600)">
+          الحالة: ${vehicleRecord ? `<span class="chip ${vehicleRecord.vehicleAvailable==='true'||vehicleRecord.vehicleAvailable===true?'available':'outofservice'}">${vehicleRecord.vehicleAvailable==='true'||vehicleRecord.vehicleAvailable===true?'متوفرة':'غير متوفرة'}</span> ${vehicleRecord.vehicleAvailableTime? '- منذ الساعة '+vehicleRecord.vehicleAvailableTime : ''}` : 'لم يتم تسجيل حالة العربة اليوم بعد'}
+        </p>
+        <button class="btn btn-primary btn-sm" onclick="openVehicleStatusModal()">تحديث حالة العربة</button>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>محضر تسليم جهاز</h3></div>
+        <p style="margin:0 0 12px;font-size:13.5px;color:var(--ink-600)">إصدار محضر تسليم جهاز مساحي لأحد المهندسين مع تحديد الغرض من الاستخدام.</p>
+        <button class="btn btn-gold btn-sm" onclick="openCenterHandoverModal()">+ إصدار محضر تسليم</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h3>تسجيل ما تم إنجازه اليوم (نهاية اليوم)</h3></div>
+      <p style="margin:0 0 12px;font-size:13.5px;color:var(--ink-600)">تسجيل الأعمال الميدانية التي أنجزها المهندس/الفني اليوم: رفع مساحي، تحديد منسوب، تقنين أملاك دولة، مرافق، أو غير ذلك.</p>
+      <button class="btn btn-primary btn-sm" onclick="openCenterTaskModal()">+ تسجيل عمل منجز</button>
+    </div>
+  `;
+
+  window.__coordTeam = team;
+  window.__coordCenter = center;
+  window.__coordEquipment = equipment;
+}
+
+window.openEngineerStatusModal = (engineerName) => {
+  openModal(`
+    <h3>تحديث حالة تواجد: ${engineerName}</h3>
+    <div class="field"><label>هل المهندس/الفني متواجد؟ *</label>
+      <select id="esPresent"><option value="true">متواجد</option><option value="false">غير متواجد</option></select>
+    </div>
+    <div class="field"><label>وقت التواجد</label><input id="esTime" type="time"></div>
+    <div class="field"><label>ملاحظات</label><textarea id="esNotes" rows="2"></textarea></div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitEngineerStatus('${engineerName.replace(/'/g,"\\'")}')">حفظ</button></div>
+  `);
+};
+window.submitEngineerStatus = async (engineerName) => {
+  await api('saveEngineerStatus', {
+    center: window.__coordCenter, engineerName, isPresent: val('esPresent'), arrivalTime: val('esTime'), notes: val('esNotes'),
+    createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
+  });
+  closeModal(); showToast('تم تحديث حالة التواجد','ok'); goPage('coordination');
+};
+
+window.openVehicleStatusModal = () => {
+  openModal(`
+    <h3>تحديث حالة عربة المركز</h3>
+    <div class="field"><label>هل العربة متوفرة؟ *</label>
+      <select id="vsAvailable"><option value="true">متوفرة</option><option value="false">غير متوفرة</option></select>
+    </div>
+    <div class="field"><label>وقت التوفر</label><input id="vsTime" type="time"></div>
+    <div class="field"><label>ملاحظات</label><textarea id="vsNotes" rows="2"></textarea></div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitVehicleStatus()">حفظ</button></div>
+  `);
+};
+window.submitVehicleStatus = async () => {
+  await api('saveVehicleStatus', {
+    center: window.__coordCenter, vehicleAvailable: val('vsAvailable'), vehicleAvailableTime: val('vsTime'), notes: val('vsNotes'),
+    createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
+  });
+  closeModal(); showToast('تم تحديث حالة العربة','ok'); goPage('coordination');
+};
+
+window.openCenterHandoverModal = () => {
+  const team = window.__coordTeam || [];
+  const equipment = (window.__coordEquipment || []).filter(e => e.status === 'AVAILABLE');
+  openModal(`
+    <h3>محضر تسليم جهاز مساحي</h3>
+    <div class="field"><label>الجهاز *</label>
+      <select id="chEquipment">${equipment.map(e=>`<option value="${e.id}">${e.custodyNumber} - ${e.type}</option>`).join('') || '<option value="">لا توجد أجهزة متاحة</option>'}</select>
+    </div>
+    <div class="field"><label>المهندس/الفني المستلم *</label>
+      <select id="chEngineer">${team.map(u=>`<option>${u.fullName}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>الغرض من الاستخدام *</label><input id="chPurpose" placeholder="مثال: مأمورية رفع مساحي بقرية ..."></div>
+    <div class="field"><label>القرية / الموقع</label><input id="chVillage"></div>
+    <div class="field"><label>حالة الجهاز قبل التسليم</label><input id="chStatusBefore" placeholder="مثال: سليم بالكامل"></div>
+    <div class="field"><label>ملاحظات</label><textarea id="chNotes" rows="2"></textarea></div>
+    <div class="field"><label>التوقيع الإلكتروني (اكتب الاسم للإقرار)</label><input id="chSignature" placeholder="التوقيع بالاسم الرباعي"></div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitCenterHandover()">تأكيد التسليم</button></div>
+  `);
+};
+window.submitCenterHandover = async () => {
+  const equipmentId = val('chEquipment'), engineerName = val('chEngineer'), purpose = val('chPurpose'), signature = val('chSignature');
+  if (!equipmentId || !engineerName || !purpose || !signature) { showToast('يرجى استكمال البيانات الإلزامية (*)','err'); return; }
+  try {
+    await api('handoverEquipment', {
+      equipmentId, engineerName, center: window.__coordCenter, village: val('chVillage'), purpose,
+      statusBefore: val('chStatusBefore'), notes: val('chNotes'), signature,
+      createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
+    });
+    closeModal(); showToast('تم إصدار محضر التسليم بنجاح','ok'); goPage('coordination');
+  } catch (e) {}
+};
+
+window.openCenterTaskModal = () => {
+  const team = window.__coordTeam || [];
+  openModal(`
+    <h3>تسجيل عمل ميداني منجز</h3>
+    <div class="field"><label>المهندس/الفني *</label><select id="ctEngineer">${team.map(u=>`<option>${u.fullName}</option>`).join('')}</select></div>
+    <div class="field"><label>نوع العمل *</label>
+      <select id="ctType"><option>رفع مساحي</option><option>تحديد منسوب</option><option>أملاك دولة</option><option>مرافق</option><option>أعمال مكتبية</option><option>أخرى</option></select>
+    </div>
+    <div class="field"><label>طريقة التنفيذ *</label>
+      <select id="ctMode"><option value="FIELD">ميداني</option><option value="OFFICE">مكتبي</option><option value="OTHER">أخرى</option></select>
+    </div>
+    <div class="field"><label>الموقع / القرية</label><input id="ctLocation"></div>
+    <div class="field-row">
+      <div class="field"><label>وقت البداية *</label><input id="ctStart" type="datetime-local"></div>
+      <div class="field"><label>وقت النهاية</label><input id="ctEnd" type="datetime-local"></div>
+    </div>
+    <div class="field"><label>عدد الحالات *</label><input id="ctCases" type="number" min="0" value="1"></div>
+    <div class="field"><label>ملاحظات</label><textarea id="ctNotes" rows="2"></textarea></div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitCenterTask()">حفظ</button></div>
+  `);
+};
+window.submitCenterTask = async () => {
+  const start = val('ctStart');
+  if (!start) { showToast('يرجى إدخال وقت البداية','err'); return; }
+  await api('createTask', {
+    engineerName: val('ctEngineer'), center: window.__coordCenter, taskType: val('ctType'), execMode: val('ctMode'),
+    location: val('ctLocation'), startTime: start, endTime: val('ctEnd'), casesCount: Number(val('ctCases'))||0, notes: val('ctNotes'),
+    createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
+  });
+  closeModal(); showToast('تم حفظ العمل المنجز','ok'); goPage('coordination');
+};
 
 /* ========================================================================
    المأموريات اليومية
@@ -782,8 +961,8 @@ async function renderTasks(root) {
   root.innerHTML = `
     <div class="panel">
       <div class="panel-head"><h3>المهام المنفذة</h3><button class="btn btn-gold btn-sm" onclick="openTaskModal()">+ تسجيل مهمة</button></div>
-      <div class="table-wrap"><table><thead><tr><th>المهندس/الفني</th><th>نوع المهمة</th><th>طريقة التنفيذ</th><th>عدد الحالات</th><th>البداية</th><th>النهاية</th><th>ملاحظات</th></tr></thead>
-      <tbody>${tasks.map(t=>`<tr><td>${t.engineerName}</td><td>${t.taskType}</td><td><span class="chip ${t.execMode==='FIELD'?'open':'maintenance'}">${t.execMode==='FIELD'?'ميداني':'مكتبي'}</span></td><td>${t.casesCount}</td><td>${fmtDate(t.startTime)}</td><td>${t.endTime?fmtDate(t.endTime):'-'}</td><td>${t.notes||'-'}</td></tr>`).join('') || `<tr><td colspan="7"><div class="empty-state"><div class="ic">📋</div>لا توجد مهام مسجلة بعد</div></td></tr>`}</tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>المهندس/الفني</th><th>نوع المهمة</th><th>طريقة التنفيذ</th><th>الموقع</th><th>عدد الحالات</th><th>البداية</th><th>النهاية</th><th>ملاحظات</th></tr></thead>
+      <tbody>${tasks.map(t=>`<tr><td>${t.engineerName}</td><td>${t.taskType}</td><td>${execModeChip(t.execMode)}</td><td>${t.location||'-'}</td><td>${t.casesCount}</td><td>${fmtDate(t.startTime)}</td><td>${t.endTime?fmtDate(t.endTime):'-'}</td><td>${t.notes||'-'}</td></tr>`).join('') || `<tr><td colspan="8"><div class="empty-state"><div class="ic">📋</div>لا توجد مهام مسجلة بعد</div></td></tr>`}</tbody></table></div>
     </div>`;
 }
 window.openTaskModal = () => {
@@ -795,7 +974,7 @@ window.openTaskModal = () => {
     <div class="field"><label>طريقة التنفيذ *</label>
       <select id="tMode"><option value="FIELD">ميداني (تمت المعاينة)</option><option value="OFFICE">مكتبي (تم الإدخال)</option><option value="OTHER">أخرى</option></select>
     </div>
-    <div class="field"><label>الموقع (القرية / المكان الذي تم العمل فيه)</label><input id="tLocation" placeholder="مثال: قرية كذا - مركز كذا"></div>
+    <div class="field"><label>الموقع / القرية</label><input id="tLocation" placeholder="مكان تنفيذ العمل"></div>
     <div class="field-row">
       <div class="field"><label>وقت البداية *</label><input id="tStart" type="datetime-local"></div>
       <div class="field"><label>وقت النهاية</label><input id="tEnd" type="datetime-local"></div>
@@ -813,8 +992,7 @@ window.submitTask = async () => {
     location: val('tLocation'), startTime: start, endTime: val('tEnd'), casesCount: Number(val('tCases'))||0, notes: val('tNotes'),
     createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
   });
-  closeModal(); showToast('تم حفظ المهمة','ok');
-  if (currentPage === 'attendance') loadTodayWork(); else goPage('tasks');
+  closeModal(); showToast('تم حفظ المهمة','ok'); goPage('tasks');
 };
 
 /* ========================================================================
@@ -841,8 +1019,8 @@ async function renderEquipment(root) {
     <div id="eqTabLog" style="display:none">
       <div class="panel">
         <div class="panel-head"><h3>سجل التسليم والاستلام</h3></div>
-        <div class="table-wrap"><table><thead><tr><th>رقم العهدة</th><th>المهندس</th><th>المركز</th><th>القرية</th><th>وقت التسليم</th><th>وقت الاستلام</th><th>الحالة قبل</th><th>الحالة بعد</th></tr></thead>
-        <tbody>${logs.map(l=>`<tr><td>${l.custodyNumber}</td><td>${l.engineerName}</td><td>${l.center||'-'}</td><td>${l.village||'-'}</td><td>${fmtDate(l.deliverTime)}</td><td>${l.receiveTime?fmtDate(l.receiveTime):'<span class="chip withengineer">قيد الاستخدام</span>'}</td><td>${l.statusBefore||'-'}</td><td>${l.statusAfter||'-'}</td></tr>`).join('') || `<tr><td colspan="8"><div class="empty-state">لا يوجد سجل بعد</div></td></tr>`}</tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>رقم العهدة</th><th>المهندس</th><th>المركز</th><th>القرية</th><th>الغرض</th><th>وقت التسليم</th><th>وقت الاستلام</th><th>الحالة قبل</th><th>الحالة بعد</th></tr></thead>
+        <tbody>${logs.map(l=>`<tr><td>${l.custodyNumber}</td><td>${l.engineerName}</td><td>${l.center||'-'}</td><td>${l.village||'-'}</td><td>${l.purpose||'-'}</td><td>${fmtDate(l.deliverTime)}</td><td>${l.receiveTime?fmtDate(l.receiveTime):'<span class="chip withengineer">قيد الاستخدام</span>'}</td><td>${l.statusBefore||'-'}</td><td>${l.statusAfter||'-'}</td></tr>`).join('') || `<tr><td colspan="9"><div class="empty-state">لا يوجد سجل بعد</div></td></tr>`}</tbody></table></div>
       </div>
     </div>`;
   root.querySelectorAll('.tab-btn').forEach(b => b.onclick = () => {
@@ -886,6 +1064,7 @@ window.openHandoverModal = (equipmentId, custody) => {
       <div class="field"><label>المركز الذي سيعمل به *</label><select id="hCenter">${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
       <div class="field"><label>القرية</label><input id="hVillage"></div>
     </div>
+    <div class="field"><label>الغرض من الاستخدام *</label><input id="hPurpose" placeholder="مثال: مأمورية رفع مساحي"></div>
     <div class="field"><label>حالة الجهاز قبل التسليم</label><input id="hStatusBefore" placeholder="مثال: سليم بالكامل"></div>
     <div class="field"><label>ملاحظات</label><textarea id="hNotes" rows="2"></textarea></div>
     <div class="field"><label>التوقيع الإلكتروني (اكتب الاسم للإقرار)</label><input id="hSignature" placeholder="التوقيع بالاسم الرباعي"></div>
@@ -893,11 +1072,11 @@ window.openHandoverModal = (equipmentId, custody) => {
   `);
 };
 window.submitHandover = async (equipmentId) => {
-  const engineerName = val('hEngineer'), signature = val('hSignature');
-  if (!engineerName || !signature) { showToast('يرجى إدخال اسم المهندس والتوقيع','err'); return; }
+  const engineerName = val('hEngineer'), signature = val('hSignature'), purpose = val('hPurpose');
+  if (!engineerName || !signature || !purpose) { showToast('يرجى إدخال اسم المهندس والغرض والتوقيع','err'); return; }
   try {
     await api('handoverEquipment', {
-      equipmentId, engineerName, center: val('hCenter'), village: val('hVillage'),
+      equipmentId, engineerName, center: val('hCenter'), village: val('hVillage'), purpose,
       statusBefore: val('hStatusBefore'), notes: val('hNotes'), signature,
       createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
     });
@@ -958,7 +1137,7 @@ async function loadReport() {
     headers = [['engineerName','المهندس'],['center','المركز'],['village','القرية'],['workType','نوع العمل'],['status','الحالة']];
   } else if (type === 'tasks') {
     rows = await api('listTasks', {});
-    headers = [['engineerName','الاسم'],['taskType','نوع المهمة'],['execMode','طريقة التنفيذ'],['casesCount','عدد الحالات'],['startTime','البداية']];
+    headers = [['engineerName','الاسم'],['taskType','نوع المهمة'],['execMode','طريقة التنفيذ'],['location','الموقع'],['casesCount','عدد الحالات'],['startTime','البداية']];
   } else if (type === 'equipment') {
     rows = await api('listEquipment', {});
     headers = [['custodyNumber','رقم العهدة'],['type','النوع'],['model','الموديل'],['status','الحالة']];
