@@ -248,6 +248,17 @@ tbody tr:hover{background:#fafcfd}
 
 .center-overview-row{display:flex;align-items:stretch;gap:10px;padding:14px;border-radius:12px;background:var(--paper);margin-bottom:12px;flex-wrap:wrap;border:1px solid var(--line)}
 .center-overview-name{display:flex;align-items:center;font-weight:800;font-size:14.5px;min-width:110px;color:var(--navy-900)}
+.center-overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:0 -8px;}
+.center-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow);}
+.center-card-header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+.center-card-title{font-size:16px;font-weight:800;color:var(--navy-950);}
+.center-card-meta{font-size:13px;color:var(--ink-600);}
+.status-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;}
+.center-status{flex:1 1 calc(50% - 12px);min-width:150px;display:flex;flex-direction:column;gap:8px;}
+.status-pill{display:inline-flex;align-items:center;justify-content:center;padding:10px 12px;border-radius:12px;border:none;background:var(--line);color:var(--ink-600);font-weight:700;font-size:13px;cursor:default;transition:.2s;}
+.status-pill.on{background:var(--good);color:#fff;}
+.status-pill:disabled{opacity:1;}
+.status-text{font-size:13px;color:var(--ink-600);min-height:22px;}
 .mini-status{flex:1;min-width:118px;background:#e9ecef;color:var(--ink-600);border-radius:10px;padding:9px 10px;text-align:center;transition:.2s;border:1px solid transparent}
 .mini-status .ms-label{display:block;font-size:11px;font-weight:700;margin-bottom:5px;opacity:.85;white-space:nowrap}
 .mini-status .ms-time{display:block;font-size:13.5px;font-weight:800;font-family:var(--font-display)}
@@ -636,13 +647,19 @@ function fileToBase64(file) {
 }
 
 document.getElementById('submitRegisterBtn').addEventListener('click', async () => {
+  const email = document.getElementById('regEmail').value.trim();
   const fullName = document.getElementById('regFullName').value.trim();
   const job = document.getElementById('regJob').value.trim();
   const phone = document.getElementById('regPhone').value.trim();
+  const nationalId = document.getElementById('regNationalId').value.trim();
+  const username = document.getElementById('regUsername').value.trim();
+  const password = document.getElementById('regPassword').value.trim();
   const role = document.getElementById('regRole').value;
   const center = document.getElementById('regCenter').value;
+  const cityCouncil = document.getElementById('regCity').value.trim();
+  const localUnit = document.getElementById('regUnit').value.trim();
   
-  if (!fullName || !job || !phone || !center) {
+  if (!email || !fullName || !job || !phone || !nationalId || !username || !password || !center) {
     showToast('يرجى استكمال جميع الحقول الإلزامية (*)', 'err');
     return;
   }
@@ -699,15 +716,18 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async () 
     
     // تسجيل المستخدم مع رابط الصورة
     const user = await api('registerUser', {
+      email,
       fullName, 
       job, 
       phone, 
       nationalId,
       username,
       password,
-      cityCouncil: document.getElementById('regCity').value.trim(),
-      localUnit: document.getElementById('regUnit').value.trim(),
-      photoUrl: photoUrl  // إرسال رابط الصورة للتسجيل
+      role,
+      center,
+      cityCouncil,
+      localUnit,
+      photoUrl
     });
     
     CURRENT_USER = user;
@@ -899,17 +919,31 @@ async function renderCentersOverviewPanel(selectedDate) {
   return `
     <div class="panel">
       <div class="panel-head"><h3>الموقف اليومي لجميع المراكز</h3></div>
-      ${data.map(c => `
-        <div class="center-overview-row">
-          <div class="center-overview-name">${c.center}</div>
-          ${miniStatus('👥 الحضور', c.presentCount > 0, c.presentCount + ' حاضر')}
-          ${miniStatus('🚫 الغياب', c.absentCount > 0, c.absentCount + ' غائب')}
-          ${miniStatus('🎯 الهدف', c.targetCount > 0, c.targetCount + ' معاينة')}
-          ${miniStatus('📋 المنجز', c.tasksDone > 0, c.tasksDone + ' مهمة')}
-          ${miniStatus('🧾 الحالات', c.casesDone > 0, c.casesDone + ' حالة')}
-        </div>
-      `).join('') || `<div class="empty-state">لا توجد بيانات مراكز</div>`}
+      <div class="center-overview-grid">
+        ${data.map(c => `
+          <div class="center-card">
+            <div class="center-card-header">
+              <div class="center-card-title">${c.center}</div>
+              <div class="center-card-meta">الهدف: <strong>${c.targetCount}</strong></div>
+            </div>
+            <div class="status-row">
+              ${centerStatus('تواجد المدير', c.directorPresent, c.directorTime ? fmtDate(c.directorTime) : '-')}
+              ${centerStatus('تواجد المهندس', c.engineerPresent, c.engineerTime ? fmtDate(c.engineerTime) : '-')}
+              ${centerStatus('تواجد السيارة', c.vehicleAvailable, c.vehicleTime ? fmtDate(c.vehicleTime) : '-')}
+            </div>
+            <div class="status-row">
+              ${centerStatus('بدء العمل', !!c.workStart, c.workStart ? fmtDate(c.workStart) : '-')}
+              ${centerStatus('انتهاء العمل', !!c.workEnd, c.workEnd ? fmtDate(c.workEnd) : '-')}
+              ${centerStatus('ما تم إنجازه', c.accomplishedCount > 0, c.accomplishedCount + ' سجل')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
     </div>`;
+}
+
+function centerStatus(label, on, value) {
+  return `<div class="center-status"><button class="status-pill ${on ? 'on' : ''}" disabled>${label}</button><div class="status-text">${value || '-'}</div></div>`;
 }
 
 function miniStatus(label, on, timeVal) {
@@ -1460,7 +1494,7 @@ async function renderEquipment(root) {
         <div class="panel-head"><h3>الأجهزة المساحية</h3>${isAdmin?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-gold btn-sm" onclick="openAddEquipmentModal()">+ إضافة جهاز</button><button class="btn btn-outline btn-sm" onclick="openImportEquipmentModal()">📥 رفع Excel/CSV</button></div>`:''}</div>
         <div class="table-wrap"><table><thead><tr><th>رقم العهدة</th><th>الرقم المسلسل</th><th>النوع</th><th>الموديل</th><th>المركز الأساسي</th><th>الحالة</th><th>الموقع الحالي</th><th>إجراء</th></tr></thead>
         <tbody>${equipment.map(e=>`<tr><td>${e.custodyNumber}</td><td>${e.serialNumber}</td><td>${e.type}</td><td>${e.model}</td><td>${e.homeCenter||'-'}</td><td>${eqStatusChip(e.status)}</td><td>${e.currentCenter || e.homeCenter || '-'}</td>
-        <td>${isAdmin?`<button class="btn btn-outline btn-sm" onclick="openEditEquipmentModal('${e.id}','${(e.custodyNumber||'').replace(/'/g, "\\'") }','${(e.serialNumber||'').replace(/'/g, "\\'") }','${(e.type||'').replace(/'/g, "\\'") }','${(e.model||'').replace(/'/g, "\\'") }','${(e.homeCenter||'').replace(/'/g, "\\'") }','${e.status||'AVAILABLE'}','${(e.currentCenter||'').replace(/'/g, "\\'") }')">تعديل</button>`:''}
+        <td><button class="btn btn-outline btn-sm" onclick="openEditEquipmentModal('${e.id}','${(e.custodyNumber||'').replace(/'/g, "\\'") }','${(e.serialNumber||'').replace(/'/g, "\\'") }','${(e.type||'').replace(/'/g, "\\'") }','${(e.model||'').replace(/'/g, "\\'") }','${(e.homeCenter||'').replace(/'/g, "\\'") }','${e.status||'AVAILABLE'}','${(e.currentCenter||'').replace(/'/g, "\\'") }')">تعديل بيانات الجهاز</button>
         ${e.status==='AVAILABLE'?`<button class="btn btn-outline btn-sm" onclick="openHandoverModal('${e.id}','${e.custodyNumber}')">تسليم</button>`:''}
         ${e.status==='WITH_ENGINEER'?`<button class="btn btn-outline btn-sm" onclick="openReturnModal('${e.id}')">استلام</button>`:''}
         ${isAdmin?`<button class="btn btn-danger btn-sm" onclick="markMaintenance('${e.id}','${e.custodyNumber}')">صيانة</button>`:''}</td></tr>`).join('') || `<tr><td colspan="8"><div class="empty-state">لا توجد أجهزة مسجلة</div></td></tr>`}</tbody></table></div>
