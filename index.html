@@ -974,7 +974,7 @@ async function renderAttendance(root) {
   if (isFieldRole) {
     const today = new Date().toISOString().slice(0,10);
     const allMyTasks = await api('listTasks', { engineerName: CURRENT_USER.fullName });
-    const todayTasks = allMyTasks.filter(t => t.startTime && t.startTime.slice(0,10) === today);
+    const todayTasks = allMyTasks.filter(t => isSameDate(t.startTime, today));
     extraHtml = `
       <div class="grid-cards" style="grid-template-columns:repeat(3,1fr)">
         <div class="stat-card good"><div class="stat-label">أيام الحضور هذا الشهر</div><div class="stat-num">${monthlyStats.presentDays}</div></div>
@@ -1340,8 +1340,8 @@ function bindMissionFilters(canCreate, root) {
       if (filters.workType && (m.workType || '') !== filters.workType) return false;
       if (filters.engineerName && !(m.engineerName || '').includes(filters.engineerName)) return false;
       if (filters.status && (m.status || '') !== filters.status) return false;
-      if (filters.dateFrom && (m.startTime || '').slice(0,10) < filters.dateFrom) return false;
-      if (filters.dateTo && (m.startTime || '').slice(0,10) > filters.dateTo) return false;
+      if (filters.dateFrom && getDateKey(m.startTime) < filters.dateFrom) return false;
+      if (filters.dateTo && getDateKey(m.startTime) > filters.dateTo) return false;
       return true;
     });
     renderMissionRows(filteredData, canCreate, root);
@@ -1904,6 +1904,15 @@ window.openNotifModal = async () => {
 /* ---------------------------- أدوات مساعدة عامة ---------------------------- */
 function val(id) { return document.getElementById(id).value.trim ? document.getElementById(id).value.trim() : document.getElementById(id).value; }
 function fmtDate(iso) { if (!iso) return '-'; const d = new Date(iso); return d.toLocaleString('ar-EG', { dateStyle:'medium', timeStyle:'short' }); }
+function getDateKey(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value.slice(0,10);
+  if (value instanceof Date) return value.toISOString().slice(0,10);
+  return '';
+}
+function isSameDate(value, date) {
+  return getDateKey(value) === date;
+}
 function applyClientFilters(list, fields, filters) {
   const f = filters || {};
   let data = list.slice();
@@ -1912,8 +1921,8 @@ function applyClientFilters(list, fields, filters) {
   if (f.taskType) data = data.filter(i => (i.taskType || '') === f.taskType);
   if (f.source) data = data.filter(i => (i.source || 'CENTER') === f.source);
   if (f.status) data = data.filter(i => (i.status || '') === f.status);
-  if (f.dateFrom) data = data.filter(i => (i.startTime || i.timestamp || '').slice(0,10) >= f.dateFrom);
-  if (f.dateTo) data = data.filter(i => (i.startTime || i.timestamp || '').slice(0,10) <= f.dateTo);
+  if (f.dateFrom) data = data.filter(i => getDateKey(i.startTime || i.timestamp) >= f.dateFrom);
+  if (f.dateTo) data = data.filter(i => getDateKey(i.startTime || i.timestamp) <= f.dateTo);
   return data;
 }
 function bindFilterInputs(prefix, onChange, filterMap) {
