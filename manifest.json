@@ -1,0 +1,18 @@
+{
+  "name": "منظومة إدارة الرفع المساحي والعهد الفنية",
+  "short_name": "منظومة المحافظة",
+  "description": "منظومة إدارة ومتابعة أعمال الرفع المساحي والعهد الفنية بمحافظة المنيا",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#071b2e",
+  "theme_color": "#071b2e",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
