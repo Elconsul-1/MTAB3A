@@ -398,8 +398,9 @@ tbody tr:hover{background:#fafcfd}
         <button class="menu-toggle" onclick="toggleSidebar(true)">☰</button>
         <h2 id="pageTitle">لوحة التحكم</h2>
       </div>
-      <div class="topbar-actions">
+      <div class="topbar-actions" style="align-items:center;gap:10px">
         <div style="font-size:12.5px;color:var(--ink-600);text-align:left;line-height:1.5" id="topbarUserInfo"></div>
+        <button class="btn btn-outline btn-sm" onclick="openProfileModal()">تعديل الملف</button>
         <button class="icon-btn" onclick="openNotifModal()">🔔<span class="badge" id="notifBadge" style="display:none">0</span></button>
       </div>
     </div>
@@ -753,7 +754,6 @@ const NAV_ITEMS = [
   { key:'missions', label:'المأموريات اليومية', icon:'🗺️', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'tasks', label:'المهام المنفذة', icon:'📋', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'equipment', label:'الأجهزة المساحية', icon:'📡', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER'] },
-  { key:'profile', label:'تعديل الملف الشخصي', icon:'👤', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'reports', label:'التقارير', icon:'🧾', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'users', label:'إدارة المستخدمين', icon:'👥', roles:['SYSTEM_ADMIN'] },
   { key:'audit', label:'سجل العمليات', icon:'🗂️', roles:['SYSTEM_ADMIN'] },
@@ -1782,30 +1782,33 @@ function exportCSV() {
 /* ========================================================================
    الملف الشخصي
    ======================================================================== */
+function openProfileModal() {
+  openModal(`
+    <h3>تعديل الملف الشخصي</h3>
+    <div class="field-row">
+      <div class="field"><label>الاسم</label><input id="profileName" value="${CURRENT_USER.fullName || ''}"></div>
+      <div class="field"><label>الوظيفة</label><input id="profileJob" value="${CURRENT_USER.job || ''}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>رقم الهاتف</label><input id="profilePhone" value="${CURRENT_USER.phone || ''}"></div>
+      <div class="field"><label>البريد</label><input id="profileEmail" value="${CURRENT_USER.email || ''}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>الرقم القومي</label><input id="profileNationalId" value="${CURRENT_USER.nationalId || ''}"></div>
+      <div class="field"><label>اسم المستخدم</label><input id="profileUsername" value="${CURRENT_USER.username || ''}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>المركز</label><select id="profileCenter">${CENTERS.map(c=>`<option ${CURRENT_USER.center===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div class="field"><label>الدور</label><select id="profileRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${CURRENT_USER.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label>كلمة المرور</label><input id="profilePassword" type="password" placeholder="اتركها فارغة إذا لم تُرد تغييرها"></div>
+    <div class="field"><label>صورة شخصية (رابط)</label><input id="profilePhoto" value="${CURRENT_USER.photoUrl || ''}"></div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="saveProfile()">حفظ التغييرات</button></div>
+  `);
+}
+
 async function renderProfile(root) {
-  root.innerHTML = `
-    <div class="panel">
-      <div class="panel-head"><h3>الملف الشخصي</h3></div>
-      <div class="field-row">
-        <div class="field"><label>الاسم</label><input id="profileName" value="${CURRENT_USER.fullName || ''}"></div>
-        <div class="field"><label>الوظيفة</label><input id="profileJob" value="${CURRENT_USER.job || ''}"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>رقم الهاتف</label><input id="profilePhone" value="${CURRENT_USER.phone || ''}"></div>
-        <div class="field"><label>البريد</label><input id="profileEmail" value="${CURRENT_USER.email || ''}"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>الرقم القومي</label><input id="profileNationalId" value="${CURRENT_USER.nationalId || ''}"></div>
-        <div class="field"><label>اسم المستخدم</label><input id="profileUsername" value="${CURRENT_USER.username || ''}"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>المركز</label><select id="profileCenter">${CENTERS.map(c=>`<option ${CURRENT_USER.center===c?'selected':''}>${c}</option>`).join('')}</select></div>
-        <div class="field"><label>الدور</label><select id="profileRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${CURRENT_USER.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div>
-      </div>
-      <div class="field"><label>كلمة المرور</label><input id="profilePassword" type="password" placeholder="اتركها فارغة إذا لم تُرد تغييرها"></div>
-      <div class="field"><label>صورة شخصية (رابط)</label><input id="profilePhoto" value="${CURRENT_USER.photoUrl || ''}"></div>
-      <div class="modal-close-row"><button class="btn btn-outline" onclick="goPage('profile', true)">إلغاء</button><button class="btn btn-primary" onclick="saveProfile()">حفظ التغييرات</button></div>
-    </div>`;
+  root.innerHTML = `<div class="panel"><div class="panel-head"><h3>الملف الشخصي</h3><div style="font-size:13px;color:var(--ink-600);margin-top:10px">تمت إزالة شاشة الملف الشخصي. استخدم زر التعديل في الشريط العلوي.</div></div></div>`;
 }
 window.saveProfile = async () => {
   const payload = {
