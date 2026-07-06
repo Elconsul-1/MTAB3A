@@ -3,7 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#071b2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="منظومة المحافظة">
 <title>منظومة إدارة أعمال الرفع المساحي والعهد الفنية - محافظة المنيا</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
 
@@ -282,6 +288,11 @@ tbody tr:hover{background:#fafcfd}
       <div class="field"><label>الوظيفة *</label><input id="regJob" placeholder="مثال: مهندس مساحة"></div>
       <div class="field"><label>رقم الهاتف *</label><input id="regPhone" placeholder="01xxxxxxxxx"></div>
     </div>
+    <div class="field-row">
+      <div class="field"><label>الرقم القومي *</label><input id="regNationalId" placeholder="14 رقم"></div>
+      <div class="field"><label>اسم المستخدم *</label><input id="regUsername" placeholder="اسم الدخول"></div>
+    </div>
+    <div class="field"><label>كلمة المرور *</label><input id="regPassword" type="password" placeholder="أدخل كلمة مرور قوية"></div>
     <div class="field">
       <label>نوع المستخدم *</label>
       <select id="regRole">
@@ -380,6 +391,14 @@ tbody tr:hover{background:#fafcfd}
 <div id="printArea"></div>
 
 <div class="toast-wrap" id="toastWrap"></div>
+<div id="installBanner" style="display:none;position:fixed;left:16px;right:16px;bottom:16px;z-index:220;background:linear-gradient(135deg,var(--navy-900),var(--navy-700));color:#fff;padding:14px 16px;border-radius:14px;box-shadow:0 12px 28px rgba(0,0,0,.28);max-width:420px;margin:auto">
+  <div style="font-size:14px;font-weight:800;margin-bottom:6px">تثبيت المنظومة كتطبيق</div>
+  <div style="font-size:13px;line-height:1.7;color:rgba(255,255,255,.88)">يمكنك تثبيت المنظومة على الشاشة الرئيسية للوصول إليها بسرعة كأيقونة تطبيق.</div>
+  <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+    <button class="btn btn-outline" id="installDismissBtn" style="background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.2)">لاحقًا</button>
+    <button class="btn btn-gold" id="installActionBtn">تثبيت الآن</button>
+  </div>
+</div>
 
 <script>
 /* =====================================================================
@@ -410,6 +429,58 @@ let CURRENT_USER = null;   // بيانات المستخدم من قاعدة ال
 let FIREBASE_USER = null;  // بيانات Firebase Auth
 let CENTERS = ['ديوان عام المحافظة','المنيا','ملوي','مغاغة','بني مزار','مطاي','سمالوط','أبو قرقاص','ديرمواس','العدوة'];
 let currentPage = 'dashboard';
+let deferredInstallPrompt = null;
+
+function registerPwaFeatures() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    showInstallBanner();
+  });
+
+  window.addEventListener('appinstalled', () => {
+    hideInstallBanner();
+    showToast('تم تثبيت المنظومة بنجاح', 'ok');
+  });
+
+  document.getElementById('installActionBtn').addEventListener('click', async () => {
+    if (!deferredInstallPrompt) {
+      showToast('المتصفح لا يقدم خيار التثبيت الآن', 'err');
+      return;
+    }
+    deferredInstallPrompt.prompt();
+    const result = await deferredInstallPrompt.userChoice;
+    if (result.outcome === 'accepted') {
+      hideInstallBanner();
+    } else {
+      showToast('تم إلغاء تثبيت المنظومة', 'err');
+    }
+    deferredInstallPrompt = null;
+  });
+
+  document.getElementById('installDismissBtn').addEventListener('click', () => {
+    localStorage.setItem('pwaInstallDismissed', '1');
+    hideInstallBanner();
+  });
+}
+
+function showInstallBanner() {
+  const banner = document.getElementById('installBanner');
+  if (!banner) return;
+  const alreadyDismissed = localStorage.getItem('pwaInstallDismissed') === '1';
+  const alreadyInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (alreadyDismissed || alreadyInstalled || !deferredInstallPrompt) return;
+  banner.style.display = 'block';
+}
+
+function hideInstallBanner() {
+  const banner = document.getElementById('installBanner');
+  if (banner) banner.style.display = 'none';
+}
 
 /* ---------------------------- منع الخروج غير المقصود من المنظومة ---------------------------- */
 // أي دخول لتابه جديد يُضاف كحالة في تاريخ المتصفح، وزر الرجوع يرجّع لآخر تابه بدل الخروج من النظام بالكامل
@@ -616,10 +687,9 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async () 
       fullName, 
       job, 
       phone, 
-      email: FIREBASE_USER.email, 
-      role,
-      governorateOffice: center === 'ديوان عام المحافظة' ? center : '',
-      center: center === 'ديوان عام المحافظة' ? '' : center,
+      nationalId,
+      username,
+      password,
       cityCouncil: document.getElementById('regCity').value.trim(),
       localUnit: document.getElementById('regUnit').value.trim(),
       photoUrl: photoUrl  // إرسال رابط الصورة للتسجيل
@@ -648,6 +718,7 @@ const NAV_ITEMS = [
   { key:'missions', label:'المأموريات اليومية', icon:'🗺️', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'tasks', label:'المهام المنفذة', icon:'📋', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'equipment', label:'الأجهزة المساحية', icon:'📡', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER'] },
+  { key:'profile', label:'الملف الشخصي', icon:'👤', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'reports', label:'التقارير', icon:'🧾', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'users', label:'إدارة المستخدمين', icon:'👥', roles:['SYSTEM_ADMIN'] },
   { key:'audit', label:'سجل العمليات', icon:'🗂️', roles:['SYSTEM_ADMIN'] },
@@ -691,6 +762,8 @@ function updateUserAvatar() {
 // دالة إطلاق التطبيق (واحدة فقط)
 function launchApp() {
   hideAllScreens();
+  registerPwaFeatures();
+  showInstallBanner();
   document.getElementById('app').style.display = 'block';
   document.getElementById('sideName').textContent = CURRENT_USER.fullName;
   document.getElementById('sideRole').textContent = roleLabel(CURRENT_USER.role) + (CURRENT_USER.center ? ' - ' + CURRENT_USER.center : '');
@@ -737,9 +810,9 @@ function goPage(key, skipHistory) {
   if (navEl) navEl.classList.add('active');
   toggleSidebar(false);
   if (!skipHistory) history.pushState({ page: key }, '', '');
-  const titles = { dashboard:'لوحة التحكم', attendance:'الحضور والانصراف', coordination:'المتابعة اليومية للمركز', missions:'المأموريات اليومية', tasks:'المهام المنفذة', equipment:'الأجهزة المساحية', reports:'التقارير', users:'إدارة المستخدمين', audit:'سجل العمليات' };
+  const titles = { dashboard:'لوحة التحكم', attendance:'الحضور والانصراف', coordination:'المتابعة اليومية للمركز', missions:'المأموريات اليومية', tasks:'المهام المنفذة', equipment:'الأجهزة المساحية', profile:'الملف الشخصي', reports:'التقارير', users:'إدارة المستخدمين', audit:'سجل العمليات' };
   document.getElementById('pageTitle').textContent = titles[key] || '';
-  const renderers = { dashboard:renderDashboard, attendance:renderAttendance, coordination:renderCoordination, missions:renderMissions, tasks:renderTasks, equipment:renderEquipment, reports:renderReports, users:renderUsers, audit:renderAudit };
+  const renderers = { dashboard:renderDashboard, attendance:renderAttendance, coordination:renderCoordination, missions:renderMissions, tasks:renderTasks, equipment:renderEquipment, profile:renderProfile, reports:renderReports, users:renderUsers, audit:renderAudit };
   const content = document.getElementById('pageContent');
   content.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
   (renderers[key] || renderDashboard)(content);
@@ -749,7 +822,7 @@ function goPage(key, skipHistory) {
    لوحة التحكم
    ======================================================================== */
 async function renderDashboard(root) {
-  const stats = await api('dashboardStats', {});
+  const stats = await api('dashboardStats', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {});
   let centersOverviewHtml = '';
   if (CURRENT_USER.role === 'SYSTEM_ADMIN') {
     centersOverviewHtml = await renderCentersOverviewPanel();
@@ -1127,16 +1200,44 @@ window.submitCenterTask = async () => {
 async function renderMissions(root) {
   const canCreate = ['SYSTEM_ADMIN','CENTER_ADMIN'].includes(CURRENT_USER.role);
   const missions = await api('listMissions', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {});
+  const filtered = applyClientFilters(missions, ['center','workType','source','status','dateFrom','dateTo']);
   root.innerHTML = `
     <div class="panel">
       <div class="panel-head"><h3>قائمة المأموريات</h3>${canCreate ? `<button class="btn btn-gold btn-sm" onclick="openMissionModal()">+ إنشاء مأمورية</button>` : ''}</div>
-      <div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>القرية</th><th>نوع العمل</th><th>الجهة الطالبة</th><th>البداية</th><th>الحالة</th>${canCreate?'<th>إجراء</th>':''}</tr></thead>
-      <tbody>${missions.map(m => `<tr>
+      <div class="field-row" style="margin-bottom:12px">
+        <div class="field"><label>المركز</label><select id="missionFilterCenter"><option value="">الكل</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>نوع العمل</label><select id="missionFilterType"><option value="">الكل</option><option>رفع مساحي</option><option>تحديد منسوب</option><option>أملاك دولة</option><option>مرافق</option><option>أعمال مكتبية</option><option>أخرى</option></select></div>
+        <div class="field"><label>المصدر</label><select id="missionFilterSource"><option value="">الكل</option><option value="CENTER">من مدير المركز</option><option value="GENERAL">من الإدارة العامة</option></select></div>
+        <div class="field"><label>الحالة</label><select id="missionFilterStatus"><option value="">الكل</option><option value="OPEN">مفتوحة</option><option value="CLOSED">مغلقة</option></select></div>
+      </div>
+      <div class="field-row" style="margin-bottom:12px">
+        <div class="field"><label>من تاريخ</label><input id="missionFilterDateFrom" type="date"></div>
+        <div class="field"><label>إلى تاريخ</label><input id="missionFilterDateTo" type="date"></div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>القرية</th><th>نوع العمل</th><th>الجهة الطالبة</th><th>البداية</th><th>المصدر</th><th>الحالة</th>${canCreate?'<th>إجراء</th>':''}</tr></thead>
+      <tbody>${filtered.map(m => `<tr>
         <td>${m.engineerName}</td><td>${m.center}</td><td>${m.village||'-'}</td><td>${m.workType}</td><td>${m.requestingEntity||'-'}</td><td>${fmtDate(m.startTime)}</td>
+        <td>${m.source==='GENERAL'?'<span class="chip pending">من الإدارة العامة</span>':'<span class="chip approved">من مدير المركز</span>'}</td>
         <td><span class="chip ${m.status==='OPEN'?'open':'closed'}">${m.status==='OPEN'?'مفتوحة':'مغلقة'}</span></td>
         ${canCreate?`<td>${m.status==='OPEN'?`<button class="btn btn-outline btn-sm" onclick="closeMission('${m.id}')">إغلاق</button>`:'-'}</td>`:''}
-      </tr>`).join('') || `<tr><td colspan="8"><div class="empty-state"><div class="ic">🗺️</div>لا توجد مأموريات مسجلة</div></td></tr>`}</tbody></table></div>
+      </tr>`).join('') || `<tr><td colspan="9"><div class="empty-state"><div class="ic">🗺️</div>لا توجد مأموريات مسجلة</div></td></tr>`}</tbody></table></div>
     </div>`;
+  setTimeout(() => bindFilterInputs('mission', async (filters) => {
+    const missionsAll = await api('listMissions', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {});
+    const filteredData = applyClientFilters(missionsAll, ['center','workType','source','status','dateFrom','dateTo'], filters);
+    renderMissionRows(filteredData, canCreate, root);
+  }), 0);
+}
+
+function renderMissionRows(data, canCreate, root) {
+  const body = root.querySelector('tbody');
+  if (!body) return;
+  body.innerHTML = data.map(m => `<tr>
+    <td>${m.engineerName}</td><td>${m.center}</td><td>${m.village||'-'}</td><td>${m.workType}</td><td>${m.requestingEntity||'-'}</td><td>${fmtDate(m.startTime)}</td>
+    <td>${m.source==='GENERAL'?'<span class="chip pending">من الإدارة العامة</span>':'<span class="chip approved">من مدير المركز</span>'}</td>
+    <td><span class="chip ${m.status==='OPEN'?'open':'closed'}">${m.status==='OPEN'?'مفتوحة':'مغلقة'}</span></td>
+    ${canCreate?`<td>${m.status==='OPEN'?`<button class="btn btn-outline btn-sm" onclick="closeMission('${m.id}')">إغلاق</button>`:'-'}</td>`:''}
+  </tr>`).join('') || `<tr><td colspan="9"><div class="empty-state"><div class="ic">🗺️</div>لا توجد مأموريات مسجلة</div></td></tr>`;
 }
 window.closeMission = async (id) => {
   await api('updateMissionStatus', { missionId:id, status:'CLOSED', endTime:new Date().toISOString(), updatedBy:CURRENT_USER.id, updatedByName:CURRENT_USER.fullName });
@@ -1145,6 +1246,9 @@ window.closeMission = async (id) => {
 window.openMissionModal = () => {
   openModal(`
     <h3>إنشاء مأمورية جديدة</h3>
+    <div class="field"><label>مصدر المأمورية *</label>
+      <select id="mSource"><option value="CENTER">من مدير المركز</option><option value="GENERAL">من الإدارة العامة</option></select>
+    </div>
     <div class="field"><label>اسم المهندس *</label><input id="mEngineer"></div>
     <div class="field"><label>الفنيون المشاركون</label><input id="mTechs" placeholder="افصل بينهم بفاصلة"></div>
     <div class="field-row">
@@ -1173,7 +1277,7 @@ window.submitMission = async () => {
     engineerName, technicians: val('mTechs').split('،').join(',').split(',').map(s=>s.trim()).filter(Boolean),
     center: val('mCenter'), localUnit: val('mUnit'), village: val('mVillage'), workType,
     requestingEntity: val('mEntity'), description: val('mDesc'), startTime: start, endTime: val('mEnd'),
-    createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
+    source: val('mSource') || 'CENTER', createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
   });
   closeModal(); showToast('تم إنشاء المأمورية بنجاح','ok'); goPage('missions', true);
 };
@@ -1182,17 +1286,42 @@ window.submitMission = async () => {
    المهام المنفذة اليومية
    ======================================================================== */
 async function renderTasks(root) {
-  const tasks = await api('listTasks', ['ENGINEER','TECHNICIAN'].includes(CURRENT_USER.role) ? { engineerName: CURRENT_USER.fullName } : {});
+  const tasks = await api('listTasks', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : (['ENGINEER','TECHNICIAN'].includes(CURRENT_USER.role) ? { engineerName: CURRENT_USER.fullName } : {}));
+  const filtered = applyClientFilters(tasks, ['center','taskType','source','status','dateFrom','dateTo']);
   root.innerHTML = `
     <div class="panel">
       <div class="panel-head"><h3>المهام المنفذة</h3><button class="btn btn-gold btn-sm" onclick="openTaskModal()">+ تسجيل مهمة</button></div>
-      <div class="table-wrap"><table><thead><tr><th>المهندس/الفني</th><th>نوع المهمة</th><th>طريقة التنفيذ</th><th>الموقع</th><th>عدد الحالات</th><th>البداية</th><th>النهاية</th><th>ملاحظات</th></tr></thead>
-      <tbody>${tasks.map(t=>`<tr><td>${t.engineerName}</td><td>${t.taskType}</td><td>${execModeChip(t.execMode)}</td><td>${t.location||'-'}</td><td>${t.casesCount}</td><td>${fmtDate(t.startTime)}</td><td>${t.endTime?fmtDate(t.endTime):'-'}</td><td>${t.notes||'-'}</td></tr>`).join('') || `<tr><td colspan="8"><div class="empty-state"><div class="ic">📋</div>لا توجد مهام مسجلة بعد</div></td></tr>`}</tbody></table></div>
+      <div class="field-row" style="margin-bottom:12px">
+        <div class="field"><label>المركز</label><select id="taskFilterCenter"><option value="">الكل</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>نوع المهمة</label><select id="taskFilterType"><option value="">الكل</option><option>رفع مساحي</option><option>تحديد منسوب</option><option>أملاك دولة</option><option>مرافق</option><option>أعمال مكتبية</option><option>أخرى</option></select></div>
+        <div class="field"><label>المصدر</label><select id="taskFilterSource"><option value="">الكل</option><option value="CENTER">من مدير المركز</option><option value="GENERAL">من الإدارة العامة</option></select></div>
+        <div class="field"><label>الحالة</label><select id="taskFilterStatus"><option value="">الكل</option><option value="DONE">منفذة</option><option value="PENDING">قيد التنفيذ</option></select></div>
+      </div>
+      <div class="field-row" style="margin-bottom:12px">
+        <div class="field"><label>من تاريخ</label><input id="taskFilterDateFrom" type="date"></div>
+        <div class="field"><label>إلى تاريخ</label><input id="taskFilterDateTo" type="date"></div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>المهندس/الفني</th><th>نوع المهمة</th><th>طريقة التنفيذ</th><th>الموقع</th><th>عدد الحالات</th><th>التوقيت</th><th>الملاحظات</th><th>المصدر</th></tr></thead>
+      <tbody>${filtered.map(t=>`<tr><td>${t.engineerName}</td><td>${t.taskType}</td><td>${execModeChip(t.execMode)}</td><td>${t.location||'-'}</td><td>${t.casesCount}</td><td>${fmtDate(t.startTime)}</td><td>${t.notes||'-'}</td><td>${t.source==='GENERAL'?'<span class="chip pending">من الإدارة العامة</span>':'<span class="chip approved">من مدير المركز</span>'}</td></tr>`).join('') || `<tr><td colspan="8"><div class="empty-state"><div class="ic">📋</div>لا توجد مهام مسجلة بعد</div></td></tr>`}</tbody></table></div>
     </div>`;
+  setTimeout(() => bindFilterInputs('task', async (filters) => {
+    const tasksAll = await api('listTasks', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : (['ENGINEER','TECHNICIAN'].includes(CURRENT_USER.role) ? { engineerName: CURRENT_USER.fullName } : {}));
+    const data = applyClientFilters(tasksAll, ['center','taskType','source','status','dateFrom','dateTo'], filters);
+    renderTaskRows(data, root);
+  }), 0);
+}
+
+function renderTaskRows(data, root) {
+  const body = root.querySelector('tbody');
+  if (!body) return;
+  body.innerHTML = data.map(t=>`<tr><td>${t.engineerName}</td><td>${t.taskType}</td><td>${execModeChip(t.execMode)}</td><td>${t.location||'-'}</td><td>${t.casesCount}</td><td>${fmtDate(t.startTime)}</td><td>${t.notes||'-'}</td><td>${t.source==='GENERAL'?'<span class="chip pending">من الإدارة العامة</span>':'<span class="chip approved">من مدير المركز</span>'}</td></tr>`).join('') || `<tr><td colspan="8"><div class="empty-state"><div class="ic">📋</div>لا توجد مهام مسجلة بعد</div></td></tr>`;
 }
 window.openTaskModal = () => {
   openModal(`
     <h3>تسجيل مهمة منفذة</h3>
+    <div class="field"><label>مصدر المهمة *</label>
+      <select id="tSource"><option value="CENTER">من مدير المركز</option><option value="GENERAL">من الإدارة العامة</option></select>
+    </div>
     <div class="field"><label>نوع المهمة *</label>
       <select id="tType"><option>رفع مساحي</option><option>تحديد منسوب</option><option>أملاك دولة</option><option>مرافق</option><option>أعمال مكتبية</option><option>أخرى</option></select>
     </div>
@@ -1215,7 +1344,7 @@ window.submitTask = async () => {
   await api('createTask', {
     engineerName: CURRENT_USER.fullName, center: CURRENT_USER.center, taskType: val('tType'), execMode: val('tMode'),
     location: val('tLocation'), startTime: start, endTime: val('tEnd'), casesCount: Number(val('tCases'))||0, notes: val('tNotes'),
-    createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
+    status: 'DONE', source: val('tSource') || 'CENTER', createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
   });
   closeModal(); showToast('تم حفظ المهمة','ok'); goPage('tasks', true);
 };
@@ -1411,17 +1540,18 @@ async function loadReport() {
   const out = document.getElementById('reportOutput');
   out.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
   let rows = [], headers = [];
+  const centerFilter = CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {};
   if (type === 'attendance') {
-    rows = await api('listAttendance', {});
+    rows = await api('listAttendance', centerFilter);
     headers = [['userName','الاسم'],['center','المركز'],['type','النوع'],['timestamp','الوقت']];
   } else if (type === 'missions') {
-    rows = await api('listMissions', {});
+    rows = await api('listMissions', centerFilter);
     headers = [['engineerName','المهندس'],['center','المركز'],['village','القرية'],['workType','نوع العمل'],['status','الحالة']];
   } else if (type === 'tasks') {
-    rows = await api('listTasks', {});
+    rows = await api('listTasks', centerFilter);
     headers = [['engineerName','الاسم'],['taskType','نوع المهمة'],['execMode','طريقة التنفيذ'],['location','الموقع'],['casesCount','عدد الحالات'],['startTime','البداية']];
   } else if (type === 'equipment') {
-    rows = await api('listEquipment', {});
+    rows = await api('listEquipment', centerFilter);
     headers = [['custodyNumber','رقم العهدة'],['type','النوع'],['model','الموديل'],['homeCenter','المركز الأساسي'],['status','الحالة']];
   }
   LAST_REPORT = { rows, headers };
@@ -1439,6 +1569,54 @@ function exportCSV() {
   link.download = 'تقرير.csv';
   link.click();
 }
+
+/* ========================================================================
+   الملف الشخصي
+   ======================================================================== */
+async function renderProfile(root) {
+  root.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h3>الملف الشخصي</h3></div>
+      <div class="field-row">
+        <div class="field"><label>الاسم</label><input id="profileName" value="${CURRENT_USER.fullName || ''}"></div>
+        <div class="field"><label>الوظيفة</label><input id="profileJob" value="${CURRENT_USER.job || ''}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>رقم الهاتف</label><input id="profilePhone" value="${CURRENT_USER.phone || ''}"></div>
+        <div class="field"><label>البريد</label><input id="profileEmail" value="${CURRENT_USER.email || ''}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>الرقم القومي</label><input id="profileNationalId" value="${CURRENT_USER.nationalId || ''}"></div>
+        <div class="field"><label>اسم المستخدم</label><input id="profileUsername" value="${CURRENT_USER.username || ''}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>المركز</label><select id="profileCenter">${CENTERS.map(c=>`<option ${CURRENT_USER.center===c?'selected':''}>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>الدور</label><select id="profileRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${CURRENT_USER.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>كلمة المرور</label><input id="profilePassword" type="password" placeholder="اتركها فارغة إذا لم تُرد تغييرها"></div>
+      <div class="field"><label>صورة شخصية (رابط)</label><input id="profilePhoto" value="${CURRENT_USER.photoUrl || ''}"></div>
+      <div class="modal-close-row"><button class="btn btn-outline" onclick="goPage('profile', true)">إلغاء</button><button class="btn btn-primary" onclick="saveProfile()">حفظ التغييرات</button></div>
+    </div>`;
+}
+window.saveProfile = async () => {
+  const payload = {
+    userId: CURRENT_USER.id,
+    fullName: val('profileName'),
+    job: val('profileJob'),
+    phone: val('profilePhone'),
+    email: val('profileEmail'),
+    nationalId: val('profileNationalId'),
+    username: val('profileUsername'),
+    center: val('profileCenter'),
+    role: val('profileRole'),
+    photoUrl: val('profilePhoto')
+  };
+  const password = val('profilePassword');
+  if (password) payload.password = password;
+  await api('updateMyProfile', payload);
+  showToast('تم حفظ الملف الشخصي','ok');
+  await refreshMyStatus();
+};
 
 /* ========================================================================
    إدارة المستخدمين (لمدير النظام)
@@ -1514,6 +1692,41 @@ window.openNotifModal = async () => {
 /* ---------------------------- أدوات مساعدة عامة ---------------------------- */
 function val(id) { return document.getElementById(id).value.trim ? document.getElementById(id).value.trim() : document.getElementById(id).value; }
 function fmtDate(iso) { if (!iso) return '-'; const d = new Date(iso); return d.toLocaleString('ar-EG', { dateStyle:'medium', timeStyle:'short' }); }
+function applyClientFilters(list, fields, filters) {
+  const f = filters || {};
+  let data = list.slice();
+  if (f.center) data = data.filter(i => (i.center || '') === f.center);
+  if (f.workType) data = data.filter(i => (i.workType || '') === f.workType);
+  if (f.taskType) data = data.filter(i => (i.taskType || '') === f.taskType);
+  if (f.source) data = data.filter(i => (i.source || 'CENTER') === f.source);
+  if (f.status) data = data.filter(i => (i.status || '') === f.status);
+  if (f.dateFrom) data = data.filter(i => (i.startTime || i.timestamp || '').slice(0,10) >= f.dateFrom);
+  if (f.dateTo) data = data.filter(i => (i.startTime || i.timestamp || '').slice(0,10) <= f.dateTo);
+  return data;
+}
+function bindFilterInputs(prefix, onChange, filterMap) {
+  const fields = ['Center','Type','Source','Status','DateFrom','DateTo'];
+  fields.forEach(name => {
+    const el = document.getElementById(prefix + 'Filter' + name);
+    if (el) {
+      el.onchange = () => {
+        const filters = {};
+        ['Center','Type','Source','Status'].forEach(k => {
+          const input = document.getElementById(prefix + 'Filter' + k);
+          if (input && input.value) {
+            const key = (filterMap && filterMap[k]) ? filterMap[k] : (k === 'Type' ? (prefix === 'task' ? 'taskType' : 'workType') : k.toLowerCase());
+            filters[key] = input.value;
+          }
+        });
+        const from = document.getElementById(prefix + 'FilterDateFrom');
+        const to = document.getElementById(prefix + 'FilterDateTo');
+        if (from && from.value) filters.dateFrom = from.value;
+        if (to && to.value) filters.dateTo = to.value;
+        onChange(filters);
+      };
+    }
+  });
+}
 function openModal(html) { document.getElementById('modalBox').innerHTML = html; document.getElementById('modalOverlay').classList.add('show'); }
 function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
 document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
