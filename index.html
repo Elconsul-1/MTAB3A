@@ -248,13 +248,13 @@ tbody tr:hover{background:#fafcfd}
 
 .center-overview-row{display:flex;align-items:stretch;gap:10px;padding:14px;border-radius:12px;background:var(--paper);margin-bottom:12px;flex-wrap:wrap;border:1px solid var(--line)}
 .center-overview-name{display:flex;align-items:center;font-weight:800;font-size:14.5px;min-width:110px;color:var(--navy-900)}
-.center-overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:0 -8px;}
-.center-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow);}
-.center-card-header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+.center-overview-grid{display:flex;flex-direction:column;gap:12px;margin:0;}
+.center-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;}
+.center-card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;flex-wrap:wrap;}
 .center-card-title{font-size:16px;font-weight:800;color:var(--navy-950);}
 .center-card-meta{font-size:13px;color:var(--ink-600);}
-.status-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;}
-.center-status{flex:1 1 calc(50% - 12px);min-width:150px;display:flex;flex-direction:column;gap:8px;}
+.status-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px;}
+.center-status{flex:1 1 calc(33.333% - 12px);min-width:180px;display:flex;flex-direction:column;gap:8px;}
 .status-pill{display:inline-flex;align-items:center;justify-content:center;padding:10px 12px;border-radius:12px;border:none;background:var(--line);color:var(--ink-600);font-weight:700;font-size:13px;cursor:default;transition:.2s;}
 .status-pill.on{background:var(--good);color:#fff;}
 .status-pill:disabled{opacity:1;}
@@ -915,7 +915,11 @@ function listBars(arr) {
 
 /* الموقف اليومي لجميع المراكز - للإدارة العامة (ديوان المحافظة) */
 async function renderCentersOverviewPanel(selectedDate) {
+  const order = ['العدوة','مغاغة','بني مزار','مطاي','سمالوط','المنيا','أبو قرقاص','ملوي','ديرمواس'];
   const data = await api('centersOverviewToday', { date: selectedDate });
+  data.sort(function(a, b) {
+    return order.indexOf(a.center) - order.indexOf(b.center);
+  });
   return `
     <div class="panel">
       <div class="panel-head"><h3>الموقف اليومي لجميع المراكز</h3></div>
@@ -930,8 +934,6 @@ async function renderCentersOverviewPanel(selectedDate) {
               ${centerStatus('تواجد المدير', c.directorPresent, c.directorTime ? fmtDate(c.directorTime) : '-')}
               ${centerStatus('تواجد المهندس', c.engineerPresent, c.engineerTime ? fmtDate(c.engineerTime) : '-')}
               ${centerStatus('تواجد السيارة', c.vehicleAvailable, c.vehicleTime ? fmtDate(c.vehicleTime) : '-')}
-            </div>
-            <div class="status-row">
               ${centerStatus('بدء العمل', !!c.workStart, c.workStart ? fmtDate(c.workStart) : '-')}
               ${centerStatus('انتهاء العمل', !!c.workEnd, c.workEnd ? fmtDate(c.workEnd) : '-')}
               ${centerStatus('ما تم إنجازه', c.accomplishedCount > 0, c.accomplishedCount + ' سجل')}
