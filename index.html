@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="منظومة المحافظة">
-<title>متابعة المراكز - محافظة المنيا</title>
+<title>منظومة إدارة أعمال الرفع المساحي والعهد الفنية - محافظة المنيا</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1010,8 +1010,8 @@ async function renderAttendance(root) {
     <div class="panel">
       <div class="panel-head"><h3>سجل حضوري الأخير</h3></div>
       <div class="table-wrap" style="max-height:320px;overflow:auto">
-        <table><thead><tr><th>النوع</th><th>التاريخ والوقت</th><th>الموقع</th></tr></thead>
-        <tbody>${my.slice(0,20).map(a => `<tr><td><span class="chip ${a.type==='IN'?'approved':'rejected'}">${a.type==='IN'?'حضور':(a.autoCheckout==='true'||a.autoCheckout===true?'انصراف تلقائي ⚠':'انصراف')}</span></td><td>${fmtDate(a.timestamp)}</td><td>${a.mapsLink ? `<a href="${a.mapsLink}" target="_blank" style="color:var(--navy-700);font-weight:700">📍 عرض على الخريطة</a>` : (a.lat?`${Number(a.lat).toFixed(4)}, ${Number(a.lng).toFixed(4)}`:'-')}</td></tr>`).join('') || `<tr><td colspan="3"><div class="empty-state">لا يوجد سجل حضور بعد</div></td></tr>`}</tbody></table>
+        <table><thead><tr><th>النوع</th><th>التاريخ والوقت</th><th>الموقع</th><th>المهام المستهدفة اليوم</th></tr></thead>
+        <tbody>${my.slice(0,20).map(a => `<tr><td><span class="chip ${a.type==='IN'?'approved':'rejected'}">${a.type==='IN'?'حضور':(a.autoCheckout==='true'||a.autoCheckout===true?'انصراف تلقائي ⚠':'انصراف')}</span></td><td>${fmtDate(a.timestamp)}</td><td>${a.mapsLink ? `<a href="${a.mapsLink}" target="_blank" style="color:var(--navy-700);font-weight:700">📍 عرض على الخريطة</a>` : (a.lat?`${Number(a.lat).toFixed(4)}, ${Number(a.lng).toFixed(4)}`:'-')}</td><td>${a.type==='IN' ? (a.targetTasksNote || '-') : '-'}</td></tr>`).join('') || `<tr><td colspan="4"><div class="empty-state">لا يوجد سجل حضور بعد</div></td></tr>`}</tbody></table>
       </div>
     </div>`;
   setInterval(() => { const c = document.getElementById('clockNow'); if (c) c.textContent = new Date().toLocaleTimeString('ar-EG'); }, 1000);
@@ -1032,6 +1032,31 @@ function taskStatusChip(status) {
 }
 
 function doAttendance(action) {
+  if (action === 'checkIn') {
+    openCheckInTasksModal();
+    return;
+  }
+  performAttendance(action);
+}
+
+/* أول ما يضغط الموظف "تسجيل حضور" تظهر له تابة إدخال المهام المستهدفة اليوم أولًا،
+   وبعد تأكيدها فقط يتم تسجيل وقت الحضور فعليًا (بالدقيقة والثانية) */
+window.openCheckInTasksModal = () => {
+  openModal(`
+    <h3>المهام المستهدفة اليوم</h3>
+    <p style="color:var(--ink-600);font-size:13.5px;margin-bottom:10px">يرجى إدخال المهام التي تستهدف إنجازها اليوم قبل تسجيل الحضور.</p>
+    <div class="field"><label>المهام المستهدفة *</label><textarea id="ciTargetTasks" rows="3" placeholder="مثال: رفع مساحي بقرية ... - تحديد منسوب ..."></textarea></div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="confirmCheckInWithTasks()">✅ تسجيل الحضور</button></div>
+  `);
+};
+window.confirmCheckInWithTasks = () => {
+  const note = val('ciTargetTasks');
+  if (!note) { showToast('يرجى إدخال المهام المستهدفة اليوم', 'err'); return; }
+  closeModal();
+  performAttendance('checkIn', note);
+};
+
+function performAttendance(action, targetTasksNote) {
   const btn = document.getElementById(action === 'checkIn' ? 'checkInBtn' : 'checkOutBtn');
   if (btn) { btn.disabled = true; if (action === 'checkIn') btn.style.background = 'var(--good)'; else { btn.style.background = 'var(--bad)'; btn.style.color = '#fff'; } }
   const box = document.getElementById('gpsBox');
@@ -1040,14 +1065,14 @@ function doAttendance(action) {
     try {
       await api(action, {
         userId: CURRENT_USER.id, userName: CURRENT_USER.fullName, center: CURRENT_USER.center,
-        lat: pos.coords.latitude, lng: pos.coords.longitude
+        lat: pos.coords.latitude, lng: pos.coords.longitude, targetTasksNote: targetTasksNote || ''
       });
       showToast(action === 'checkIn' ? 'تم تسجيل الحضور بنجاح' : 'تم تسجيل الانصراف بنجاح', 'ok');
       goPage('attendance', true);
     } catch (e) {}
   }, async () => {
     // في حال رفض المستخدم صلاحية الموقع، يتم التسجيل بدون إحداثيات
-    await api(action, { userId: CURRENT_USER.id, userName: CURRENT_USER.fullName, center: CURRENT_USER.center });
+    await api(action, { userId: CURRENT_USER.id, userName: CURRENT_USER.fullName, center: CURRENT_USER.center, targetTasksNote: targetTasksNote || '' });
     showToast('تم التسجيل بدون تحديد الموقع (الصلاحية غير مفعّلة)', 'ok');
     goPage('attendance', true);
   });
@@ -1122,7 +1147,39 @@ async function renderCoordination(root) {
   });
   const targetRecord = coord.filter(r => r.recordType === 'TARGET')[0] || null;
 
+  let movementPanelHtml = '';
+  if (CURRENT_USER.role === 'CENTER_ADMIN') {
+    const myCenter = CURRENT_USER.center;
+    const officeRec = coord.find(r => r.recordType === 'OFFICE_PRESENCE' && r.center === myCenter);
+    const engineerRows = coord.filter(r => r.recordType === 'ENGINEER' && r.center === myCenter && (r.isPresent === true || r.isPresent === 'true'));
+    const vehicleRec = coord.find(r => r.recordType === 'VEHICLE' && r.center === myCenter);
+    const myTargetRec = coord.find(r => r.recordType === 'TARGET' && r.center === myCenter);
+    const workRec = coord.find(r => r.recordType === 'WORK' && r.center === myCenter);
+
+    const officePresent = !!(officeRec && (officeRec.isPresent === true || officeRec.isPresent === 'true'));
+    const engineerPresent = engineerRows.length > 0;
+    const vehiclePresent = !!(vehicleRec && (vehicleRec.vehicleAvailable === true || vehicleRec.vehicleAvailable === 'true'));
+    const targetSet = !!(myTargetRec && myTargetRec.notes);
+    const workStarted = !!(workRec && workRec.workStartTime);
+    const workEnded = !!(workRec && workRec.workEndTime);
+
+    movementPanelHtml = `
+      <div class="panel">
+        <div class="panel-head"><h3>بيان التحرك اليومي</h3></div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px">
+          <div class="center-status"><button class="status-pill ${officePresent ? 'on' : ''}" ${officePresent ? 'disabled' : ''} onclick="markOfficePresence()">تواجدي بالمكتب</button><div class="status-text">${officePresent ? fmtDate(officeRec.arrivalTime) : '-'}</div></div>
+          <div class="center-status"><button class="status-pill ${engineerPresent ? 'on' : ''}" onclick="openEngineerPresenceQuickModal()">تواجد المهندس</button><div class="status-text">${engineerPresent ? engineerRows.map(r => r.engineerName).join('، ') : '-'}</div></div>
+          <div class="center-status"><button class="status-pill ${vehiclePresent ? 'on' : ''}" ${vehiclePresent ? 'disabled' : ''} onclick="markVehiclePresence()">تواجد السيارة</button><div class="status-text">${vehiclePresent ? (vehicleRec.vehicleAvailableTime || '-') : '-'}</div></div>
+          <div class="center-status"><button class="status-pill ${targetSet ? 'on' : ''}" onclick="openTargetModal()">المهام المستهدفة</button><div class="status-text">${targetSet ? myTargetRec.notes + ' معاينة' : '-'}</div></div>
+          <div class="center-status"><button class="status-pill ${workStarted ? 'on' : ''}" ${workStarted ? 'disabled' : ''} onclick="markWorkStart()">بدء العمل</button><div class="status-text">${workStarted ? fmtDate(workRec.workStartTime) : '-'}</div></div>
+          <div class="center-status"><button class="status-pill ${workEnded ? 'on' : ''}" ${workEnded ? 'disabled' : ''} onclick="openWorkEndModal()">انتهاء العمل</button><div class="status-text">${workEnded ? fmtDate(workRec.workEndTime) : '-'}</div></div>
+        </div>
+        ${workEnded ? `<p style="margin-top:12px;font-size:13.5px;color:var(--ink-600)"><b>ما تم إنجازه:</b> ${workRec.notes || '-'}</p>` : ''}
+      </div>`;
+  }
+
   root.innerHTML = `
+    ${movementPanelHtml}
     <div class="section-toolbar">
       <div style="font-size:13px;color:var(--ink-600)">تاريخ العرض</div>
       <input id="coordinationDateFilter" type="date" value="${selectedDate}" style="width:220px">
@@ -1340,7 +1397,7 @@ async function renderAssignments(root) {
     tasksPane.style.display = tab === 'tasks' ? 'block' : 'none';
     if (tab === 'directives' && !directivesPane.dataset.loaded) {
       directivesPane.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
-      await renderMissions(directivesPane);
+      await renderDirectives(directivesPane);
       directivesPane.dataset.loaded = '1';
     }
     if (tab === 'tasks' && !tasksPane.dataset.loaded) {
@@ -1601,6 +1658,262 @@ window.submitMission = async () => {
     createdByName: CURRENT_USER.fullName
   });
   closeModal(); showToast('تم إنشاء المأمورية بنجاح','ok'); assignmentsActiveTab = 'directives'; goPage('assignments', true);
+};
+
+/* ========================================================================
+   التكليفات (نظام موحّد: من مدير المركز أو من الإدارة العامة)
+   كل تكليف يُفرّع لصف مستقل لكل مستلم بالباك اند (Assignments) حتى يقدر كل
+   فني/مهندس يحدّث حالته (استلمت/جاري العمل/انتهاء) بشكل مستقل عن غيره.
+   ======================================================================== */
+async function renderDirectives(root) {
+  const isAdmin = ['SYSTEM_ADMIN', 'CENTER_ADMIN'].includes(CURRENT_USER.role);
+  if (isAdmin) await renderDirectivesAdmin(root);
+  else await renderDirectivesStaff(root);
+}
+
+function asgStatusChip(status) {
+  const map = {
+    NEW: ['pending', 'جديد'],
+    RECEIVED: ['maintenance', 'تم الاستلام'],
+    IN_PROGRESS: ['withengineer', 'جارٍ العمل'],
+    DONE: ['approved', 'منتهي']
+  };
+  const v = map[status] || ['pending', status || '-'];
+  return `<span class="chip ${v[0]}">${v[1]}</span>`;
+}
+
+/* ---------- شاشة مدير المركز / الإدارة العامة: التكليفات الصادرة ---------- */
+async function renderDirectivesAdmin(root) {
+  const isCenterAdmin = CURRENT_USER.role === 'CENTER_ADMIN';
+  root.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h3>التكليفات الصادرة</h3><button class="btn btn-gold btn-sm" onclick="openAssignmentModal()">+ إنشاء تكليف جديد</button></div>
+      <div class="filter-grid" style="margin-bottom:10px">
+        ${isCenterAdmin ? '' : `<div class="field"><label>المركز</label><select id="asgFilterCenter"><option value="">الكل</option>${CENTERS.map(c => `<option>${c}</option>`).join('')}</select></div>`}
+        <div class="field"><label>من تاريخ</label><input id="asgFilterDateFrom" type="date"></div>
+        <div class="field"><label>إلى تاريخ</label><input id="asgFilterDateTo" type="date"></div>
+      </div>
+      <div class="table-wrap" style="max-height:460px;overflow:auto"><table><thead><tr><th>تفاصيل التكليف</th><th>الجهة المستهدفة</th><th>المصدر</th><th>تاريخ الإصدار</th><th>الموعد النهائي</th><th>الإنجاز</th><th>إجراء</th></tr></thead>
+      <tbody id="asgBatchBody"></tbody></table></div>
+    </div>`;
+  await loadDirectivesAdmin(root, isCenterAdmin);
+  ['asgFilterCenter', 'asgFilterDateFrom', 'asgFilterDateTo'].forEach(id => {
+    const el = root.querySelector('#' + id);
+    if (el) el.onchange = () => loadDirectivesAdmin(root, isCenterAdmin);
+  });
+}
+
+async function loadDirectivesAdmin(root, isCenterAdmin) {
+  const params = {};
+  if (isCenterAdmin) {
+    params.center = CURRENT_USER.center;
+  } else {
+    const c = root.querySelector('#asgFilterCenter')?.value;
+    if (c) params.center = c;
+  }
+  const dateFrom = root.querySelector('#asgFilterDateFrom')?.value;
+  const dateTo = root.querySelector('#asgFilterDateTo')?.value;
+  if (dateFrom) params.dateFrom = dateFrom;
+  if (dateTo) params.dateTo = dateTo;
+  const batches = await api('listAssignmentBatches', params);
+  const body = root.querySelector('#asgBatchBody');
+  body.innerHTML = batches.map(b => `<tr>
+    <td>${b.details || '-'}</td>
+    <td>${b.targetCentersLabel || '-'}</td>
+    <td>${b.sourceType === 'GENERAL_ADMIN' ? '<span class="chip pending">الإدارة العامة</span>' : '<span class="chip approved">مدير المركز</span>'}</td>
+    <td>${fmtDate(b.createdAt)}</td>
+    <td>${b.hasDeadline ? fmtDate(b.deadlineAt) : 'بدون موعد محدد'}</td>
+    <td>${b.doneCount} / ${b.totalCount}</td>
+    <td><button class="btn btn-outline btn-sm" onclick="openBatchDetailsModal('${b.batchId}')">عرض التفاصيل</button></td>
+  </tr>`).join('') || `<tr><td colspan="7"><div class="empty-state"><div class="ic">🗂️</div>لا توجد تكليفات مسجلة</div></td></tr>`;
+}
+
+window.openBatchDetailsModal = async (batchId) => {
+  const batches = await api('listAssignmentBatches', { batchId });
+  const b = batches[0];
+  if (!b) return;
+  openModal(`
+    <h3>تفاصيل التكليف</h3>
+    <p style="color:var(--ink-600);margin-bottom:10px">${b.details || ''}</p>
+    <div class="table-wrap" style="max-height:360px;overflow:auto"><table><thead><tr><th>المستلم</th><th>الوظيفة</th><th>المركز</th><th>الحالة</th><th>وقت الاستلام</th><th>وقت الانتهاء</th><th>ملاحظات الإنجاز</th></tr></thead>
+    <tbody>${b.recipients.map(r => `<tr><td>${r.recipientName}</td><td>${roleLabel(r.recipientRole)}</td><td>${r.recipientCenter || '-'}</td><td>${asgStatusChip(r.status)}</td><td>${r.receivedAt ? fmtDate(r.receivedAt) : '-'}</td><td>${r.completedAt ? fmtDate(r.completedAt) : '-'}</td><td>${r.completionNote || '-'}</td></tr>`).join('')}</tbody></table></div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إغلاق</button></div>
+  `);
+};
+
+/* ---------- نموذج إنشاء تكليف جديد (قائمة متدرجة: الجهة ثم الأشخاص) ---------- */
+window.openAssignmentModal = async () => {
+  const isCenterAdmin = CURRENT_USER.role === 'CENTER_ADMIN';
+  openModal(`
+    <h3>إنشاء تكليف جديد</h3>
+    <div class="field"><label>الجهة المصدرة للتكليف</label><input value="${isCenterAdmin ? 'مدير مركز ' + CURRENT_USER.center : 'الإدارة العامة - ديوان المحافظة'}" disabled></div>
+    <div class="field">
+      <label>الجهة المستهدفة *</label>
+      <select id="asgScope">
+        ${isCenterAdmin ? `<option value="CENTERS">فنيو مركز ${CURRENT_USER.center}</option>` : `
+          <option value="ALL">جميع المراكز (كل المديرين والفنيين)</option>
+          <option value="CENTERS">مركز محدد أو أكثر</option>
+        `}
+        <option value="ENGINEERS">مهندسو المساحة</option>
+      </select>
+    </div>
+    <div id="asgTargetBox"></div>
+    <div class="field"><label>تفاصيل المهمة *</label><textarea id="asgDetails" rows="3"></textarea></div>
+    <div class="field"><label style="display:flex;align-items:center;gap:8px"><input id="asgHasDeadline" type="checkbox"> <span>لها وقت محدد لإنجازها</span></label></div>
+    <div class="field" id="asgDeadlineField" style="display:none"><label>الموعد النهائي</label><input id="asgDeadline" type="datetime-local"></div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitAssignmentForm()">إرسال التكليف</button></div>
+  `);
+
+  const scopeEl = document.getElementById('asgScope');
+  const deadlineChk = document.getElementById('asgHasDeadline');
+  const deadlineField = document.getElementById('asgDeadlineField');
+  deadlineChk.onchange = () => { deadlineField.style.display = deadlineChk.checked ? 'block' : 'none'; };
+
+  function renderPeopleCheckboxes(list, showMeta) {
+    const allChk = document.getElementById('asgAllStaff');
+    const peopleBox = document.getElementById('asgPeopleBox');
+    if (!peopleBox) return;
+    if (allChk && allChk.checked) { peopleBox.innerHTML = ''; return; }
+    peopleBox.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">${
+      list.map(u => `<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" name="asgPerson" value="${u.id}">${u.fullName}${showMeta ? ' (' + roleLabel(u.role) + (u.center ? ' - ' + u.center : '') + ')' : ''}</label>`).join('')
+      || '<span style="color:var(--ink-600);font-size:13px">لا يوجد موظفون مطابقون</span>'
+    }</div>`;
+  }
+
+  async function loadCenterPeople() {
+    const targetBox = document.getElementById('asgTargetBox');
+    const checked = isCenterAdmin ? [CURRENT_USER.center] : Array.from(targetBox.querySelectorAll('input[name="asgCenters"]:checked')).map(i => i.value);
+    if (!checked.length) { const pb = document.getElementById('asgPeopleBox'); if (pb) pb.innerHTML = ''; return; }
+    const lists = await Promise.all(checked.map(c => api('listCenterStaff', { center: c })));
+    renderPeopleCheckboxes(lists.flat(), true);
+  }
+
+  async function renderTargetBox() {
+    const scope = scopeEl.value;
+    const targetBox = document.getElementById('asgTargetBox');
+    if (scope === 'CENTERS') {
+      if (isCenterAdmin) {
+        targetBox.innerHTML = `<div class="field"><label style="display:flex;align-items:center;gap:8px"><input id="asgAllStaff" type="checkbox" checked> <span>كل الفنيين ومدير المركز</span></label></div><div id="asgPeopleBox"></div>`;
+        document.getElementById('asgAllStaff').onchange = loadCenterPeople;
+        loadCenterPeople();
+      } else {
+        targetBox.innerHTML = `
+          <label style="display:block;margin-bottom:8px">اختر مركزًا واحدًا أو أكثر</label>
+          <div style="display:flex;flex-wrap:wrap;gap:10px">${CENTERS.map(c => `<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" name="asgCenters" value="${c}">${c}</label>`).join('')}</div>
+          <div class="field" style="margin-top:10px"><label style="display:flex;align-items:center;gap:8px"><input id="asgAllStaff" type="checkbox" checked> <span>كل مديري وفنيي المراكز المختارة</span></label></div>
+          <div id="asgPeopleBox"></div>
+        `;
+        document.querySelectorAll('input[name="asgCenters"]').forEach(chk => chk.onchange = loadCenterPeople);
+        document.getElementById('asgAllStaff').onchange = loadCenterPeople;
+      }
+    } else if (scope === 'ENGINEERS') {
+      targetBox.innerHTML = `<div class="field"><label style="display:flex;align-items:center;gap:8px"><input id="asgAllStaff" type="checkbox" checked> <span>كل المهندسين</span></label></div><div id="asgPeopleBox"></div>`;
+      const engineers = await api('listEngineers', {});
+      document.getElementById('asgAllStaff').onchange = () => renderPeopleCheckboxes(engineers, true);
+      renderPeopleCheckboxes(engineers, true);
+    } else {
+      targetBox.innerHTML = `<div style="font-size:13px;color:var(--ink-600)">سيتم توجيه التكليف تلقائيًا لجميع مديري المراكز والفنيين في كل مراكز المحافظة.</div>`;
+    }
+  }
+
+  scopeEl.onchange = renderTargetBox;
+  renderTargetBox();
+};
+
+window.submitAssignmentForm = async () => {
+  const isCenterAdmin = CURRENT_USER.role === 'CENTER_ADMIN';
+  const scope = val('asgScope');
+  const details = val('asgDetails');
+  const hasDeadline = document.getElementById('asgHasDeadline').checked;
+  const deadlineAt = hasDeadline ? val('asgDeadline') : '';
+  if (!details) { showToast('يرجى إدخال تفاصيل المهمة', 'err'); return; }
+  if (hasDeadline && !deadlineAt) { showToast('يرجى تحديد الموعد النهائي', 'err'); return; }
+
+  const payload = {
+    sourceType: isCenterAdmin ? 'CENTER' : 'GENERAL_ADMIN',
+    sourceCenter: isCenterAdmin ? CURRENT_USER.center : '',
+    targetScope: scope,
+    details, hasDeadline, deadlineAt,
+    createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
+  };
+
+  if (scope === 'CENTERS') {
+    payload.targetCenters = isCenterAdmin ? [CURRENT_USER.center] : Array.from(document.querySelectorAll('input[name="asgCenters"]:checked')).map(i => i.value);
+    if (!isCenterAdmin && !payload.targetCenters.length) { showToast('يرجى اختيار مركز واحد على الأقل', 'err'); return; }
+    const allChk = document.getElementById('asgAllStaff');
+    if (allChk && allChk.checked) {
+      payload.recipientIds = 'ALL';
+    } else {
+      const chosen = Array.from(document.querySelectorAll('input[name="asgPerson"]:checked')).map(i => i.value);
+      if (!chosen.length) { showToast('يرجى اختيار موظف واحد على الأقل', 'err'); return; }
+      payload.recipientIds = chosen;
+    }
+  } else if (scope === 'ENGINEERS') {
+    const allChk = document.getElementById('asgAllStaff');
+    if (allChk && allChk.checked) {
+      payload.recipientIds = 'ALL';
+    } else {
+      const chosen = Array.from(document.querySelectorAll('input[name="asgPerson"]:checked')).map(i => i.value);
+      if (!chosen.length) { showToast('يرجى اختيار مهندس واحد على الأقل', 'err'); return; }
+      payload.recipientIds = chosen;
+    }
+  }
+
+  await api('createAssignment', payload);
+  closeModal(); showToast('تم إرسال التكليف بنجاح', 'ok'); assignmentsActiveTab = 'directives'; goPage('assignments', true);
+};
+
+/* ---------- شاشة الفني/المهندس: التكليفات الموجّهة إليّ ---------- */
+async function renderDirectivesStaff(root) {
+  root.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
+  const list = await api('listAssignments', { recipientId: CURRENT_USER.id });
+  const centerList = list.filter(a => a.sourceType === 'CENTER');
+  const generalList = list.filter(a => a.sourceType === 'GENERAL_ADMIN');
+  root.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h3>تكليفات مدير المركز</h3></div>
+      <div class="table-wrap" style="max-height:320px;overflow:auto"><table><thead><tr><th>التفاصيل</th><th>تاريخ الإصدار</th><th>الموعد النهائي</th><th>الحالة</th><th>إجراء</th></tr></thead>
+      <tbody>${renderStaffAssignmentRows(centerList)}</tbody></table></div>
+    </div>
+    <div class="panel" style="margin-top:16px;border:1px solid #c9a227">
+      <div class="panel-head"><h3>⭐ تكليفات الإدارة العامة (ديوان المحافظة)</h3></div>
+      <div class="table-wrap" style="max-height:320px;overflow:auto"><table><thead><tr><th>التفاصيل</th><th>تاريخ الإصدار</th><th>الموعد النهائي</th><th>الحالة</th><th>إجراء</th></tr></thead>
+      <tbody>${renderStaffAssignmentRows(generalList)}</tbody></table></div>
+    </div>`;
+}
+
+function renderStaffAssignmentRows(list) {
+  return list.map(a => `<tr>
+    <td>${a.details || '-'}</td>
+    <td>${fmtDate(a.createdAt)}</td>
+    <td>${a.hasDeadline ? fmtDate(a.deadlineAt) : 'بدون موعد محدد'}</td>
+    <td>${asgStatusChip(a.status)}${a.status === 'DONE' && a.completionNote ? `<br><span style="font-size:11px;color:var(--ink-600)">${a.completionNote}</span>` : ''}</td>
+    <td>${assignmentActionButton(a)}</td>
+  </tr>`).join('') || `<tr><td colspan="5"><div class="empty-state"><div class="ic">🗂️</div>لا توجد تكليفات حاليًا</div></td></tr>`;
+}
+
+function assignmentActionButton(a) {
+  if (a.status === 'NEW') return `<button class="btn btn-gold btn-sm" onclick="respondAssignment('${a.id}','RECEIVED')">استلمت التكليف</button>`;
+  if (a.status === 'RECEIVED') return `<button class="btn btn-primary btn-sm" onclick="respondAssignment('${a.id}','IN_PROGRESS')">جارٍ العمل</button>`;
+  if (a.status === 'IN_PROGRESS') return `<button class="btn btn-outline btn-sm" onclick="openCompleteAssignmentModal('${a.id}')">إنهاء التكليف</button>`;
+  return '-';
+}
+
+window.respondAssignment = async (id, status) => {
+  await api('updateAssignmentStatus', { assignmentId: id, status, updatedBy: CURRENT_USER.id, updatedByName: CURRENT_USER.fullName });
+  showToast('تم تحديث حالة التكليف', 'ok'); assignmentsActiveTab = 'directives'; goPage('assignments', true);
+};
+
+window.openCompleteAssignmentModal = (id) => {
+  openModal(`
+    <h3>إنهاء التكليف</h3>
+    <div class="field"><label>ما تم إنجازه / ملاحظات</label><textarea id="asgCompletionNote" rows="3"></textarea></div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitCompleteAssignment('${id}')">حفظ</button></div>
+  `);
+};
+window.submitCompleteAssignment = async (id) => {
+  await api('updateAssignmentStatus', { assignmentId: id, status: 'DONE', completionNote: val('asgCompletionNote'), updatedBy: CURRENT_USER.id, updatedByName: CURRENT_USER.fullName });
+  closeModal(); showToast('تم إنهاء التكليف', 'ok'); assignmentsActiveTab = 'directives'; goPage('assignments', true);
 };
 
 /* ========================================================================
