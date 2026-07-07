@@ -162,6 +162,16 @@ a{color:inherit}
 .user-mini-txt b{display:block;color:#fff;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .user-mini-txt span{color:rgba(255,255,255,.55)}
 .logout-link{margin-top:10px;font-size:12px;color:var(--gold-100);display:flex;align-items:center;gap:6px}
+.topbar-user{display:flex;align-items:center;gap:12px}
+.small-avatar{width:40px;height:40px;border-radius:50%;background:var(--navy-700);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;overflow:hidden;flex-shrink:0}
+.small-avatar img{width:100%;height:100%;object-fit:cover}
+.coordination-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.coord-center-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}
+.coord-center-header{font-size:14px;font-weight:800;color:var(--navy-900);margin-bottom:14px}
+.coord-card-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.coord-card{background:#f8fbff;border:1px solid #dbeaf7;border-radius:14px;padding:12px}
+.coord-card div:first-child{font-size:12px;color:var(--ink-600);margin-bottom:6px}
+.coord-card div:last-child{font-size:18px;font-weight:800;color:var(--navy-900)}
 
 .main{flex:1;min-width:0;display:flex;flex-direction:column}
 .topbar{
@@ -246,18 +256,20 @@ tbody tr:hover{background:#fafcfd}
 
 .gps-box{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-600);background:#f4f8fb;border-radius:8px;padding:9px 12px;margin-top:10px}
 
-.center-overview-row{display:flex;align-items:stretch;gap:10px;padding:14px;border-radius:12px;background:var(--paper);margin-bottom:12px;flex-wrap:wrap;border:1px solid var(--line)}
-.center-overview-name{display:flex;align-items:center;font-weight:800;font-size:14.5px;min-width:110px;color:var(--navy-900)}
+.center-overview-row{display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:#fff;margin-bottom:12px;flex-wrap:wrap;border:1px solid var(--line);box-shadow:var(--shadow)}
+.center-overview-name{display:flex;align-items:center;font-weight:800;font-size:15px;min-width:130px;color:var(--navy-900)}
 .center-overview-grid{display:flex;flex-direction:column;gap:12px;margin:0;}
-.center-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;}
-.center-card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;flex-wrap:wrap;}
-.center-card-title{font-size:16px;font-weight:800;color:var(--navy-950);}
-.center-card-meta{font-size:13px;color:var(--ink-600);}
-.status-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px;}
-.center-status{flex:1 1 calc(33.333% - 12px);min-width:180px;display:flex;flex-direction:column;gap:8px;}
-.status-pill{display:inline-flex;align-items:center;justify-content:center;padding:10px 12px;border-radius:12px;border:none;background:var(--line);color:var(--ink-600);font-weight:700;font-size:13px;cursor:default;transition:.2s;}
-.status-pill.on{background:var(--good);color:#fff;}
-.status-pill:disabled{opacity:1;}
+.center-overview-cards{display:flex;flex:1;gap:10px;flex-wrap:wrap;}
+.center-card-pill{flex:1 1 180px;min-width:160px;border-radius:16px;border:1px solid var(--line);padding:14px 16px;background:var(--line);color:var(--ink-600);text-align:right;display:flex;flex-direction:column;gap:8px;cursor:pointer;transition:.2s;}
+.center-card-pill.on{background:linear-gradient(135deg, #1f8a55, #0e5e3b);border-color:transparent;color:#fff;}
+.center-card-pill.off{background:#f5f6f7;color:var(--ink-600);}
+.center-card-title{font-size:14px;font-weight:800;}
+.center-card-state{font-size:13px;font-weight:700;}
+.center-card-time{font-size:12px;color:inherit;opacity:.9;}
+.dashboard-topline{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 0 10px;border-bottom:1px solid var(--line);margin-bottom:16px;}
+.dashboard-controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.dashboard-clock{font-size:14px;font-weight:800;color:var(--navy-950);}
+.dashboard-topline input[type="date"]{padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:#fff;}
 .status-text{font-size:13px;color:var(--ink-600);min-height:22px;}
 .mini-status{flex:1;min-width:118px;background:#e9ecef;color:var(--ink-600);border-radius:10px;padding:9px 10px;text-align:center;transition:.2s;border:1px solid transparent}
 .mini-status .ms-label{display:block;font-size:11px;font-weight:700;margin-bottom:5px;opacity:.85;white-space:nowrap}
@@ -398,7 +410,10 @@ tbody tr:hover{background:#fafcfd}
         <h2 id="pageTitle">لوحة التحكم والمؤشرات</h2>
       </div>
       <div class="topbar-actions" style="align-items:center;gap:10px">
-        <div style="font-size:12.5px;color:var(--ink-600);text-align:left;line-height:1.5" id="topbarUserInfo"></div>
+        <div class="topbar-user">
+          <div class="small-avatar" id="topbarAvatar">?</div>
+          <div style="font-size:12.5px;color:var(--ink-600);text-align:left;line-height:1.3" id="topbarUserInfo"></div>
+        </div>
         <button class="btn btn-outline btn-sm" onclick="openProfileModal()">تعديل الملف</button>
         <button class="icon-btn" onclick="openNotifModal()">🔔<span class="badge" id="notifBadge" style="display:none">0</span></button>
       </div>
@@ -792,6 +807,17 @@ function updateUserAvatar() {
   }
 }
 
+function updateTopbarAvatar() {
+  const avatar = document.getElementById('topbarAvatar');
+  if (!avatar) return;
+  if (CURRENT_USER && CURRENT_USER.photoUrl) {
+    avatar.innerHTML = `<img src="${CURRENT_USER.photoUrl}" alt="صورة المستخدم">`;
+  } else {
+    const initial = (CURRENT_USER?.fullName || '?').trim().charAt(0) || '?';
+    avatar.textContent = initial;
+  }
+}
+
 // دالة إطلاق التطبيق (واحدة فقط)
 function launchApp() {
   hideAllScreens();
@@ -802,6 +828,7 @@ function launchApp() {
   
   // تحديث الصورة الشخصية
   updateUserAvatar();
+  updateTopbarAvatar();
   
   document.getElementById('sideEmail').textContent = CURRENT_USER.email || '';
   document.getElementById('topbarUserInfo').innerHTML = `<b>${CURRENT_USER.fullName}</b><br>${CURRENT_USER.email || ''}`;
@@ -859,52 +886,48 @@ async function renderDashboard(root) {
   const selectedDate = localStorage.getItem('dashboardDate') || new Date().toISOString().slice(0,10);
   const isSystemAdmin = CURRENT_USER.role === 'SYSTEM_ADMIN';
   const stats = await api('dashboardStats', Object.assign(CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {}, { date: selectedDate }));
-  let centersOverviewHtml = '';
-  let systemAdminTrackingHtml = '';
-  if (isSystemAdmin) {
-    centersOverviewHtml = await renderCentersOverviewPanel(selectedDate);
-    systemAdminTrackingHtml = await renderSystemAdminTrackingPanel(selectedDate);
-  }
+  const centers = isSystemAdmin ? await api('centersOverviewToday', { date: selectedDate }) : [];
+
+  const presentManagers = centers.filter(c => c.directorPresent).length;
+  const presentEngineers = centers.filter(c => c.engineerPresent).length;
+  const availableVehicles = centers.filter(c => c.vehicleAvailable).length;
+
+  const reminderButton = (CURRENT_USER.role === 'SYSTEM_ADMIN' || CURRENT_USER.role === 'CENTER_ADMIN') ? `<button class="btn btn-outline btn-sm" onclick="sendAttendanceReminder()">✉️ إرسال تذكير حضور</button>` : '';
   const systemAdminActions = isSystemAdmin ? `
     <div class="panel" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
       <button class="btn btn-gold btn-sm" onclick="openMissionModal('GENERAL')">+ إنشاء تكليف إداري موحد</button>
       <button class="btn btn-primary btn-sm" onclick="goPage('assignments', true)">عرض تكليفات الإدارة العامة</button>
       <button class="btn btn-outline btn-sm" onclick="goPage('equipment', true)">إدارة العهد الفنية</button>
+      <button class="btn btn-outline btn-sm" onclick="resetSchemaAction()">🔄 إعادة تهيئة الأوراق والأعمدة</button>
+      ${reminderButton}
     </div>
-  ` : '';
-
-  root.innerHTML = `
-    <div class="hero-panel">
-      <div class="hero-badge">📊</div>
-      <h3 class="hero-title">لوحة التحكم والمؤشرات</h3>
-      <p class="hero-sub">عرض يومي واضح للحضور والغياب والمأموريات والمهام والأجهزة مع إمكانية استعراض أي يوم سابق.</p>
-    </div>
-    <div class="section-toolbar">
-      <div style="font-size:13px;color:var(--ink-600)">تاريخ العرض</div>
-      <input id="dashboardDateFilter" type="date" value="${selectedDate}" style="width:220px">
-    </div>
-    ${systemAdminActions}
-    ${systemAdminTrackingHtml}
-    ${centersOverviewHtml}
-    <div class="summary-grid">
-      <div class="summary-card"><div class="summary-label">الحضور</div><div class="summary-value">${stats.presentToday}</div></div>
-      <div class="summary-card"><div class="summary-label">الغياب</div><div class="summary-value">${stats.absentToday}</div></div>
-      <div class="summary-card"><div class="summary-label">المأموريات</div><div class="summary-value">${stats.totalMissions}</div></div>
-      <div class="summary-card"><div class="summary-label">المهام المنفذة</div><div class="summary-value">${stats.completedTasks}</div></div>
-      <div class="summary-card"><div class="summary-label">إجمالي الحالات</div><div class="summary-value">${stats.totalCases}</div></div>
-      <div class="summary-card"><div class="summary-label">الأجهزة المتاحة</div><div class="summary-value">${stats.equipmentAvailable}</div></div>
-    </div>
-    <div class="grid-cards" style="grid-template-columns:1fr 1fr">
-      <div class="panel">
-        <div class="panel-head"><h3>أكثر المهندسين/الفنيين إنتاجية</h3></div>
-        ${listBars(stats.topEngineers)}
-      </div>
-      <div class="panel">
-        <div class="panel-head"><h3>أكثر المراكز إنتاجية</h3></div>
-        ${listBars(stats.topCenters)}
-      </div>
+  ` : `
+    <div class="panel" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+      ${reminderButton}
     </div>
   `;
+
+  root.innerHTML = `
+    <div class="dashboard-topline">
+      <div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px;font-weight:800;color:var(--navy-950)">لوحة التحكم والمؤشرات</span></div>
+      <div class="dashboard-controls">
+        <label style="font-size:13px;color:var(--ink-600);">التاريخ <input id="dashboardDateFilter" type="date" value="${selectedDate}"></label>
+        <div id="dashboardClock" class="dashboard-clock"></div>
+      </div>
+    </div>
+    <div class="summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:16px">
+      <div class="summary-card"><div class="summary-label">مديرين متواجدين</div><div class="summary-value">${presentManagers}</div></div>
+      <div class="summary-card"><div class="summary-label">مهندسين/فنيين متواجدين</div><div class="summary-value">${presentEngineers}</div></div>
+      <div class="summary-card"><div class="summary-label">سيارات متوفرة</div><div class="summary-value">${availableVehicles}</div></div>
+      <div class="summary-card"><div class="summary-label">المأموريات المفتوحة</div><div class="summary-value">${stats.openMissions}</div></div>
+    </div>
+    ${systemAdminActions}
+    <div class="panel">
+      <div class="panel-head"><h3>حالة الحركة للمراكز</h3></div>
+      ${isSystemAdmin ? renderCentersOverviewRows(centers) : '<div class="empty-state">لا توجد صلاحية لعرض هذه البيانات</div>'}
+    </div>
+  `;
+
   const dateInput = document.getElementById('dashboardDateFilter');
   if (dateInput) {
     dateInput.onchange = () => {
@@ -912,6 +935,76 @@ async function renderDashboard(root) {
       goPage('dashboard', true);
     };
   }
+
+  if (window.dashboardClockInterval) clearInterval(window.dashboardClockInterval);
+  updateDashboardClock();
+  window.dashboardClockInterval = setInterval(updateDashboardClock, 1000);
+}
+
+window.sendAttendanceReminder = async () => {
+  const payload = CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {};
+  const result = await api('sendAttendanceReminderEmails', payload);
+  showToast(`تم إرسال ${result.reminderSent || 0} تذكيرًا عبر البريد`, 'ok');
+};
+
+window.resetSchemaAction = async () => {
+  if (!confirm('هل تريد إعادة تهيئة الأوراق والأعمدة لتتطابق مع متطلبات الواجهة؟ لن يتم حذف أي بيانات.')) return;
+  const result = await api('resetSchema');
+  if (result && result.sheets) {
+    showToast('تمت إعادة تهيئة الهيكل بنجاح', 'ok');
+  } else {
+    showToast('فشل تحديث الهيكل أو تعذر الاتصال', 'err');
+  }
+};
+
+function renderCentersOverviewRows(centers) {
+  if (!centers || !centers.length) {
+    return `<div class="empty-state"><div class="ic">📭</div>لا توجد بيانات للحركة لهذا التاريخ</div>`;
+  }
+  return `<div class="center-overview-grid">${centers.map(c => `
+      <div class="center-overview-row">
+        <div class="center-overview-name">${c.center}</div>
+        <div class="center-overview-cards">
+          ${centerStatusCard(c.center, 'director', 'المدير', c.directorPresent, c.directorTime)}
+          ${centerStatusCard(c.center, 'engineer', 'المهندس', c.engineerPresent, c.engineerTime)}
+          ${centerStatusCard(c.center, 'vehicle', 'العربة', c.vehicleAvailable, c.vehicleTime)}
+        </div>
+      </div>
+    `).join('')}</div>`;
+}
+
+function centerStatusCard(center, type, label, active, time) {
+  return `
+    <button type="button" class="center-card-pill ${active ? 'on' : 'off'}" data-center="${center}" data-type="${type}" data-time="${time || ''}" onclick="toggleCenterCard(this)">
+      <div class="center-card-title">${label}</div>
+      <div class="center-card-state">${active ? 'موجود' : 'غير موجود'}</div>
+      <div class="center-card-time">${active ? (time || '') : ''}</div>
+    </button>
+  `;
+}
+
+window.toggleCenterCard = function(btn) {
+  if (!btn) return;
+  const active = btn.classList.toggle('on');
+  btn.classList.toggle('off', !active);
+  const stateEl = btn.querySelector('.center-card-state');
+  const timeEl = btn.querySelector('.center-card-time');
+  const time = btn.dataset.time || '';
+  if (active) {
+    stateEl.textContent = 'موجود';
+    timeEl.textContent = time;
+  } else {
+    stateEl.textContent = 'غير موجود';
+    timeEl.textContent = '';
+  }
+};
+
+function updateDashboardClock() {
+  const el = document.getElementById('dashboardClock');
+  if (!el) return;
+  const now = new Date();
+  const time = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  el.textContent = `الساعة ${time}`;
 }
 function listBars(arr) {
   if (!arr || !arr.length) return `<div class="empty-state"><div class="ic">📭</div>لا توجد بيانات كافية بعد</div>`;
@@ -1514,138 +1607,79 @@ async function renderCoordination(root) {
     api('listDailyCoordination', { date: selectedDate }),
     api('listEquipment', {})
   ]);
-  
+
   const centers = CENTERS.filter(c => c && c !== 'ديوان عام المحافظة');
   const today = selectedDate === new Date().toISOString().slice(0,10);
-  const todayCoord = coord.find(r => r.recordType === 'DAILY') || {};
-
-  // حالة المركز
-  const getStatusDisplay = (status) => {
-    const map = {
-      'OPEN_FULL': { emoji: '✅', text: 'مفتوح كامل الطاقم', color: '#10b981' },
-      'OPEN_PARTIAL': { emoji: '⚠️', text: 'مفتوح ناقص الطاقم', color: '#f59e0b' },
-      'CLOSED': { emoji: '❌', text: 'مغلق', color: '#ef4444' },
-      'PRESENT': { emoji: '✅', text: 'موجود', color: '#10b981' },
-      'ON_LEAVE': { emoji: '📅', text: 'في إجازة', color: '#3b82f6' },
-      'ABSENT': { emoji: '❌', text: 'غائب', color: '#ef4444' },
-      'AVAILABLE': { emoji: '✅', text: 'متوفرة وصالحة', color: '#10b981' },
-      'MAINTENANCE': { emoji: '🔧', text: 'تحت الصيانة', color: '#f59e0b' },
-      'UNAVAILABLE': { emoji: '❌', text: 'غير متوفرة', color: '#ef4444' }
-    };
-    return map[status] || { emoji: '❓', text: 'غير محدد', color: '#6b7280' };
-  };
-
   const centerSummary = centers.map(center => {
     const centerStaff = users.filter(u => u.status === 'APPROVED' && u.center === center && u.role !== 'SYSTEM_ADMIN');
     const presentIds = new Set(attendance.filter(a => a.center === center && a.type === 'IN').map(a => a.userId));
     const presentNames = centerStaff.filter(u => presentIds.has(u.id)).map(u => u.fullName);
     const absentNames = centerStaff.filter(u => !presentIds.has(u.id)).map(u => u.fullName);
-    const requiredMissions = missions.filter(m => m.center === center && m.status === 'OPEN').length;
     const centerTasks = tasks.filter(t => t.center === center);
-    const completedTasks = centerTasks.filter(t => t.status === 'DONE').length;
-    const pendingTasks = centerTasks.length - completedTasks;
+    const pendingTasks = centerTasks.filter(t => t.status !== 'DONE').length;
     return {
       center,
       totalEmployees: centerStaff.length,
       presentCount: presentNames.length,
       absentCount: absentNames.length,
-      requiredMissions: requiredMissions,
-      taskStatus: centerTasks.length ? `${completedTasks} منفذة / ${pendingTasks} قيد التنفيذ` : 'لا توجد مهام',
-      presentNames: presentNames,
-      absentNames: absentNames
+      pendingTasks,
+      presentNames,
+      absentNames
     };
   });
+
+  const centerOptions = centers.map(c => `<option value="${c}">${c}</option>`).join('');
+  const totalPresent = centerSummary.reduce((sum, c) => sum + c.presentCount, 0);
+  const totalAbsent = centerSummary.reduce((sum, c) => sum + c.absentCount, 0);
+  const totalPendingTasks = centerSummary.reduce((sum, c) => sum + c.pendingTasks, 0);
 
   root.innerHTML = `
     <div class="section-toolbar">
       <div style="font-size:13px;color:var(--ink-600)">تاريخ العرض</div>
       <input id="coordinationDateFilter" type="date" value="${selectedDate}" style="width:220px">
-      ${today ? `<button class="btn btn-primary btn-sm" onclick="openDailyCoordinationModal()" style="margin-right:12px">📋 متابعة اليوم</button>` : ''}
+      <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-600)">عرض اليوم: <span>${selectedDate}</span></div>
     </div>
 
-    ${today ? `
-    <div class="grid-cards" style="grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
-      <div class="panel" style="padding:14px;text-align:center;cursor:pointer;transition:all 0.3s" onclick="openOfficeStatusModal()">
-        <div style="font-size:28px;margin-bottom:6px">${getStatusDisplay(todayCoord.officeStatus || 'CLOSED').emoji}</div>
-        <div style="font-size:11px;font-weight:700;color:var(--ink-600);margin-bottom:4px">🏢 المكتب</div>
-        <div style="font-size:12px;color:var(--navy-900)">${getStatusDisplay(todayCoord.officeStatus || 'CLOSED').text}</div>
-        <p style="color:var(--ink-400);font-size:10px;margin-top:8px">اضغط لتحديث</p>
-      </div>
-      <div class="panel" style="padding:14px;text-align:center;cursor:pointer;transition:all 0.3s" onclick="openEngineerStatusModal()">
-        <div style="font-size:28px;margin-bottom:6px">${getStatusDisplay(todayCoord.engineerStatus || 'ABSENT').emoji}</div>
-        <div style="font-size:11px;font-weight:700;color:var(--ink-600);margin-bottom:4px">👷 المهندس</div>
-        <div style="font-size:12px;color:var(--navy-900)">${getStatusDisplay(todayCoord.engineerStatus || 'ABSENT').text}</div>
-        <p style="color:var(--ink-400);font-size:10px;margin-top:8px">اضغط لتحديث</p>
-      </div>
-      <div class="panel" style="padding:14px;text-align:center;cursor:pointer;transition:all 0.3s" onclick="openVehicleStatusModal()">
-        <div style="font-size:28px;margin-bottom:6px">${getStatusDisplay(todayCoord.vehicleStatus || 'UNAVAILABLE').emoji}</div>
-        <div style="font-size:11px;font-weight:700;color:var(--ink-600);margin-bottom:4px">🚗 المركبة</div>
-        <div style="font-size:12px;color:var(--navy-900)">${getStatusDisplay(todayCoord.vehicleStatus || 'UNAVAILABLE').text}</div>
-        <p style="color:var(--ink-400);font-size:10px;margin-top:8px">اضغط لتحديث</p>
-      </div>
-      <div class="panel" style="padding:14px;text-align:center">
-        <div style="font-size:28px;margin-bottom:6px">🎯</div>
-        <div style="font-size:11px;font-weight:700;color:var(--ink-600);margin-bottom:4px">المستهدف</div>
-        <div style="font-size:18px;color:var(--navy-900);font-weight:700">${todayCoord.targetCount || 0}</div>
-        <p style="color:var(--ink-400);font-size:10px;margin-top:8px">معاينة</p>
-      </div>
-    </div>
-
-    ${todayCoord.workStart ? `
-    <div class="panel" style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:1.5px solid #0284c7">
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:14px;color:var(--navy-900)">
-        <span><strong>⏰ أوقات العمل:</strong> ${todayCoord.workStart} ${todayCoord.workEnd ? `- ${todayCoord.workEnd}` : '→ جاري العمل'}</span>
-      </div>
-      ${todayCoord.notes ? `<div style="margin-top:8px;font-size:13px;color:var(--navy-800)">📝 ملاحظات: ${todayCoord.notes}</div>` : ''}
-    </div>
-    ` : ''}
-    ` : ''}
-
-    <div class="panel">
-      <div class="panel-head"><h3>ملخص متابعة المراكز</h3></div>
-      <div class="table-wrap"><table><thead><tr><th>المركز</th><th>إجمالي الموظفين</th><th>الحضور</th><th>الغياب</th><th>المهام المطلوبة</th><th>موقف المهام</th></tr></thead>
-      <tbody>${centerSummary.map(c => `
-        <tr>
-          <td>${c.center}</td>
-          <td>${c.totalEmployees}</td>
-          <td><span class="chip approved">${c.presentCount}</span></td>
-          <td><span class="chip rejected">${c.absentCount}</span></td>
-          <td>${c.requiredMissions}</td>
-          <td>${c.taskStatus}</td>
-        </tr>
-      `).join('') || `<tr><td colspan="6"><div class="empty-state">لا توجد بيانات للمراكز</div></td></tr>`}</tbody></table></div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><h3>تفاصيل الحضور والغياب</h3></div>
-      <div class="table-wrap"><table><thead><tr><th>المركز</th><th>الحضور</th><th>الغياب</th></tr></thead>
-      <tbody>${centerSummary.map(c => `
-        <tr>
-          <td>${c.center}</td>
-          <td style="font-size:12px">${c.presentNames.length ? c.presentNames.join('، ') : '-'}</td>
-          <td style="font-size:12px">${c.absentNames.length ? c.absentNames.join('، ') : '-'}</td>
-        </tr>
-      `).join('') || `<tr><td colspan="3"><div class="empty-state">لا توجد بيانات الحضور</div></td></tr>`}</tbody></table></div>
-    </div>
-
-    <div class="grid-cards" style="grid-template-columns:1fr 1fr">
-      <div class="panel">
-        <div class="panel-head"><h3>📊 ملخص المهام</h3></div>
-        <div style="display:flex;gap:16px">
-          <div style="flex:1;text-align:center;padding:12px;background:#f0fdf4;border-radius:8px">
-            <div style="font-size:24px;font-weight:700;color:#16a34a">${centerSummary.reduce((s, c) => s + c.requiredMissions, 0)}</div>
-            <div style="font-size:12px;color:var(--ink-600)">مهام مطلوبة</div>
-          </div>
-          <div style="flex:1;text-align:center;padding:12px;background:#fef2f2;border-radius:8px">
-            <div style="font-size:24px;font-weight:700;color:#dc2626">${centerSummary.reduce((s, c) => s + c.absentCount, 0)}</div>
-            <div style="font-size:12px;color:var(--ink-600)">موظفون غائبون</div>
+    <div class="panel" style="margin-bottom:18px">
+      <div class="panel-head"><h3>ملخص المتابعة اليومية</h3></div>
+      <div class="coordination-cards">${centerSummary.map(c => `
+        <div class="coord-center-card">
+          <div class="coord-center-header">${c.center}</div>
+          <div class="coord-card-row">
+            <div class="coord-card"><div>إجمالي الموظفين</div><div>${c.totalEmployees}</div></div>
+            <div class="coord-card"><div>الحضور</div><div>${c.presentCount}</div></div>
+            <div class="coord-card"><div>الغياب</div><div>${c.absentCount}</div></div>
+            <div class="coord-card"><div>المهام غير المنجزة</div><div>${c.pendingTasks}</div></div>
           </div>
         </div>
+      `).join('')}</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head" style="justify-content:space-between;align-items:center">
+        <h3>عرض الحضور والغياب</h3>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <select id="coordViewFilter" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:10px">
+            <option value="ALL">الكل</option>
+            <option value="ENGINEERS">المهندسين فقط</option>
+          </select>
+          <select id="coordCenterFilter" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:10px">
+            <option value="ALL">جميع المراكز</option>
+            ${centerOptions}
+          </select>
+        </div>
       </div>
-      <div class="panel">
-        <div class="panel-head"><h3>⚙️ أدوات المراقب</h3></div>
-        <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openCenterTaskModal()">+ تسجيل عمل منجز</button>
-        <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="exportCoordinationReport()">⬇ تحميل تقرير اليوم</button>
+      <div class="table-wrap"><table><thead><tr><th>المركز</th><th>الحضور</th><th>الغياب</th></tr></thead><tbody id="coordSummaryTable"></tbody></table></div>
+    </div>
+
+    <div class="grid-cards" style="grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div class="panel" style="max-height:420px;overflow:auto">
+        <div class="panel-head"><h3>أسماء الحضور</h3></div>
+        <div class="table-wrap"><table><thead><tr><th>المركز</th><th>الاسم</th></tr></thead><tbody id="coordPresentList"></tbody></table></div>
+      </div>
+      <div class="panel" style="max-height:420px;overflow:auto">
+        <div class="panel-head"><h3>أسماء الغائبين</h3></div>
+        <div class="table-wrap"><table><thead><tr><th>المركز</th><th>الاسم</th></tr></thead><tbody id="coordAbsentList"></tbody></table></div>
       </div>
     </div>
   `;
@@ -1656,6 +1690,37 @@ async function renderCoordination(root) {
       localStorage.setItem('coordinationDate', dateInput.value);
       goPage('coordination', true);
     };
+  }
+
+  const viewFilter = document.getElementById('coordViewFilter');
+  const centerFilter = document.getElementById('coordCenterFilter');
+  function refreshCoordTables() {
+    const view = viewFilter.value;
+    const center = centerFilter.value;
+    const isEngineerOnly = view === 'ENGINEERS';
+    const filteredCenters = centerSummary.filter(c => center === 'ALL' || c.center === center);
+
+    const rows = filteredCenters.map(c => {
+      const presentNames = isEngineerOnly ? c.presentNames.filter(name => users.find(u => u.fullName === name && u.role === 'ENGINEER')) : c.presentNames;
+      const absentNames = isEngineerOnly ? c.absentNames.filter(name => users.find(u => u.fullName === name && u.role === 'ENGINEER')) : c.absentNames;
+      return {
+        center: c.center,
+        presentCount: presentNames.length,
+        absentCount: absentNames.length,
+        presentNames,
+        absentNames
+      };
+    });
+
+    document.getElementById('coordSummaryTable').innerHTML = rows.map(r => `<tr><td>${r.center}</td><td>${r.presentCount}</td><td>${r.absentCount}</td></tr>`).join('') || '<tr><td colspan="3"><div class="empty-state">لا توجد بيانات</div></td></tr>';
+    document.getElementById('coordPresentList').innerHTML = rows.flatMap(r => r.presentNames.map(name => `<tr><td>${r.center}</td><td>${name}</td></tr>`)).join('') || '<tr><td colspan="2"><div class="empty-state">لا توجد أسماء حضور</div></td></tr>';
+    document.getElementById('coordAbsentList').innerHTML = rows.flatMap(r => r.absentNames.map(name => `<tr><td>${r.center}</td><td>${name}</td></tr>`)).join('') || '<tr><td colspan="2"><div class="empty-state">لا توجد أسماء غياب</div></td></tr>';
+  }
+
+  if (viewFilter && centerFilter) {
+    viewFilter.onchange = refreshCoordTables;
+    centerFilter.onchange = refreshCoordTables;
+    refreshCoordTables();
   }
 }
 
@@ -1721,7 +1786,20 @@ window.submitCenterTask = async () => {
 let assignmentsActiveTab = 'directives';
 
 async function renderAssignments(root) {
+  const canCreate = ['SYSTEM_ADMIN','CENTER_ADMIN'].includes(CURRENT_USER.role);
+  const assignmentBatches = canCreate ? await api('listAssignmentBatches', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {}) : [];
+  const activeBatches = assignmentBatches.filter(b => b.doneCount < b.totalCount).length;
+
   root.innerHTML = `
+    <div class="panel" style="margin-bottom:14px">
+      <div class="panel-head">
+        <h3>التكليفات والمهام</h3>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          ${canCreate ? `<button class="btn btn-gold btn-sm" onclick="openAssignmentModal()">+ تكليف جديد</button>` : ''}
+          ${canCreate ? `<span style="font-size:13px;color:var(--ink-600)">عدد دفعات التكليفات: ${assignmentBatches.length}</span><span style="font-size:13px;color:var(--ink-600)">قيد الإنجاز: ${activeBatches}</span>` : ''}
+        </div>
+      </div>
+    </div>
     <div class="tabs">
       <button class="tab-btn" data-tab="directives">تكليفات وتوجيهات</button>
       <button class="tab-btn" data-tab="tasks">مهام المركز اليومية</button>
@@ -1753,6 +1831,147 @@ async function renderAssignments(root) {
   tabBtns.forEach(b => b.onclick = () => activate(b.dataset.tab));
   await activate(assignmentsActiveTab);
 }
+
+window.openAssignmentModal = async () => {
+  const users = await api('listUsers', {});
+  const engineers = users.filter(u => u.status === 'APPROVED' && u.role === 'ENGINEER');
+  const technicians = users.filter(u => u.status === 'APPROVED' && u.role === 'TECHNICIAN');
+
+  openModal(`
+    <h3>إنشاء تكليف موحّد</h3>
+    <div class="field"><label>مصدر التكليف</label>
+      <select id="assignSource">
+        ${CURRENT_USER.role === 'SYSTEM_ADMIN' ? '<option value="SYSTEM_ADMIN">من الإدارة العامة</option>' : ''}
+        <option value="CENTER_ADMIN">من مدير المركز</option>
+      </select>
+    </div>
+    <div class="field"><label>نطاق التكليف</label>
+      <select id="assignScope">
+        <option value="ALL">جميع مدراء المراكز والفنيين</option>
+        <option value="ENGINEERS">جميع المهندسين</option>
+        <option value="CENTERS">مراكز محددة</option>
+        <option value="SPECIFIC_ENGINEER">مهندس محدد</option>
+        <option value="SPECIFIC_TECHNICIAN">فني محدد</option>
+      </select>
+    </div>
+    <div id="assignTargetContainer"></div>
+    <div class="field"><label>المركز المصدر</label><input type="text" value="${CURRENT_USER.center || '-'}" disabled></div>
+    <div class="field"><label>تفاصيل التكليف *</label><textarea id="assignDetails" rows="3" placeholder="اكتب وصفًا مختصرًا للتكليف..."></textarea></div>
+    <div class="field-row">
+      <div class="field"><label>هل يوجد موعد نهائي؟</label>
+        <select id="assignHasDeadline"><option value="0">لا</option><option value="1">نعم</option></select>
+      </div>
+      <div class="field"><label>الموعد النهائي</label><input id="assignDeadline" type="datetime-local" disabled></div>
+    </div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitAssignment()">حفظ التكليف</button></div>
+  `);
+
+  const scopeSelect = document.getElementById('assignScope');
+  const deadlineSelect = document.getElementById('assignHasDeadline');
+  const deadlineInput = document.getElementById('assignDeadline');
+
+  function renderTargetContainer() {
+    const scope = scopeSelect.value;
+    const container = document.getElementById('assignTargetContainer');
+    if (!container) return;
+    if (scope === 'ALL') {
+      container.innerHTML = `<div style="font-size:13px;color:var(--ink-600)">سيتم توجيه التكليف إلى جميع مدراء المراكز والفنيين المعتمدين.</div>`;
+    } else if (scope === 'ENGINEERS') {
+      container.innerHTML = `
+        <div class="field"><label>اختر المهندس (أو اختر كل المهندسين)</label>
+          <select id="assignEngineerSelect">
+            <option value="ALL">كل المهندسين</option>
+            ${engineers.map(u => `<option value="${u.id}">${u.fullName} (${u.center || '-'})</option>`).join('')}
+          </select>
+        </div>
+      `;
+    } else if (scope === 'CENTERS') {
+      container.innerHTML = `
+        <div class="field"><label>اختر المركز أو المراكز</label></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:8px">${CENTERS.map(c => `<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="assignCenters" value="${c}">${c}</label>`).join('')}</div>
+      `;
+    } else if (scope === 'SPECIFIC_ENGINEER') {
+      container.innerHTML = `
+        <div class="field"><label>اختر مهندسًا</label>
+          <select id="assignSpecificEngineer">
+            <option value="">اختر مهندسًا</option>
+            ${engineers.map(u => `<option value="${u.id}">${u.fullName} (${u.center || '-'})</option>`).join('')}
+          </select>
+        </div>
+      `;
+    } else if (scope === 'SPECIFIC_TECHNICIAN') {
+      container.innerHTML = `
+        <div class="field"><label>اختر فنيًا</label>
+          <select id="assignSpecificTechnician">
+            <option value="">اختر فنيًا</option>
+            ${technicians.map(u => `<option value="${u.id}" data-center="${u.center || ''}">${u.fullName} (${u.center || '-'})</option>`).join('')}
+          </select>
+        </div>
+      `;
+    }
+  }
+
+  scopeSelect.onchange = renderTargetContainer;
+  deadlineSelect.onchange = () => {
+    deadlineInput.disabled = deadlineSelect.value === '0';
+    if (deadlineSelect.value === '0') deadlineInput.value = '';
+  };
+  renderTargetContainer();
+};
+
+window.submitAssignment = async () => {
+  const sourceType = val('assignSource');
+  const targetScope = val('assignScope');
+  const details = val('assignDetails').trim();
+  if (!details) { showToast('يرجى إدخال تفاصيل التكليف', 'err'); return; }
+
+  const payload = {
+    sourceType: sourceType,
+    sourceCenter: CURRENT_USER.center || '',
+    createdBy: CURRENT_USER.id,
+    createdByName: CURRENT_USER.fullName,
+    targetScope: targetScope,
+    details: details,
+    hasDeadline: val('assignHasDeadline') === '1',
+    deadlineAt: val('assignHasDeadline') === '1' ? val('assignDeadline') : ''
+  };
+
+  if (targetScope === 'CENTERS') {
+    const selected = Array.from(document.querySelectorAll('input[name="assignCenters"]:checked')).map(el => el.value);
+    if (!selected.length) { showToast('يرجى اختيار مركز واحد على الأقل', 'err'); return; }
+    payload.targetCenters = selected;
+  }
+
+  if (targetScope === 'ENGINEERS') {
+    const choice = val('assignEngineerSelect');
+    if (choice && choice !== 'ALL') payload.recipientIds = [choice];
+  }
+
+  if (targetScope === 'SPECIFIC_ENGINEER') {
+    const choice = val('assignSpecificEngineer');
+    if (!choice) { showToast('يرجى اختيار مهندس', 'err'); return; }
+    payload.targetScope = 'ENGINEERS';
+    payload.recipientIds = [choice];
+  }
+
+  if (targetScope === 'SPECIFIC_TECHNICIAN') {
+    const choice = document.getElementById('assignSpecificTechnician')?.value;
+    if (!choice) { showToast('يرجى اختيار فني', 'err'); return; }
+    payload.targetScope = 'CENTERS';
+    const selectedOption = document.getElementById('assignSpecificTechnician')?.selectedOptions[0];
+    payload.targetCenters = selectedOption ? [selectedOption.dataset.center || CURRENT_USER.center || ''] : [CURRENT_USER.center || ''];
+    payload.recipientIds = [choice];
+  }
+
+  try {
+    await api('createAssignment', payload);
+    closeModal();
+    showToast('تم إنشاء التكليف الموحد بنجاح', 'ok');
+    goPage('assignments', true);
+  } catch (e) {
+    showToast(e.message || 'فشل إنشاء التكليف', 'err');
+  }
+};
 
 /* ========================================================================
    المأموريات اليومية (توجيهات وتكليفات المحافظة/مدير المركز)
