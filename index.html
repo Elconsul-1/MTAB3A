@@ -118,6 +118,10 @@ a{color:inherit}
 .filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
 .filter-grid .field{margin-bottom:0}
 @media (max-width:560px){.field-row{grid-template-columns:1fr}}
+/* Movement cards for center manager (attendance) */
+.movement-card{transition:all .15s;border-radius:10px}
+.movement-card:hover{transform:translateY(-3px)}
+.movement-card.active{background:linear-gradient(90deg,var(--gold-100),#fff);border-color:var(--gold-600);color:var(--navy-900);box-shadow:0 8px 20px rgba(33,95,143,.08)}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
   padding:12px 22px;border-radius:10px;border:none;font-weight:700;font-size:14.5px;transition:.15s;
@@ -299,10 +303,10 @@ tbody tr:hover{background:#fafcfd}
 </head>
 <body>
 
-<!-- Global loader (used during API calls) -->
-<div id="globalLoader" style="display:none;position:fixed;inset:0;background:rgba(255,255,255,0.7);z-index:120;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px">
-  <div class="spinner" style="width:48px;height:48px;border-width:4px;border-top-color:var(--navy-900)"></div>
-  <div id="globalLoaderMsg" style="font-size:15px;color:var(--navy-900);font-weight:700">جاري المعالجة...</div>
+<!-- Global small loader (toast) -->
+<div id="globalLoader" style="display:none;position:fixed;right:18px;bottom:18px;z-index:120;background:#fff;border:1px solid var(--line);box-shadow:0 6px 22px rgba(11,44,71,.12);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+  <div class="spinner" style="width:28px;height:28px;border-width:3px;border-top-color:var(--navy-900)"></div>
+  <div id="globalLoaderMsg" style="font-size:13px;color:var(--navy-900);font-weight:700">جاري المعالجة...</div>
 </div>
 
 <!-- ================= شاشة تسجيل الدخول ================= -->
@@ -347,13 +351,7 @@ tbody tr:hover{background:#fafcfd}
         <option value="SYSTEM_ADMIN">مدير النظام (ديوان المحافظة)</option>
       </select>
     </div>
-    <div class="field"><label>ديوان المحافظة (الإدارة العامة) / المركز *</label>
-      <select id="regCenter">${centerOptions(false)}</select>
-        <option value="">اختر المركز أو ديوان عام المحافظة</option>
-        <option>ديوان عام المحافظة</option>
-        <option>المنيا</option><option>ملوي</option><option>مغاغة</option><option>بني مزار</option>
-        <option>مطاي</option><option>سمالوط</option><option>أبو قرقاص</option><option>ديرمواس</option><option>العدوة</option>
-      </select>
+    <div class="field"><label>المركز *</label><select id="regCenter">${centerOptions(false)}</select></div>
     </div>
     <div class="field-row">
       <div class="field"><label>مجلس المدينة</label><input id="regCity" placeholder="اختياري"></div>
@@ -670,7 +668,12 @@ async function refreshMyStatus() {
       document.getElementById('registerScreen').style.display = 'flex';
       return;
     }
+    // preserve local preview photo if server did not return one
+    var prevPhoto = (typeof CURRENT_USER !== 'undefined' && CURRENT_USER && CURRENT_USER.photoUrl) ? CURRENT_USER.photoUrl : null;
     CURRENT_USER = existing;
+    if ((!CURRENT_USER.photoUrl || CURRENT_USER.photoUrl === '') && prevPhoto) {
+      CURRENT_USER.photoUrl = prevPhoto;
+    }
     if (existing.status === 'PENDING') {
       document.getElementById('pendingScreen').style.display = 'flex';
     } else if (existing.status === 'REJECTED') {
@@ -1198,7 +1201,17 @@ async function renderAttendance(root) {
       <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-primary" id="checkInBtn" style="${status.hasCheckedIn?'background:var(--good);opacity:1':''}" ${status.hasCheckedIn ? 'disabled' : ''} onclick="doAttendanceWithModal()">✅ ${status.hasCheckedIn?'تم تسجيل الحضور':'تسجيل حضور'}</button>
         <button class="btn btn-danger" id="checkOutBtn" style="${status.hasCheckedOut?'background:var(--bad);color:#fff;opacity:1':''}" ${(!status.hasCheckedIn || status.hasCheckedOut) ? 'disabled style="opacity:.5"' : ''}>⏹ ${status.hasCheckedOut?'تم تسجيل الانصراف':'تسجيل انصراف'}</button>
-        ${isCenterAdmin ? '<button class="btn btn-outline" onclick="openDailyCoordinationModal()">موقف التحرك</button>' : ''}
+        ${isCenterAdmin ? `
+          <div style="display:flex;align-items:center;gap:10px">
+            <div id="movementCards" style="display:flex;gap:10px;align-items:center">
+              <div class="movement-card" data-val="OPEN_FULL" onclick="selectMovementCard(this)" style="background:#f3f6f8;padding:10px 14px;border-radius:10px;cursor:pointer;min-width:160px;text-align:center;border:1px solid var(--line);color:var(--ink-600)">✅ مفتوح وكامل الطاقم</div>
+              <div class="movement-card" data-val="OPEN_PARTIAL" onclick="selectMovementCard(this)" style="background:#f3f6f8;padding:10px 14px;border-radius:10px;cursor:pointer;min-width:160px;text-align:center;border:1px solid var(--line);color:var(--ink-600)">⚠️ مفتوح وناقص الطاقم</div>
+              <div class="movement-card" data-val="CLOSED" onclick="selectMovementCard(this)" style="background:#f3f6f8;padding:10px 14px;border-radius:10px;cursor:pointer;min-width:120px;text-align:center;border:1px solid var(--line);color:var(--ink-600)">❌ مغلق</div>
+            </div>
+            <button class="btn btn-primary btn-sm" id="saveMovementBtn" onclick="saveOfficeMovement()">حفظ</button>
+            <button class="btn btn-outline btn-sm" onclick="openDailyCoordinationModal()">تفاصيل</button>
+          </div>
+        ` : ''}
       </div>
       <div class="gps-box" id="gpsBox" style="justify-content:center">📍 سيتم تحديد موقعك تلقائيًا عند التسجيل</div>
       ${!status.hasCheckedIn ? `<p style="color:var(--warn);font-size:12.5px;margin-top:10px">⚠ يُعتبر الموظف غائبًا إذا لم يسجل الحضور قبل الساعة 10:00 صباحًا</p>` : ''}
@@ -1218,6 +1231,21 @@ async function renderAttendance(root) {
     document.getElementById('checkOutBtn').onclick = () => doCheckoutWithModal();
   } else {
     document.getElementById('checkOutBtn').onclick = () => doAttendance('checkOut');
+  }
+  // initialize movement card selection if center admin
+  if (isCenterAdmin) {
+    // fetch today's saved coordination to mark selection if exists
+    api('listDailyCoordination', { date: new Date().toISOString().slice(0,10), center: CURRENT_USER.center }).then(list => {
+      if (Array.isArray(list) && list.length) {
+        const office = list.find(r => r.recordType === 'OFFICE');
+        if (office && office.notes) {
+          const val = (office.notes || '').toString();
+          const mapping = { 'OPEN_FULL':'OPEN_FULL','OPEN_PARTIAL':'OPEN_PARTIAL','CLOSED':'CLOSED' };
+          const el = Array.from(document.querySelectorAll('#movementCards .movement-card')).find(x => x.dataset.val === mapping[val] || x.dataset.val === val);
+          if (el) el.classList.add('active');
+        }
+      }
+    }).catch(() => {});
   }
   
   // تحميل قسم التكليفات للفنيين/المهندسين
@@ -1318,7 +1346,9 @@ window.saveDailyTargetTasks = () => {
    عرض التكليفات الموجهة للفني/المهندس مع تصنيفات مختلفة
    ======================================================================== */
 async function renderTechnicianAssignments(root) {
-  const assignments = await api('listAssignments', { recipientId: CURRENT_USER.id });
+  let assignments = await api('listAssignments', { recipientId: CURRENT_USER.id });
+  // Filter out batch 'ALL' assignments (sourceType CENTER_ADMIN or SYSTEM_ADMIN with targetScope 'ALL')
+  assignments = assignments.filter(a => !(a.targetScope === 'ALL'));
   const centerAssignments = assignments.filter(a => a.sourceType === 'CENTER_ADMIN');
   const systemAssignments = assignments.filter(a => a.sourceType === 'SYSTEM_ADMIN');
   
@@ -1569,6 +1599,40 @@ window.submitDailyCoordination = async () => {
     goPage('coordination', true);
   } catch (e) {
     showToast('خطأ في حفظ البيانات', 'err');
+  }
+};
+
+// Helper for movement cards
+window.selectMovementCard = (el) => {
+  if (!el) return;
+  // toggle active exclusively
+  document.querySelectorAll('#movementCards .movement-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+};
+
+window.saveOfficeMovement = async () => {
+  const el = document.querySelector('#movementCards .movement-card.active');
+  if (!el) { showToast('اختر حالة المكتب أولاً', 'err'); return; }
+  const officeStatus = el.dataset.val;
+  const today = new Date().toISOString().slice(0,10);
+  try {
+    // Record minimal coord: officeStatus only
+    await api('recordDailyCoordination', {
+      date: today,
+      center: CURRENT_USER.center,
+      officeStatus,
+      engineerStatus: '',
+      vehicleStatus: '',
+      targetCount: 0,
+      workStart: '',
+      workEnd: '',
+      notes: 'تحديث سريع من شاشة الحضور',
+      recordedBy: CURRENT_USER.fullName,
+      recordedAt: new Date().toISOString()
+    });
+    showToast('تم حفظ موقف التحرك', 'ok');
+  } catch (e) {
+    showToast('فشل حفظ موقف التحرك', 'err');
   }
 };
 
