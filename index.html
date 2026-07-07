@@ -315,7 +315,7 @@ tbody tr:hover{background:#fafcfd}
       <div class="field"><label>رقم الهاتف *</label><input id="regPhone" placeholder="01xxxxxxxxx"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>الرقم القومي *</label><input id="regNationalId" placeholder="14 رقم"></div>
+      <div class="field"><label>الرقم القومي *</label><input id="regNationalId" placeholder="14 رقم" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
       <div class="field"><label>طريقة الدخول</label><div style="font-size:13px;color:var(--ink-600);margin-top:6px">سيتم تسجيل الدخول باستخدام حساب Google فقط، ولا حاجة لاسم مستخدم أو كلمة مرور إضافية.</div></div>
     </div>
     <div class="field">
@@ -983,12 +983,13 @@ async function renderAttendance(root) {
 
   if (isCenterAdmin) {
     const team = await api('centerAttendanceToday', { center: CURRENT_USER.center });
+    const canExportAbsence = new Date().getHours() >= 10;
     extraHtml = `
       <div class="panel">
-        <div class="panel-head"><h3>حالة حضور موظفي المركز اليوم</h3></div>
+        <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center"><h3>حالة حضور موظفي المركز اليوم</h3><button class="btn btn-gold btn-sm" onclick="exportTodayAbsenceReport()" ${canExportAbsence ? '' : 'disabled'}>⬇ كشف غياب اليوم</button></div>
         <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الحضور</th><th>وقت الحضور</th><th>وقت الانصراف</th></tr></thead>
         <tbody>${team.map(u => `<tr><td>${u.fullName}</td><td>${roleLabel(u.role)}</td><td><span class="chip ${u.hasCheckedIn?'approved':'rejected'}">${u.hasCheckedIn?'حاضر':'غائب'}</span></td><td>${u.checkInTime?fmtDate(u.checkInTime):'-'}</td><td>${u.checkOutTime?fmtDate(u.checkOutTime):'-'}</td></tr>`).join('') || `<tr><td colspan="5"><div class="empty-state">لا يوجد موظفون بهذا المركز</div></td></tr>`}</tbody></table></div>
-        <p style="color:var(--ink-400);font-size:12px;margin:10px 2px 0">* هذا البيان للعرض فقط ولا يمكن التعديل عليه من هنا.</p>
+        <p style="color:var(--ink-400);font-size:12px;margin:10px 2px 0">${canExportAbsence ? 'يمكنك تحميل كشف الغياب بعد الساعة 10 صباحًا.' : 'يكون كشف الغياب متاحًا للتحميل بعد الساعة 10 صباحًا.'}</p>
       </div>`;
   }
 
@@ -1049,6 +1050,39 @@ function doAttendance(action) {
     goPage('attendance', true);
   });
 }
+
+window.exportTodayAbsenceReport = async () => {
+  const now = new Date();
+  if (now.getHours() < 10) {
+    showToast('يمكن تحميل كشف الغياب بعد الساعة 10 صباحًا فقط', 'err');
+    return;
+  }
+  const today = now.toISOString().slice(0,10);
+  const users = await api('listUsers', { center: CURRENT_USER.center, status: 'APPROVED' });
+  const attendance = await api('listAttendance', { center: CURRENT_USER.center, date: today });
+  const presentIds = new Set(attendance.filter(a => a.type === 'IN').map(a => a.userId));
+  const absentRows = users.filter(u => !presentIds.has(u.id)).map(u => ({
+    fullName: u.fullName || '',
+    role: roleLabel(u.role),
+    center: u.center || '',
+    status: 'غائب',
+    checkInTime: '-',
+    checkOutTime: '-'
+  }));
+  if (!absentRows.length) {
+    showToast('لا يوجد غياب مسجل لهذا اليوم', 'ok');
+    return;
+  }
+  const headers = [['fullName','الاسم'],['role','الوظيفة'],['center','المركز'],['status','الحالة'],['checkInTime','وقت الحضور'],['checkOutTime','وقت الانصراف']];
+  let csv = '\uFEFF';
+  csv += headers.map(h => h[1]).join(',') + '\n';
+  absentRows.forEach(r => { csv += headers.map(h => `"${(r[h[0]] || '').toString().replace(/"/g,'""')}"`).join(',') + '\n'; });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `كشف-غياب-${today}.csv`;
+  link.click();
+};
 
 /* ========================================================================
    المتابعة اليومية للمركز (لمدير البنية المعلوماتية بالمركز)
@@ -2055,19 +2089,20 @@ async function renderUsers(root) {
   root.innerHTML = `
     <div class="panel">
       <div class="panel-head"><h3>طلبات بانتظار الاعتماد (${pending.length})</h3></div>
-      <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الدور</th><th>المركز</th><th>الهاتف</th><th>البريد</th><th>إجراء</th></tr></thead>
-      <tbody>${pending.map(u=>`<tr><td>${u.fullName}</td><td>${u.job}</td><td>${roleLabel(u.role)}</td><td>${u.center||u.governorateOffice||'-'}</td><td>${u.phone}</td><td>${u.email}</td>
-      <td style="display:flex;gap:6px"><button class="btn btn-primary btn-sm" onclick="approveUserAction('${u.id}')">قبول</button><button class="btn btn-danger btn-sm" onclick="rejectUserAction('${u.id}')">رفض</button></td></tr>`).join('') || `<tr><td colspan="7"><div class="empty-state">لا توجد طلبات معلّقة</div></td></tr>`}</tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>الوظيفة</th><th>الدور</th><th>المركز</th><th>الهاتف</th><th>البريد</th><th>إجراء</th></tr></thead>
+      <tbody>${pending.map(u=>`<tr><td>${u.fullName}</td><td>${u.nationalId||'-'}</td><td>${u.job}</td><td>${roleLabel(u.role)}</td><td>${u.center||u.governorateOffice||'-'}</td><td>${u.phone}</td><td>${u.email}</td>
+      <td style="display:flex;gap:6px"><button class="btn btn-primary btn-sm" onclick="approveUserAction('${u.id}')">قبول</button><button class="btn btn-danger btn-sm" onclick="rejectUserAction('${u.id}')">رفض</button></td></tr>`).join('') || `<tr><td colspan="8"><div class="empty-state">لا توجد طلبات معلّقة</div></td></tr>`}</tbody></table></div>
     </div>
     <div class="panel">
       <div class="panel-head"><h3>جميع المستخدمين</h3></div>
       <div class="filter-grid" style="margin-bottom:10px">
-        <div class="field"><label>البحث</label><input id="userSearchInput" placeholder="اسم أو بريد أو وظيفة"></div>
+        <div class="field"><label>البحث</label><input id="userSearchInput" placeholder="اسم أو بريد"></div>
         <div class="field"><label>المركز</label><select id="userFilterCenter"><option value="">الكل</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>الوظيفة</label><input id="userFilterJob" placeholder="مثال: مهندس مساحة"></div>
         <div class="field"><label>الدور</label><select id="userFilterRole"><option value="">الكل</option>${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}">${roleLabel(r)}</option>`).join('')}</select></div>
         <div class="field"><label>الحالة</label><select id="userFilterStatus"><option value="">الكل</option><option value="APPROVED">معتمد</option><option value="PENDING">معلق</option><option value="REJECTED">مرفوض</option><option value="SUSPENDED">موقوف</option></select></div>
       </div>
-      <div class="table-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>الاسم</th><th>الدور</th><th>المركز</th><th>الحالة</th><th>إجراء</th></tr></thead>
+      <div class="table-wrap" style="max-height:520px;overflow:auto"><table><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>الوظيفة</th><th>الدور</th><th>المركز</th><th>الحالة</th><th>إجراء</th></tr></thead>
       <tbody id="userTableBody"></tbody></table></div>
     </div>`;
   renderUserRows(others, root);
@@ -2077,22 +2112,25 @@ async function renderUsers(root) {
 function renderUserRows(data, root) {
   const body = root.querySelector('#userTableBody');
   if (!body) return;
-  body.innerHTML = data.map(u=>`<tr><td>${u.fullName}</td><td>${roleLabel(u.role)}</td><td>${u.center||u.governorateOffice||'-'}</td><td><span class="chip ${u.status==='APPROVED'?'approved':u.status==='SUSPENDED'?'rejected':'pending'}">${u.status==='APPROVED'?'معتمد':u.status==='SUSPENDED'?'موقوف':u.status==='REJECTED'?'مرفوض':'معلق'}</span></td><td style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="openEditUserModal('${u.id}')">تعديل</button><button class="btn btn-danger btn-sm" onclick="suspendUser('${u.id}')">إيقاف</button></td></tr>`).join('') || `<tr><td colspan="5"><div class="empty-state">لا يوجد مستخدمون بعد</div></td></tr>`;
+  body.innerHTML = data.map(u=>`<tr><td>${u.fullName}</td><td>${u.nationalId||'-'}</td><td>${u.job||'-'}</td><td>${roleLabel(u.role)}</td><td>${u.center||u.governorateOffice||'-'}</td><td><span class="chip ${u.status==='APPROVED'?'approved':u.status==='SUSPENDED'?'rejected':'pending'}">${u.status==='APPROVED'?'معتمد':u.status==='SUSPENDED'?'موقوف':u.status==='REJECTED'?'مرفوض':'معلق'}</span></td><td style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="openEditUserModal('${u.id}')">تعديل</button><button class="btn btn-danger btn-sm" onclick="suspendUser('${u.id}')">إيقاف</button></td></tr>`).join('') || `<tr><td colspan="7"><div class="empty-state">لا يوجد مستخدمون بعد</div></td></tr>`;
 }
 
 function bindUserFilters(root) {
   const apply = async () => {
     const search = root.querySelector('#userSearchInput').value.trim();
     const center = root.querySelector('#userFilterCenter').value;
+    const job = root.querySelector('#userFilterJob').value.trim();
     const role = root.querySelector('#userFilterRole').value;
     const status = root.querySelector('#userFilterStatus').value;
-    const users = await api('listUsers', { search, center, role, status });
+    const users = await api('listUsers', { search, center, role, job, status });
     renderUserRows(users.filter(u=>u.status!=='PENDING'), root);
   };
-  ['userSearchInput','userFilterCenter','userFilterRole','userFilterStatus'].forEach(id => {
+  ['userSearchInput','userFilterCenter','userFilterJob','userFilterRole','userFilterStatus'].forEach(id => {
     const el = root.querySelector('#' + id);
     if (el) { el.oninput = apply; el.onchange = apply; }
   });
+  const jobInput = root.querySelector('#userFilterJob');
+  if (jobInput) jobInput.oninput = apply;
 }
 window.approveUserAction = async (id) => {
   await api('approveUser', { userId:id, approvedBy:CURRENT_USER.id, approvedByName:CURRENT_USER.fullName });
@@ -2105,8 +2143,8 @@ window.openEditUserModal = (id) => {
     <h3>تعديل بيانات المستخدم</h3>
     <div class="field"><label>الاسم</label><input id="euName" value="${user.fullName||''}"></div>
     <div class="field-row"><div class="field"><label>الوظيفة</label><input id="euJob" value="${user.job||''}"></div><div class="field"><label>الهاتف</label><input id="euPhone" value="${user.phone||''}"></div></div>
-    <div class="field-row"><div class="field"><label>البريد</label><input id="euEmail" value="${user.email||''}"></div><div class="field"><label>المركز</label><select id="euCenter">${CENTERS.map(c=>`<option value="${c}" ${user.center===c?'selected':''}>${c}</option>`).join('')}</select></div></div>
-    <div class="field"><label>الدور</label><select id="euRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${user.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div>
+    <div class="field-row"><div class="field"><label>الرقم القومي</label><input id="euNationalId" value="${user.nationalId||''}" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div><div class="field"><label>البريد</label><input id="euEmail" value="${user.email||''}"></div></div>
+    <div class="field-row"><div class="field"><label>المركز</label><select id="euCenter">${CENTERS.map(c=>`<option value="${c}" ${user.center===c?'selected':''}>${c}</option>`).join('')}</select></div><div class="field"><label>الدور</label><select id="euRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${user.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div></div>
     <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitEditUser('${id}')">حفظ</button></div>
   `);
 };
@@ -2116,6 +2154,7 @@ window.submitEditUser = async (id) => {
     fullName: val('euName'),
     job: val('euJob'),
     phone: val('euPhone'),
+    nationalId: val('euNationalId'),
     email: val('euEmail'),
     center: val('euCenter'),
     role: val('euRole'),
