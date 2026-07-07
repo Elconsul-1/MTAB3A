@@ -299,6 +299,12 @@ tbody tr:hover{background:#fafcfd}
 </head>
 <body>
 
+<!-- Global loader (used during API calls) -->
+<div id="globalLoader" style="display:none;position:fixed;inset:0;background:rgba(255,255,255,0.7);z-index:120;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px">
+  <div class="spinner" style="width:48px;height:48px;border-width:4px;border-top-color:var(--navy-900)"></div>
+  <div id="globalLoaderMsg" style="font-size:15px;color:var(--navy-900);font-weight:700">جاري المعالجة...</div>
+</div>
+
 <!-- ================= شاشة تسجيل الدخول ================= -->
 <div id="loginScreen">
   <div class="login-card">
@@ -570,6 +576,29 @@ function confirmExitApp() {
 async function api(action, params) {
   const body = Object.assign({ action }, params || {});
   try {
+    if (typeof CURRENT_USER !== 'undefined' && CURRENT_USER && !body.requesterId) {
+      body.requesterId = CURRENT_USER.id;
+    }
+    if (typeof CURRENT_USER !== 'undefined' && CURRENT_USER && !body.requesterRole) {
+      body.requesterRole = CURRENT_USER.role;
+    }
+  } catch (e) {
+    // ignore if CURRENT_USER not available yet
+  }
+  // Show global loader and disable the active button (if any)
+  const activeEl = document.activeElement;
+  let prevText = null;
+  try {
+    const loader = document.getElementById('globalLoader');
+    const loaderMsg = document.getElementById('globalLoaderMsg');
+    if (loader) loader.style.display = 'flex';
+    if (loaderMsg) loaderMsg.textContent = action === 'uploadPhotoToDrive' ? 'جاري رفع الصورة...' : 'جاري الحفظ...';
+    if (activeEl && (activeEl.tagName === 'BUTTON' || activeEl.tagName === 'INPUT')) {
+      prevText = activeEl.textContent;
+      try { activeEl.disabled = true; activeEl.textContent = 'جارٍ الحفظ...'; } catch (e) {}
+    }
+  } catch (e) { /* no-op */ }
+  try {
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // تفادي preflight مع Apps Script
@@ -581,6 +610,12 @@ async function api(action, params) {
   } catch (e) {
     showToast(e.message || 'تعذر الاتصال بالخادم', 'err');
     throw e;
+  } finally {
+    try {
+      const loader = document.getElementById('globalLoader');
+      if (loader) loader.style.display = 'none';
+      if (activeEl && prevText !== null) { try { activeEl.disabled = false; activeEl.textContent = prevText; } catch (er) {} }
+    } catch (er) {}
   }
 }
 
@@ -775,7 +810,7 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async () 
 // إطلاق التطبيق
 // ========================================================================
 const NAV_ITEMS = [
-  { key:'dashboard', label:'لوحة التحكم والمؤشرات', icon:'📊', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
+  { key:'dashboard', label:'لوحة التحكم والمؤشرات', icon:'📊', roles:['SYSTEM_ADMIN'] },
   { key:'attendance', label:'الحضور والانصراف', icon:'🕒', roles:['CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'coordination', label:'متابعة اليوم', icon:'🧭', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'assignments', label:'التكليفات والمهام', icon:'🗂️', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
@@ -1163,6 +1198,7 @@ async function renderAttendance(root) {
       <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-primary" id="checkInBtn" style="${status.hasCheckedIn?'background:var(--good);opacity:1':''}" ${status.hasCheckedIn ? 'disabled' : ''} onclick="doAttendanceWithModal()">✅ ${status.hasCheckedIn?'تم تسجيل الحضور':'تسجيل حضور'}</button>
         <button class="btn btn-danger" id="checkOutBtn" style="${status.hasCheckedOut?'background:var(--bad);color:#fff;opacity:1':''}" ${(!status.hasCheckedIn || status.hasCheckedOut) ? 'disabled style="opacity:.5"' : ''}>⏹ ${status.hasCheckedOut?'تم تسجيل الانصراف':'تسجيل انصراف'}</button>
+        ${isCenterAdmin ? '<button class="btn btn-outline" onclick="openDailyCoordinationModal()">موقف التحرك</button>' : ''}
       </div>
       <div class="gps-box" id="gpsBox" style="justify-content:center">📍 سيتم تحديد موقعك تلقائيًا عند التسجيل</div>
       ${!status.hasCheckedIn ? `<p style="color:var(--warn);font-size:12.5px;margin-top:10px">⚠ يُعتبر الموظف غائبًا إذا لم يسجل الحضور قبل الساعة 10:00 صباحًا</p>` : ''}
@@ -2922,8 +2958,20 @@ window.saveProfile = async () => {
       return;
     }
     const base64 = await fileToBase64(file);
-    const uploadRes = await api('uploadPhotoToDrive', { imageData: base64, fileName: file.name, mimeType: file.type });
-    if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
+    // Show local preview immediately and use it as fallback in payload
+    try {
+      const dataUrl = 'data:' + file.type + ';base64,' + base64;
+      CURRENT_USER.photoUrl = dataUrl;
+      updateUserAvatar(); updateTopbarAvatar();
+      photoUrl = dataUrl; // use local preview as fallback
+    } catch (e) {}
+    try {
+      const uploadRes = await api('uploadPhotoToDrive', { imageData: base64, fileName: file.name, mimeType: file.type });
+      if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
+    } catch (e) {
+      // keep local preview even if upload fails
+      showToast('فشل رفع الصورة إلى الخادم، تم الاحتفاظ بمعاينة محلية', 'warn');
+    }
   }
   const payload = {
     userId: CURRENT_USER.id,
@@ -2938,6 +2986,7 @@ window.saveProfile = async () => {
   };
   await api('updateMyProfile', payload);
   showToast('تم حفظ الملف الشخصي','ok');
+  closeModal();
   await refreshMyStatus();
 };
 
