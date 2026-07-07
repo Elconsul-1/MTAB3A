@@ -352,9 +352,9 @@ tbody tr:hover{background:#fafcfd}
       <div class="field"><label>الوحدة المحلية</label><input id="regUnit" placeholder="اختياري"></div>
     </div>
     <div class="field">
-      <label>صورة شخصية (من الموبايل)</label>
-      <input id="regPhotoFile" type="file" accept="image/*" capture="environment">
-      <div style="font-size:11.5px;color:var(--ink-400);margin-top:5px">سيتم رفع الصورة تلقائيًا إلى مجلد جوجل درايف الرسمي عند إرسال الطلب</div>
+      <label>صورة شخصية</label>
+      <input id="regPhotoFile" type="file" accept="image/*">
+      <div style="font-size:11.5px;color:var(--ink-400);margin-top:5px">اختر صورة من الألبوم وسيتم رفعها تلقائيًا إلى مجلد جوجل درايف الرسمي عند إرسال الطلب</div>
     </div>
     <button class="btn btn-primary btn-block" id="submitRegisterBtn">إرسال طلب الاعتماد</button>
   </div>
@@ -470,6 +470,7 @@ let CURRENT_USER = null;   // بيانات المستخدم من قاعدة ال
 let FIREBASE_USER = null;  // بيانات Firebase Auth
 let CENTERS = ['ديوان عام المحافظة','المنيا','ملوي','مغاغة','بني مزار','مطاي','سمالوط','أبو قرقاص','ديرمواس','العدوة'];
 let currentPage = 'dashboard';
+const PAGE_CACHE = {};
 let deferredInstallPrompt = null;
 
 function registerPwaFeatures() {
@@ -811,7 +812,7 @@ function updateTopbarAvatar() {
   const avatar = document.getElementById('topbarAvatar');
   if (!avatar) return;
   if (CURRENT_USER && CURRENT_USER.photoUrl) {
-    avatar.innerHTML = `<img src="${CURRENT_USER.photoUrl}" alt="صورة المستخدم">`;
+    avatar.innerHTML = `<img src="${CURRENT_USER.photoUrl}" alt="صورة المستخدم" style="width:100%;height:100%;object-fit:cover">`;
   } else {
     const initial = (CURRENT_USER?.fullName || '?').trim().charAt(0) || '?';
     avatar.textContent = initial;
@@ -864,7 +865,7 @@ function toggleSidebar(open) {
   document.getElementById('overlayBg').classList.toggle('show', open);
 }
 
-function goPage(key, skipHistory) {
+async function goPage(key, skipHistory, useCache = true) {
   currentPage = key;
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navEl = document.getElementById('nav-' + key);
@@ -875,8 +876,13 @@ function goPage(key, skipHistory) {
   document.getElementById('pageTitle').textContent = titles[key] || '';
   const renderers = { dashboard:renderDashboard, attendance:renderAttendance, coordination:renderCoordination, assignments:renderAssignments, missions:renderMissions, tasks:renderTasks, equipment:renderEquipment, profile:renderProfile, reports:renderReports, users:renderUsers, audit:renderAudit };
   const content = document.getElementById('pageContent');
-  content.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
-  (renderers[key] || renderDashboard)(content);
+  if (PAGE_CACHE[key] && useCache) {
+    content.innerHTML = PAGE_CACHE[key];
+  } else {
+    content.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+  }
+  await (renderers[key] || renderDashboard)(content);
+  PAGE_CACHE[key] = content.innerHTML;
 }
 
 /* ========================================================================
@@ -886,7 +892,7 @@ async function renderDashboard(root) {
   const selectedDate = localStorage.getItem('dashboardDate') || new Date().toISOString().slice(0,10);
   const isSystemAdmin = CURRENT_USER.role === 'SYSTEM_ADMIN';
   const stats = await api('dashboardStats', Object.assign(CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {}, { date: selectedDate }));
-  const centers = isSystemAdmin ? await api('centersOverviewToday', { date: selectedDate }) : [];
+  const centers = await api('centersOverviewToday', Object.assign({ date: selectedDate }, CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {}));
 
   const presentManagers = centers.filter(c => c.directorPresent).length;
   const presentEngineers = centers.filter(c => c.engineerPresent).length;
@@ -918,8 +924,13 @@ async function renderDashboard(root) {
     <div class="summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:16px">
       <div class="summary-card"><div class="summary-label">مديرين متواجدين</div><div class="summary-value">${presentManagers}</div></div>
       <div class="summary-card"><div class="summary-label">مهندسين/فنيين متواجدين</div><div class="summary-value">${presentEngineers}</div></div>
-      <div class="summary-card"><div class="summary-label">سيارات متوفرة</div><div class="summary-value">${availableVehicles}</div></div>
-      <div class="summary-card"><div class="summary-label">المأموريات المفتوحة</div><div class="summary-value">${stats.openMissions}</div></div>
+      <div class="summary-card"><div class="summary-label">سيارات متاحة</div><div class="summary-value">${availableVehicles}</div></div>
+      <div class="summary-card"><div class="summary-label">عدد المعاينات المستهدفة</div><div class="summary-value">${stats.targetCount || 0}</div></div>
+      <div class="summary-card"><div class="summary-label">عدد ما تم إنجازه</div><div class="summary-value">${stats.completedTasks || 0}</div></div>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;font-size:13px;color:var(--ink-600)">
+      <div>بدء العمل: ${stats.workStart ? formatDashboardDateTime(stats.workStart) : '-'}</div>
+      <div>انتهاء العمل: ${stats.workEnd ? formatDashboardDateTime(stats.workEnd) : '-'}</div>
     </div>
     ${systemAdminActions}
     <div class="panel">
@@ -932,12 +943,11 @@ async function renderDashboard(root) {
   if (dateInput) {
     dateInput.onchange = () => {
       localStorage.setItem('dashboardDate', dateInput.value);
-      goPage('dashboard', true);
+      goPage('dashboard', true, false);
     };
   }
-
-  if (window.dashboardClockInterval) clearInterval(window.dashboardClockInterval);
   updateDashboardClock();
+  clearInterval(window.dashboardClockInterval);
   window.dashboardClockInterval = setInterval(updateDashboardClock, 1000);
 }
 
@@ -1003,8 +1013,19 @@ function updateDashboardClock() {
   const el = document.getElementById('dashboardClock');
   if (!el) return;
   const now = new Date();
-  const time = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  el.textContent = `الساعة ${time}`;
+  el.textContent = formatDashboardDateTime(now);
+}
+function formatDashboardDateTime(value) {
+  if (!value) return '-';
+  const date = value instanceof Date ? value : new Date(value);
+  if (isNaN(date.getTime())) return '-';
+  const hour = date.getHours() % 12 || 12;
+  const minute = date.getMinutes().toString().padStart(2, '0');
+  const period = date.getHours() < 12 ? 'ص' : 'م';
+  const day = date.getDate();
+  const month = date.getMonth() + 1;
+  const year = date.getFullYear();
+  return `${hour}.${minute}${period} ${day}/${month}/${year}`;
 }
 function listBars(arr) {
   if (!arr || !arr.length) return `<div class="empty-state"><div class="ic">📭</div>لا توجد بيانات كافية بعد</div>`;
@@ -1783,7 +1804,7 @@ window.submitCenterTask = async () => {
 /* ========================================================================
    التكليفات والمهام (صفحة مدمجة: تكليفات المحافظة + مهام المركز اليومية)
    ======================================================================== */
-let assignmentsActiveTab = 'directives';
+let assignmentsActiveTab = 'general';
 
 async function renderAssignments(root) {
   const canCreate = ['SYSTEM_ADMIN','CENTER_ADMIN'].includes(CURRENT_USER.role);
@@ -1801,25 +1822,37 @@ async function renderAssignments(root) {
       </div>
     </div>
     <div class="tabs">
-      <button class="tab-btn" data-tab="directives">تكليفات وتوجيهات</button>
-      <button class="tab-btn" data-tab="tasks">مهام المركز اليومية</button>
+      <button class="tab-btn" data-tab="general">تكليفات الإدارة العامة</button>
+      <button class="tab-btn" data-tab="center">تكليفات المركز</button>
+      <button class="tab-btn" data-tab="tasks">المهام اليومية</button>
     </div>
-    <div id="asgTabDirectives"></div>
+    <div id="asgTabGeneral"></div>
+    <div id="asgTabCenter" style="display:none"></div>
     <div id="asgTabTasks" style="display:none"></div>
   `;
-  const directivesPane = document.getElementById('asgTabDirectives');
+  const generalPane = document.getElementById('asgTabGeneral');
+  const centerPane = document.getElementById('asgTabCenter');
   const tasksPane = document.getElementById('asgTabTasks');
   const tabBtns = root.querySelectorAll('.tab-btn');
 
   async function activate(tab) {
+    if (!['general','center','tasks'].includes(tab)) {
+      tab = 'general';
+    }
     assignmentsActiveTab = tab;
     tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    directivesPane.style.display = tab === 'directives' ? 'block' : 'none';
+    generalPane.style.display = tab === 'general' ? 'block' : 'none';
+    centerPane.style.display = tab === 'center' ? 'block' : 'none';
     tasksPane.style.display = tab === 'tasks' ? 'block' : 'none';
-    if (tab === 'directives' && !directivesPane.dataset.loaded) {
-      directivesPane.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
-      await renderMissions(directivesPane);
-      directivesPane.dataset.loaded = '1';
+    if (tab === 'general' && !generalPane.dataset.loaded) {
+      generalPane.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+      await renderGeneralAssignments(generalPane);
+      generalPane.dataset.loaded = '1';
+    }
+    if (tab === 'center' && !centerPane.dataset.loaded) {
+      centerPane.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+      await renderCenterAssignments(centerPane);
+      centerPane.dataset.loaded = '1';
     }
     if (tab === 'tasks' && !tasksPane.dataset.loaded) {
       tasksPane.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
@@ -1830,6 +1863,24 @@ async function renderAssignments(root) {
 
   tabBtns.forEach(b => b.onclick = () => activate(b.dataset.tab));
   await activate(assignmentsActiveTab);
+}
+
+async function renderGeneralAssignments(root) {
+  const missions = await api('listMissions', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {});
+  const general = missions.filter(m => m.source === 'GENERAL');
+  root.innerHTML = `<div class="panel"><div class="panel-head"><h3>تكليفات الإدارة العامة</h3></div>` +
+    `<div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>توقيت البداية</th><th>الحالة</th></tr></thead><tbody>` +
+    (general.map(m => `<tr><td>${m.engineerName||'-'}</td><td>${m.center||'-'}</td><td>${m.workType||'-'}</td><td>${m.village||'-'}</td><td>${fmtDate(m.startTime)}</td><td>${m.status||'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📭</div>لا توجد تكليفات من الإدارة العامة</div></td></tr>`) +
+    `</tbody></table></div></div>`;
+}
+
+async function renderCenterAssignments(root) {
+  const missions = await api('listMissions', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {});
+  const center = missions.filter(m => m.source === 'CENTER');
+  root.innerHTML = `<div class="panel"><div class="panel-head"><h3>تكليفات مدير المركز</h3></div>` +
+    `<div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>توقيت البداية</th><th>الحالة</th></tr></thead><tbody>` +
+    (center.map(m => `<tr><td>${m.engineerName||'-'}</td><td>${m.center||'-'}</td><td>${m.workType||'-'}</td><td>${m.village||'-'}</td><td>${fmtDate(m.startTime)}</td><td>${m.status||'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📭</div>لا توجد تكليفات من مدير المركز</div></td></tr>`) +
+    `</tbody></table></div></div>`;
 }
 
 window.openAssignmentModal = async () => {
@@ -2069,7 +2120,7 @@ window.submitMissionProgress = async (id) => {
     updatedBy: CURRENT_USER.id,
     updatedByName: CURRENT_USER.fullName
   });
-  closeModal(); showToast('تم تحديث حالة المأمورية','ok'); assignmentsActiveTab = 'directives'; goPage('assignments', true);
+  closeModal(); showToast('تم تحديث حالة المأمورية','ok'); goPage('missions', true);
 };
 window.openMissionModal = async (sourceOverride = 'CENTER') => {
   const users = await api('listUsers', {});
@@ -2227,7 +2278,7 @@ window.submitMission = async () => {
     createdBy: CURRENT_USER.id,
     createdByName: CURRENT_USER.fullName
   });
-  closeModal(); showToast('تم إنشاء المأمورية بنجاح','ok'); assignmentsActiveTab = 'directives'; goPage('assignments', true);
+  closeModal(); showToast('تم إنشاء المأمورية بنجاح','ok'); goPage('missions', true);
 };
 
 /* ========================================================================
@@ -2738,7 +2789,7 @@ function openProfileModal() {
       <div class="field"><label>المركز</label><select id="profileCenter">${CENTERS.map(c=>`<option ${CURRENT_USER.center===c?'selected':''}>${c}</option>`).join('')}</select></div>
       <div class="field"><label>الدور</label><select id="profileRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${CURRENT_USER.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div>
     </div>
-    <div class="field"><label>صورة شخصية من الهاتف</label><input id="profilePhotoFile" type="file" accept="image/*" capture="environment"></div>
+    <div class="field"><label>صورة شخصية من الهاتف</label><input id="profilePhotoFile" type="file" accept="image/*"></div>
     <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="saveProfile()">حفظ التغييرات</button></div>
   `);
 }
@@ -3062,7 +3113,18 @@ window.openNotifModal = async () => {
 
 /* ---------------------------- أدوات مساعدة عامة ---------------------------- */
 function val(id) { return document.getElementById(id).value.trim ? document.getElementById(id).value.trim() : document.getElementById(id).value; }
-function fmtDate(iso) { if (!iso) return '-'; const d = iso instanceof Date ? iso : new Date(iso); if (Number.isNaN(d.getTime())) return '-'; return d.toLocaleString('ar-EG', { dateStyle:'medium', timeStyle:'short' }); }
+function fmtDate(iso) {
+  if (!iso) return '-';
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (Number.isNaN(d.getTime())) return '-';
+  const hour = d.getHours() % 12 || 12;
+  const minute = d.getMinutes().toString().padStart(2, '0');
+  const period = d.getHours() < 12 ? 'ص' : 'م';
+  const day = d.getDate();
+  const month = d.getMonth() + 1;
+  const year = d.getFullYear();
+  return `${hour}.${minute}${period} ${day}/${month}/${year}`;
+}
 function getDateKey(value) {
   if (!value) return '';
   if (typeof value === 'string') return value.slice(0,10);
