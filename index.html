@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#071b2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="منظومة المحافظة">
-<title>منظومة إدارة أعمال الرفع المساحي والعهد الفنية - محافظة المنيا</title>
+<meta name="apple-mobile-web-app-title" content="متابعة المراكز">
+<title>متابعة المراكز</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -126,6 +126,8 @@ a{color:inherit}
 .btn-primary:hover{background:var(--navy-900)}
 .btn-gold{background:var(--gold-500);color:var(--navy-950)}
 .btn-gold:hover{background:var(--gold-600)}
+.btn[disabled]{opacity:0.65;cursor:not-allowed;filter:grayscale(.06);box-shadow:none}
+.btn-disabled{opacity:0.65;cursor:not-allowed}
 .btn-outline{background:transparent;border:1.5px solid var(--line);color:var(--ink-900)}
 .btn-outline:hover{border-color:var(--navy-600)}
 .btn-danger{background:#fdeaea;color:var(--bad)}
@@ -302,7 +304,7 @@ tbody tr:hover{background:#fafcfd}
   <div class="login-card">
     <div class="login-head">
       <div class="seal">م</div>
-      <h1>منظومة إدارة ومتابعة أعمال الرفع المساحي<br>والعهد الفنية بمحافظة المنيا</h1>
+      <h1>متابعة المراكز</h1>
       <p>الإدارة العامة للمساحة - ديوان محافظة المنيا</p>
     </div>
     <div class="login-body">
@@ -323,15 +325,7 @@ tbody tr:hover{background:#fafcfd}
     <div class="field"><label>البريد الإلكتروني</label><input id="regEmail" disabled></div>
     <div class="field"><label>الاسم رباعي *</label><input id="regFullName" placeholder="مثال: أحمد محمد علي إبراهيم"></div>
     <div class="field-row">
-      <div class="field"><label>الوظيفة *</label>
-        <select id="regJob">
-          <option value="">اختر الوظيفة</option>
-          <option>الإدارة العامة</option>
-          <option>مدير المركز</option>
-          <option>فني</option>
-          <option>مهندس</option>
-        </select>
-      </div>
+      <div class="field"><label>الوظيفة *</label><input id="regJob" placeholder="مثال: مهندس مساحة"></div>
       <div class="field"><label>رقم الهاتف *</label><input id="regPhone" placeholder="01xxxxxxxxx"></div>
     </div>
     <div class="field-row">
@@ -340,23 +334,21 @@ tbody tr:hover{background:#fafcfd}
     </div>
     <div class="field">
       <label>نوع المستخدم *</label>
-      <select id="regRole" style="display:none">
-        <option value="ENGINEER">مهندس مساحة</option>
-        <option value="TECHNICIAN">فني</option>
-        <option value="CENTER_ADMIN">مدير المركز</option>
-        <option value="SYSTEM_ADMIN">الإدارة العامة</option>
+      <select id="regRole">
+        <option value="ENGINEER">مهندس مساحة (غير مرتبط بمركز محدد)</option>
+        <option value="TECHNICIAN">فني (يتبع مدينة/قرية)</option>
+        <option value="CENTER_ADMIN">مدير البنية المعلوماتية بالمركز</option>
+        <option value="SYSTEM_ADMIN">مدير النظام (ديوان المحافظة)</option>
       </select>
     </div>
     <div class="field"><label>ديوان المحافظة (الإدارة العامة) / المركز *</label>
-      <select id="regCenter">
+      <select id="regCenter">${centerOptions(false)}</select>
         <option value="">اختر المركز أو ديوان عام المحافظة</option>
         <option>ديوان عام المحافظة</option>
         <option>المنيا</option><option>ملوي</option><option>مغاغة</option><option>بني مزار</option>
         <option>مطاي</option><option>سمالوط</option><option>أبو قرقاص</option><option>ديرمواس</option><option>العدوة</option>
-        <option value="RURAL_COUNCIL">مجلس قروي</option>
       </select>
     </div>
-    <div class="field" id="regRuralWrap" style="display:none"><label>اسم المجلس/المجلس القروي</label><input id="regRuralCouncil" placeholder="اكتب اسم المجلس القروي (مثال: مجلس قروي ..)"></div>
     <div class="field-row">
       <div class="field"><label>مجلس المدينة</label><input id="regCity" placeholder="اختياري"></div>
       <div class="field"><label>الوحدة المحلية</label><input id="regUnit" placeholder="اختياري"></div>
@@ -522,6 +514,18 @@ function registerPwaFeatures() {
   });
 }
 
+function centerOptions(allowInEquipment, selected) {
+  // Show full list only for system admin or when explicitly allowed on equipment page
+  if (CURRENT_USER && CURRENT_USER.role === 'SYSTEM_ADMIN') {
+    return CENTERS.map(c => `<option value="${c}" ${selected===c ? 'selected' : ''}>${c}</option>`).join('');
+  }
+  if (allowInEquipment && currentPage === 'equipment') {
+    return CENTERS.map(c => `<option value="${c}" ${selected===c ? 'selected' : ''}>${c}</option>`).join('');
+  }
+  const c = (CURRENT_USER && CURRENT_USER.center) ? CURRENT_USER.center : '';
+  return `<option value="${c}">${c}</option>`;
+}
+
 function showInstallBanner() {
   const banner = document.getElementById('installBanner');
   if (!banner || !deferredInstallPrompt) return;
@@ -682,21 +686,11 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async () 
   const nationalId = document.getElementById('regNationalId').value.trim();
   const role = document.getElementById('regRole').value;
   const center = document.getElementById('regCenter').value;
-  let cityCouncil = document.getElementById('regCity').value.trim();
+  const cityCouncil = document.getElementById('regCity').value.trim();
   const localUnit = document.getElementById('regUnit').value.trim();
-  // إذا تم اختيار مجلس قروي، استخدم اسم المجلس المخصص
-  if (document.getElementById('regCenter').value === 'RURAL_COUNCIL') {
-    const rc = document.getElementById('regRuralCouncil').value.trim();
-    if (rc) cityCouncil = rc;
-  }
   
   if (!email || !fullName || !job || !phone || !nationalId || !center) {
     showToast('يرجى استكمال جميع الحقول الإلزامية (*)', 'err');
-    return;
-  }
-  // تحقق إضافي: إذا كان المركز هو مجلس قروي، يجب تعبئة اسم المجلس
-  if (center === 'RURAL_COUNCIL' && !cityCouncil) {
-    showToast('يرجى كتابة اسم المجلس القروي', 'err');
     return;
   }
   
@@ -799,54 +793,22 @@ function updateUserAvatar() {
   if (CURRENT_USER && CURRENT_USER.photoUrl) {
     // عرض الصورة
     avatar.innerHTML = `<img src="${CURRENT_USER.photoUrl}" alt="صورة المستخدم" style="width:100%;height:100%;object-fit:cover">`;
-    
-    // معالجة حالة فشل تحميل الصورة
     const img = avatar.querySelector('img');
     if (img) {
       img.onerror = function() {
-        // إذا فشل تحميل الصورة، اعرض الحرف الأول من الاسم
-        const initial = (CURRENT_USER?.fullName || '?').trim().charAt(0) || '?';
-        avatar.innerHTML = initial;
-        avatar.style.backgroundColor = 'var(--navy-700)';
-        avatar.style.display = 'flex';
-        avatar.style.alignItems = 'center';
-        avatar.style.justifyContent = 'center';
-        avatar.style.fontWeight = '700';
-        avatar.style.fontSize = '13px';
+        // إذا فشل تحميل الصورة، اعرض أيقونة شخص افتراضية
+        const personSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" width="100%" height="100%"><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.9"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.9"/></linearGradient></defs><rect width="100%" height="100%" rx="50%" fill="var(--navy-700)"/><g transform="translate(3 2)" fill="#fff"><path d="M9 11c2.761 0 5-2.239 5-5S11.761 1 9 1 4 3.239 4 6s2.239 5 5 5zm0 2c-3.866 0-8 1.734-8 5v1h16v-1c0-3.266-4.134-5-8-5z"/></g></svg>';
+        avatar.innerHTML = personSvg;
+        avatar.style.background = 'transparent';
       };
     }
   } else {
-    // عرض الحرف الأول من الاسم
-    const initial = (CURRENT_USER?.fullName || '?').trim().charAt(0) || '?';
-    avatar.innerHTML = initial;
-    avatar.style.backgroundColor = 'var(--navy-700)';
-    avatar.style.display = 'flex';
-    avatar.style.alignItems = 'center';
-    avatar.style.justifyContent = 'center';
-    avatar.style.fontWeight = '700';
-    avatar.style.fontSize = '13px';
+    // عرض أيقونة شخص افتراضية
+    const personSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" width="100%" height="100%"><rect width="100%" height="100%" rx="50%" fill="var(--navy-700)"/><g transform="translate(3 2)" fill="#fff"><path d="M9 11c2.761 0 5-2.239 5-5S11.761 1 9 1 4 3.239 4 6s2.239 5 5 5zm0 2c-3.866 0-8 1.734-8 5v1h16v-1c0-3.266-4.134-5-8-5z"/></g></svg>';
+    avatar.innerHTML = personSvg;
+    avatar.style.background = 'transparent';
   }
 }
-
-// تهيئة سلوك نموذج التسجيل: مزامنة الوظيفة مع الدور وإظهار حقل المجلس القروي
-(function initRegisterForm(){
-  const jobSel = document.getElementById('regJob');
-  const roleSel = document.getElementById('regRole');
-  const centerSel = document.getElementById('regCenter');
-  const ruralWrap = document.getElementById('regRuralWrap');
-  if (jobSel && roleSel) {
-    const map = { 'الإدارة العامة':'SYSTEM_ADMIN', 'مدير المركز':'CENTER_ADMIN', 'فني':'TECHNICIAN', 'مهندس':'ENGINEER' };
-    jobSel.addEventListener('change', () => {
-      const v = jobSel.value;
-      if (map[v]) roleSel.value = map[v];
-    });
-  }
-  if (centerSel && ruralWrap) {
-    centerSel.addEventListener('change', () => {
-      ruralWrap.style.display = centerSel.value === 'RURAL_COUNCIL' ? 'block' : 'none';
-    });
-  }
-})();
 
 function updateTopbarAvatar() {
   const avatar = document.getElementById('topbarAvatar');
@@ -854,8 +816,8 @@ function updateTopbarAvatar() {
   if (CURRENT_USER && CURRENT_USER.photoUrl) {
     avatar.innerHTML = `<img src="${CURRENT_USER.photoUrl}" alt="صورة المستخدم" style="width:100%;height:100%;object-fit:cover">`;
   } else {
-    const initial = (CURRENT_USER?.fullName || '?').trim().charAt(0) || '?';
-    avatar.textContent = initial;
+    const personSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" width="100%" height="100%"><rect width="100%" height="100%" rx="10" fill="var(--navy-700)"/><g transform="translate(3 2)" fill="#fff"><path d="M9 11c2.761 0 5-2.239 5-5S11.761 1 9 1 4 3.239 4 6s2.239 5 5 5zm0 2c-3.866 0-8 1.734-8 5v1h16v-1c0-3.266-4.134-5-8-5z"/></g></svg>';
+    avatar.innerHTML = personSvg;
   }
 }
 
@@ -1082,7 +1044,7 @@ function listBars(arr) {
 /* الموقف اليومي لجميع المراكز - للإدارة العامة (ديوان المحافظة) */
 async function renderCentersOverviewPanel(selectedDate) {
   const order = ['العدوة','مغاغة','بني مزار','مطاي','سمالوط','المنيا','أبو قرقاص','ملوي','ديرمواس'];
-  const data = await api('centersOverviewToday', { date: selectedDate });
+  const data = await api('centersOverviewToday', Object.assign({ date: selectedDate }, CURRENT_USER.role === 'SYSTEM_ADMIN' ? {} : { center: CURRENT_USER.center }));
   data.sort(function(a, b) {
     return order.indexOf(a.center) - order.indexOf(b.center);
   });
@@ -1103,7 +1065,7 @@ async function renderCentersOverviewPanel(selectedDate) {
 }
 
 async function renderSystemAdminTrackingPanel(selectedDate) {
-  const movement = await api('centersOverviewToday', { date: selectedDate });
+  const movement = await api('centersOverviewToday', Object.assign({ date: selectedDate }, CURRENT_USER.role === 'SYSTEM_ADMIN' ? {} : { center: CURRENT_USER.center }));
   const totalCenters = movement.length;
   const fullMovement = movement.filter(c => c.directorPresent && c.engineerPresent && c.vehicleAvailable).length;
   const partialMovement = movement.filter(c => (c.directorPresent || c.engineerPresent || c.vehicleAvailable) && !(c.directorPresent && c.engineerPresent && c.vehicleAvailable)).length;
@@ -1216,7 +1178,11 @@ async function renderAttendance(root) {
     </div>`;
   setInterval(() => { const c = document.getElementById('clockNow'); if (c) c.textContent = new Date().toLocaleTimeString('ar-EG'); }, 1000);
   document.getElementById('checkInBtn').onclick = () => doAttendanceWithModal();
-  document.getElementById('checkOutBtn').onclick = () => doAttendance('checkOut');
+  if (isFieldRole) {
+    document.getElementById('checkOutBtn').onclick = () => doCheckoutWithModal();
+  } else {
+    document.getElementById('checkOutBtn').onclick = () => doAttendance('checkOut');
+  }
   
   // تحميل قسم التكليفات للفنيين/المهندسين
   if (isFieldRole) {
@@ -1235,6 +1201,28 @@ window.doAttendanceWithModal = () => {
     openDailyTargetTasksModal();
   }
   doAttendance('checkIn');
+};
+
+// عند تسجيل الانصراف للفني/المهندس: فتح مربع لإدخال ما تم إنجازه ثم تسجيل الانصراف
+window.doCheckoutWithModal = () => {
+  openModal(`
+    <h3>ما الذي تم إنجازه اليوم؟</h3>
+    <div class="field"><label>أدخل ملخصًا قصيرًا عن ما تم إنجازه</label><textarea id="checkoutNote" rows="4" placeholder="مثال: تم رفع مساحي بقرية..." style="direction:rtl"></textarea></div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitCheckoutAndSignOut()">إرسال وتسجيل الانصراف</button></div>
+  `);
+};
+
+window.submitCheckoutAndSignOut = async () => {
+  const note = document.getElementById('checkoutNote')?.value || '';
+  try {
+    // سجل الملاحظة كملاحظة شخصية لليوم (سطر في DailyCoordination مع recordType خاص)
+    await api('recordDailyCoordination', { date: new Date().toISOString().slice(0,10), center: CURRENT_USER.center, notes: note, recordedBy: CURRENT_USER.id, recordedAt: new Date().toISOString() });
+  } catch (e) {
+    // لا نمنع الانصراف إن فشل حفظ الملاحظة
+    console.warn('failed to save checkout note', e);
+  }
+  closeModal();
+  doAttendance('checkOut');
 };
 
 function execModeChip(mode) {
@@ -1367,6 +1355,22 @@ async function renderTechnicianAssignments(root) {
 }
 
 window.updateAssignmentStatus = (assignmentId, currentStatus) => {
+  const isFieldRole = ['ENGINEER','TECHNICIAN'].includes(CURRENT_USER.role);
+  if (isFieldRole) {
+    // للفني/المهندس: نعرض خيارين فقط - إنهاء أو تسجيل معوقات
+    openModal(`
+      <h3>حالة التكليف</h3>
+      <div class="field"><label>ملاحظات/ملحوظة المعوقات أو الإنجاز</label><textarea id="completionNote" rows="4" placeholder="أذكر ما تم أو المعوقات التي واجهتها..."></textarea></div>
+      <div class="modal-close-row">
+        <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+        <button class="btn btn-danger" onclick="submitAssignmentStatusUpdate('${assignmentId}', 'IN_PROGRESS')">معوقات وإرسال ملاحظة</button>
+        <button class="btn btn-primary" onclick="submitAssignmentStatusUpdate('${assignmentId}', 'COMPLETED')">إنهاء وإنهاء المهمة</button>
+      </div>
+    `);
+    return;
+  }
+
+  // للمستخدمين الآخرين: السلوك التسلسلي الافتراضي
   const nextStatuses = {
     'NEW': 'RECEIVED',
     'RECEIVED': 'IN_PROGRESS',
@@ -1716,6 +1720,20 @@ async function renderCoordination(root) {
       `).join('')}</div>
     </div>
 
+    ${CURRENT_USER.role === 'CENTER_ADMIN' ? `
+      <div class="panel">
+        <div class="panel-head"><h3>متابعة اليوم - إجراءات سريعة</h3></div>
+        <div class="coordination-buttons">
+          <button id="btnDirector" class="btn ${centerSummary.find(cs => cs.center === CURRENT_USER.center && cs.directorPresent) ? 'btn-gold' : ''}" ${centerSummary.find(cs => cs.center === CURRENT_USER.center && cs.directorPresent) ? 'disabled' : ''}>👨‍💼 تواجد المدير</button>
+          <button id="btnEngineer" class="btn ${centerSummary.find(cs => cs.center === CURRENT_USER.center && cs.engineerPresent) ? 'btn-gold' : ''}" ${centerSummary.find(cs => cs.center === CURRENT_USER.center && cs.engineerPresent) ? 'disabled' : ''}>👷 تواجد المهندس</button>
+          <button id="btnVehicle" class="btn ${centerSummary.find(cs => cs.center === CURRENT_USER.center && cs.vehicleAvailable) ? 'btn-gold' : ''}" ${centerSummary.find(cs => cs.center === CURRENT_USER.center && cs.vehicleAvailable) ? 'disabled' : ''}>🚗 العربة متاحة</button>
+          <button id="btnStartWork" class="btn btn-outline" ${centerSummary.find(cs => cs.center === CURRENT_USER.center && cs.workStart) ? 'disabled' : ''}>▶️ بدء العمل</button>
+          <button id="btnEndWork" class="btn btn-outline" ${centerSummary.find(cs => cs.center === CURRENT_USER.center && cs.workEnd) ? 'disabled' : ''}>⏹️ انتهاء العمل</button>
+          <button id="btnSetTarget" class="btn btn-primary">🎯 تعيين عدد المعاينات</button>
+        </div>
+      </div>
+    ` : ''}
+
     <div class="panel">
       <div class="panel-head" style="justify-content:space-between;align-items:center">
         <h3>عرض الحضور والغياب</h3>
@@ -1736,7 +1754,7 @@ async function renderCoordination(root) {
     <div class="grid-cards" style="grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
       <div class="panel" style="max-height:420px;overflow:auto">
         <div class="panel-head"><h3>أسماء الحضور</h3></div>
-        <div class="table-wrap"><table><thead><tr><th>المركز</th><th>الاسم</th></tr></thead><tbody id="coordPresentList"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>المركز</th><th>الاسم</th><th>وقت الحضور</th></tr></thead><tbody id="coordPresentList"></tbody></table></div>
       </div>
       <div class="panel" style="max-height:420px;overflow:auto">
         <div class="panel-head"><h3>أسماء الغائبين</h3></div>
@@ -1782,6 +1800,63 @@ async function renderCoordination(root) {
     viewFilter.onchange = refreshCoordTables;
     centerFilter.onchange = refreshCoordTables;
     refreshCoordTables();
+  }
+
+  // إجراءات سريعة لمدير المركز: ربط الأزرار بدوال الحفظ
+  if (CURRENT_USER.role === 'CENTER_ADMIN') {
+    const myCenter = CURRENT_USER.center;
+    const btnDirector = document.getElementById('btnDirector');
+    const btnEngineer = document.getElementById('btnEngineer');
+    const btnVehicle = document.getElementById('btnVehicle');
+    const btnStartWork = document.getElementById('btnStartWork');
+    const btnEndWork = document.getElementById('btnEndWork');
+    const btnSetTarget = document.getElementById('btnSetTarget');
+
+    if (btnDirector) btnDirector.onclick = async () => {
+      try {
+        await api('updateDailyCoordinationStatus', { center: myCenter, field: 'officeStatus', value: 'OPEN_FULL', createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
+        btnDirector.disabled = true; btnDirector.classList.add('btn-disabled');
+        showToast('تم تسجيل تواجد المدير', 'ok'); goPage('coordination', true);
+      } catch (e) { showToast('فشل في تسجيل تواجد المدير', 'err'); }
+    };
+    if (btnEngineer) btnEngineer.onclick = async () => {
+      try {
+        await api('updateDailyCoordinationStatus', { center: myCenter, field: 'engineerStatus', value: 'PRESENT', engineerName: CURRENT_USER.fullName, createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
+        btnEngineer.disabled = true; btnEngineer.classList.add('btn-disabled');
+        showToast('تم تسجيل تواجد المهندس', 'ok'); goPage('coordination', true);
+      } catch (e) { showToast('فشل في تسجيل تواجد المهندس', 'err'); }
+    };
+    if (btnVehicle) btnVehicle.onclick = async () => {
+      try {
+        await api('updateDailyCoordinationStatus', { center: myCenter, field: 'vehicleStatus', value: 'AVAILABLE', createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
+        btnVehicle.disabled = true; btnVehicle.classList.add('btn-disabled');
+        showToast('تم تسجيل توافر العربة', 'ok'); goPage('coordination', true);
+      } catch (e) { showToast('فشل في تسجيل توافر العربة', 'err'); }
+    };
+    if (btnStartWork) btnStartWork.onclick = async () => {
+      try {
+        const now = new Date().toISOString();
+        await api('updateDailyCoordinationStatus', { center: myCenter, field: 'startWork', value: now, createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
+        btnStartWork.disabled = true; btnStartWork.classList.add('btn-disabled');
+        showToast('تم تسجيل بداية العمل', 'ok'); goPage('coordination', true);
+      } catch (e) { showToast('فشل في تسجيل بداية العمل', 'err'); }
+    };
+    if (btnEndWork) btnEndWork.onclick = async () => {
+      try {
+        const now = new Date().toISOString();
+        await api('updateDailyCoordinationStatus', { center: myCenter, field: 'endWork', value: now, createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
+        btnEndWork.disabled = true; btnEndWork.classList.add('btn-disabled');
+        showToast('تم تسجيل انتهاء العمل', 'ok'); goPage('coordination', true);
+      } catch (e) { showToast('فشل في تسجيل انتهاء العمل', 'err'); }
+    };
+    if (btnSetTarget) btnSetTarget.onclick = async () => {
+      try {
+        const n = prompt('أدخل عدد المعاينات المستهدفة اليوم:');
+        if (!n) return;
+        await api('updateDailyCoordinationStatus', { center: myCenter, field: 'targetCount', value: Number(n), createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
+        showToast('تم حفظ عدد المعاينات المستهدفة', 'ok'); goPage('coordination', true);
+      } catch (e) { showToast('فشل في حفظ عدد المعاينات', 'err'); }
+    };
   }
 }
 
@@ -1909,15 +1984,8 @@ async function renderGeneralAssignments(root) {
   const missions = await api('listMissions', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {});
   const general = missions.filter(m => m.source === 'GENERAL');
   root.innerHTML = `<div class="panel"><div class="panel-head"><h3>تكليفات الإدارة العامة</h3></div>` +
-    `<div class="table-wrap"><table><thead><tr><th>الجهة المصدرة</th><th>الجهة الموجه إليها</th><th>مضمون التكليف</th><th>تاريخ التكليف</th><th>ملاحظات</th><th>إجراء</th></tr></thead><tbody>` +
-    (general.map(m => `<tr>
-        <td>${m.createdByName||'-'}</td>
-        <td>${m.assignedTo || m.center || '-'}</td>
-        <td style="max-width:260px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${(m.description||m.details||m.workType)||'-'}</td>
-        <td>${fmtDate(m.startTime)}</td>
-        <td>${m.progressNote||m.notes||'-'}</td>
-        <td>${m.status!=='CLOSED' ? `<button class="btn btn-sm btn-primary" onclick="receiveMission('${m.id}')">استلام</button> <button class="btn btn-sm btn-gold" onclick="completeMission('${m.id}')">إنهاء</button>` : '<span class="chip closed">منتهى</span>'}</td>
-      </tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📭</div>لا توجد تكليفات من الإدارة العامة</div></td></tr>`) +
+    `<div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>توقيت البداية</th><th>الحالة</th></tr></thead><tbody>` +
+    (general.map(m => `<tr><td>${m.engineerName||'-'}</td><td>${m.center||'-'}</td><td>${m.workType||'-'}</td><td>${m.village||'-'}</td><td>${fmtDate(m.startTime)}</td><td>${m.status||'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📭</div>لا توجد تكليفات من الإدارة العامة</div></td></tr>`) +
     `</tbody></table></div></div>`;
 }
 
@@ -1925,33 +1993,10 @@ async function renderCenterAssignments(root) {
   const missions = await api('listMissions', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {});
   const center = missions.filter(m => m.source === 'CENTER');
   root.innerHTML = `<div class="panel"><div class="panel-head"><h3>تكليفات مدير المركز</h3></div>` +
-    `<div class="table-wrap"><table><thead><tr><th>الجهة المصدرة</th><th>الجهة الموجه إليها</th><th>مضمون التكليف</th><th>تاريخ التكليف</th><th>ملاحظات</th><th>إجراء</th></tr></thead><tbody>` +
-    (center.map(m => `<tr>
-        <td>${m.createdByName||'-'}</td>
-        <td>${m.assignedTo || m.center || '-'}</td>
-        <td style="max-width:260px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${(m.description||m.details||m.workType)||'-'}</td>
-        <td>${fmtDate(m.startTime)}</td>
-        <td>${m.progressNote||m.notes||'-'}</td>
-        <td>${m.status!=='CLOSED' ? `<button class="btn btn-sm btn-primary" onclick="receiveMission('${m.id}')">استلام</button> <button class="btn btn-sm btn-gold" onclick="completeMission('${m.id}')">إنهاء</button>` : '<span class="chip closed">منتهى</span>'}</td>
-      </tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📭</div>لا توجد تكليفات من مدير المركز</div></td></tr>`) +
+    `<div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>توقيت البداية</th><th>الحالة</th></tr></thead><tbody>` +
+    (center.map(m => `<tr><td>${m.engineerName||'-'}</td><td>${m.center||'-'}</td><td>${m.workType||'-'}</td><td>${m.village||'-'}</td><td>${fmtDate(m.startTime)}</td><td>${m.status||'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📭</div>لا توجد تكليفات من مدير المركز</div></td></tr>`) +
     `</tbody></table></div></div>`;
 }
-
-window.receiveMission = async (missionId) => {
-  try {
-    await api('updateMissionStatus', { missionId, status: 'RECEIVED', updatedBy: CURRENT_USER.id, updatedByName: CURRENT_USER.fullName });
-    showToast('تم استلام التكليف', 'ok');
-    goPage('assignments', true);
-  } catch (e) { showToast(e.message || 'فشل استلام التكليف', 'err'); }
-};
-
-window.completeMission = async (missionId) => {
-  try {
-    await api('updateMissionStatus', { missionId, status: 'CLOSED', endTime: new Date().toISOString(), updatedBy: CURRENT_USER.id, updatedByName: CURRENT_USER.fullName });
-    showToast('تم إنهاء التكليف', 'ok');
-    goPage('assignments', true);
-  } catch (e) { showToast(e.message || 'فشل إنهاء التكليف', 'err'); }
-};
 
 window.openAssignmentModal = async () => {
   const users = await api('listUsers', {});
@@ -2106,7 +2151,7 @@ async function renderMissions(root) {
     <div class="panel">
       <div class="panel-head"><h3>المأموريات اليومية</h3>${canCreate ? `<button class="btn btn-gold btn-sm" onclick="openMissionModal()">+ إنشاء مأمورية</button>` : ''}</div>
       <div class="filter-grid" style="margin-bottom:10px">
-        <div class="field"><label>المركز</label><select id="missionFilterCenter"><option value="">الكل</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>المركز</label><select id="missionFilterCenter"><option value="">الكل</option>${centerOptions(false)}</select></div>
         <div class="field"><label>نوع العمل</label><select id="missionFilterType"><option value="">الكل</option><option>رفع مساحي</option><option>تحديد منسوب</option><option>أملاك دولة</option><option>مرافق</option><option>أعمال مكتبية</option><option>أخرى</option></select></div>
         <div class="field"><label>الموظف</label><input id="missionFilterEngineer" placeholder="اسم المهندس أو الفني"></div>
         <div class="field"><label>الحالة</label><select id="missionFilterStatus"><option value="">الكل</option><option value="OPEN">مفتوحة</option><option value="CLOSED">مغلقة</option></select></div>
@@ -2267,7 +2312,7 @@ window.openMissionModal = async (sourceOverride = 'CENTER') => {
     } else if (type === 'SPECIFIC_ENGINEER' || type === 'SPECIFIC_TECHNICIAN') {
       const list = type === 'SPECIFIC_ENGINEER' ? engineers : technicians;
       targetContainer.innerHTML = `
-        <div class="field"><label>اختر المركز (اختياري)</label><select id="mTargetCenter"><option value="">الكل</option>${CENTERS.map(c => `<option>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>اختر المركز (اختياري)</label><select id="mTargetCenter"><option value="">الكل</option>${centerOptions(false)}</select></div>
         <div class="field"><label>اختر ${type === 'SPECIFIC_ENGINEER' ? 'مهندسًا' : 'فنيًا'} *</label><select id="mSpecificPerson"><option value="">اختر</option></select></div>
       `;
       const targetCenter = document.getElementById('mTargetCenter');
@@ -2360,7 +2405,7 @@ async function renderTasks(root) {
     <div class="panel">
       <div class="panel-head"><h3>المهام المنفذة</h3><button class="btn btn-gold btn-sm" onclick="openTaskModal()">+ تسجيل مهمة</button></div>
       <div class="filter-grid" style="margin-bottom:10px">
-        <div class="field"><label>المركز</label><select id="taskFilterCenter"><option value="">الكل</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>المركز</label><select id="taskFilterCenter"><option value="">الكل</option>${centerOptions(false)}</select></div>
         <div class="field"><label>نوع المهمة</label><select id="taskFilterType"><option value="">الكل</option><option>رفع مساحي</option><option>تحديد منسوب</option><option>أملاك دولة</option><option>مرافق</option><option>أعمال مكتبية</option><option>أخرى</option></select></div>
         <div class="field"><label>المصدر</label><select id="taskFilterSource"><option value="">الكل</option><option value="CENTER">من مدير المركز</option><option value="GENERAL">من الإدارة العامة</option></select></div>
         <div class="field"><label>الحالة</label><select id="taskFilterStatus"><option value="">الكل</option><option value="DONE">منفذة</option><option value="PENDING">قيد التنفيذ</option></select></div>
@@ -2440,7 +2485,7 @@ async function renderEquipment(root) {
         <div class="panel-head"><h3>الأجهزة المساحية</h3>${isAdmin?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-gold btn-sm" onclick="openAddEquipmentModal()">+ إضافة جهاز</button><button class="btn btn-outline btn-sm" onclick="openImportEquipmentModal()">📥 رفع Excel/CSV</button>${CURRENT_USER.role==='SYSTEM_ADMIN'?`<button class="btn btn-outline btn-sm" onclick="openTransferEquipmentModal()">🔁 نقل بين المخازن</button>`:''}</div>`:''}</div>
         <div class="filter-grid" style="margin-bottom:10px">
           <div class="field"><label>بحث</label><input id="eqSearchInput" placeholder="رقم العهدة أو النوع أو الموديل"></div>
-          <div class="field"><label>المركز</label><select id="eqFilterCenter"><option value="">الكل</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+          <div class="field"><label>المركز</label><select id="eqFilterCenter"><option value="">الكل</option>${centerOptions(true)}</select></div>
           <div class="field"><label>الحالة</label><select id="eqFilterStatus"><option value="">الكل</option><option value="AVAILABLE">متاح</option><option value="WITH_ENGINEER">مع مهندس</option><option value="MAINTENANCE">صيانة</option><option value="OUT_OF_SERVICE">خارج الخدمة</option></select></div>
         </div>
         <div class="table-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>رقم العهدة</th><th>الرقم المسلسل</th><th>النوع</th><th>الموديل / الملحقات</th><th>المركز الأساسي</th><th>الحالة</th><th>الموقع الحالي</th><th>إجراء</th></tr></thead>
@@ -2453,7 +2498,7 @@ async function renderEquipment(root) {
         <div class="filter-grid" style="margin-bottom:10px">
           <div class="field"><label>من</label><input id="eqLogDateFrom" type="date"></div>
           <div class="field"><label>إلى</label><input id="eqLogDateTo" type="date"></div>
-          <div class="field"><label>المركز</label><select id="eqLogFilterCenter"><option value="">الكل</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+          <div class="field"><label>المركز</label><select id="eqLogFilterCenter"><option value="">الكل</option>${centerOptions(true)}</select></div>
         </div>
         <div class="table-wrap" style="max-height:460px;overflow:auto"><table><thead><tr><th>رقم العهدة</th><th>المهندس / نوع الحركة</th><th>الفنيين</th><th>المركز / الانتقال</th><th>القرية</th><th>الغرض</th><th>وقت الخروج</th><th>وقت الرجوع</th><th>إجراء</th></tr></thead>
         <tbody id="eqLogTableBody"></tbody></table></div>
@@ -2538,8 +2583,8 @@ window.openAddEquipmentModal = () => {
       <div class="field"><label>الملحقات</label><input id="eqAccessories" placeholder="مثال: حافظة - شاحن - كابل"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>المركز الأساسي *</label><select id="eqHomeCenter">${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
-      <div class="field"><label>المركز الحالي</label><select id="eqCurrentCenter"><option value="">نفس المركز الأساسي</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+      <div class="field"><label>المركز الأساسي *</label><select id="eqHomeCenter">${centerOptions(true)}</select></div>
+      <div class="field"><label>المركز الحالي</label><select id="eqCurrentCenter"><option value="">نفس المركز الأساسي</option>${centerOptions(true)}</select></div>
     </div>
     <div class="field"><label>ملاحظات</label><textarea id="eqNotes" rows="2"></textarea></div>
     <div class="field"><label>صورة الجهاز (اختياري)</label><input id="eqPhotoFile" type="file" accept="image/*"></div>
@@ -2648,9 +2693,9 @@ window.openEditEquipmentModal = (equipmentId, custodyNumber, serialNumber, type,
       <div class="field"><label>الملحقات</label><input id="eqEditAccessories" value="${accessories || ''}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>المركز الأساسي *</label><select id="eqEditHomeCenter">${CENTERS.map(c=>`<option value="${c}" ${homeCenter===c?'selected':''}>${c}</option>`).join('')}</select></div>
-      <div class="field"><label>الموقع الحالي</label><select id="eqEditCurrentCenter">${CENTERS.map(c=>`<option value="${c}" ${currentCenter===c?'selected':''}>${c}</option>`).join('')}</select></div>
-    </div>
+        <div class="field"><label>المركز الأساسي *</label><select id="eqEditHomeCenter">${centerOptions(true, homeCenter)}</select></div>
+        <div class="field"><label>الموقع الحالي</label><select id="eqEditCurrentCenter">${centerOptions(true, currentCenter)}</select></div>
+      </div>
     <div class="field"><label>الحالة</label><select id="eqEditStatus"><option value="AVAILABLE" ${status==='AVAILABLE'?'selected':''}>متاح</option><option value="WITH_ENGINEER" ${status==='WITH_ENGINEER'?'selected':''}>مع مهندس</option><option value="MAINTENANCE" ${status==='MAINTENANCE'?'selected':''}>صيانة</option><option value="OUT_OF_SERVICE" ${status==='OUT_OF_SERVICE'?'selected':''}>خارج الخدمة</option></select></div>
     <div class="field"><label>ملاحظات</label><textarea id="eqEditNotes" rows="2">${notes || ''}</textarea></div>
     <div class="field"><label>صورة الجهاز (اختياري)</label><input id="eqEditPhotoFile" type="file" accept="image/*"></div>
@@ -2693,7 +2738,7 @@ window.openHandoverModal = (equipmentId, custody) => {
     <div class="field"><label>اسم المهندس المستلم *</label><input id="hEngineer"></div>
     <div class="field"><label>الفنيين المرافقين</label><input id="hTechnicians" placeholder="اسم فني 1، اسم فني 2"></div>
     <div class="field-row">
-      <div class="field"><label>المركز الذي سيعمل به *</label><select id="hCenter">${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+      <div class="field"><label>المركز الذي سيعمل به *</label><select id="hCenter">${centerOptions(true)}</select></div>
       <div class="field"><label>القرية</label><input id="hVillage"></div>
     </div>
     <div class="field-row">
@@ -2856,7 +2901,7 @@ function openProfileModal() {
       <div class="field"><label>طريقة الدخول</label><div style="font-size:13px;color:var(--ink-600);margin-top:6px">سيتم استخدام حساب Google فقط، ولا توجد حاجة لاسم مستخدم أو كلمة مرور إضافية.</div></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>المركز</label><select id="profileCenter">${CENTERS.map(c=>`<option ${CURRENT_USER.center===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div class="field"><label>المركز</label><select id="profileCenter">${centerOptions(false, CURRENT_USER.center)}</select></div>
       <div class="field"><label>الدور</label><select id="profileRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${CURRENT_USER.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div>
     </div>
     <div class="field"><label>صورة شخصية من الهاتف</label><input id="profilePhotoFile" type="file" accept="image/*"></div>
