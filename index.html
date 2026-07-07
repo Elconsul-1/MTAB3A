@@ -395,7 +395,7 @@ tbody tr:hover{background:#fafcfd}
     <div class="topbar">
       <div style="display:flex;align-items:center;gap:10px">
         <button class="menu-toggle" onclick="toggleSidebar(true)">☰</button>
-        <h2 id="pageTitle">لوحة التحكم</h2>
+        <h2 id="pageTitle">لوحة التحكم والمؤشرات</h2>
       </div>
       <div class="topbar-actions" style="align-items:center;gap:10px">
         <div style="font-size:12.5px;color:var(--ink-600);text-align:left;line-height:1.5" id="topbarUserInfo"></div>
@@ -745,16 +745,17 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async () 
 // إطلاق التطبيق
 // ========================================================================
 const NAV_ITEMS = [
-  { key:'dashboard', label:'التحرك اليومي', icon:'📊', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
+  { key:'dashboard', label:'لوحة التحكم والمؤشرات', icon:'📊', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'attendance', label:'الحضور والانصراف', icon:'🕒', roles:['CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
-  { key:'coordination', label:'المتابعة اليومية للمركز', icon:'🧭', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
-  { key:'missions', label:'المأموريات اليومية', icon:'🗺️', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
-  { key:'tasks', label:'المهام المنفذة', icon:'📋', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
-  { key:'equipment', label:'الأجهزة المساحية', icon:'📡', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER'] },
-  { key:'reports', label:'التقارير', icon:'🧾', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
+  { key:'coordination', label:'متابعة اليوم', icon:'🧭', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
+  { key:'assignments', label:'التكليفات والمهام', icon:'🗂️', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
+  { key:'equipment', label:'الأجهزة المساحية', icon:'🛠️', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'users', label:'إدارة المستخدمين', icon:'👥', roles:['SYSTEM_ADMIN'] },
-  { key:'audit', label:'سجل العمليات', icon:'🗂️', roles:['SYSTEM_ADMIN'] },
 ];
+/* ملاحظة: قسمي "التقارير" و"سجل العمليات" لم يُحذفا من الكود،
+   تم فقط إخفاؤهما من القائمة الجانبية ضمن خطوة تبسيط الأقسام. الدوال البرمجية
+   الخاصة بهما (renderReports / renderAudit) ما زالت موجودة
+   بالكامل ويمكن إعادة إظهارها في القائمة لاحقًا بإضافة سطر واحد فقط هنا. */
 
 // دالة تحديث الصورة في الـ Sidebar
 function updateUserAvatar() {
@@ -810,6 +811,8 @@ function launchApp() {
   goPage(currentPage, true);
   refreshNotifCount();
   setInterval(refreshNotifCount, 60000);
+  // تسجيل حدث الدخول في سجل العمليات (لا يُوقف التطبيق لو فشل الاتصال)
+  api('recordLogin', { userId: CURRENT_USER.id, userName: CURRENT_USER.fullName, email: CURRENT_USER.email }).catch(() => {});
 }
 
 function roleLabel(r) {
@@ -841,9 +844,9 @@ function goPage(key, skipHistory) {
   if (navEl) navEl.classList.add('active');
   toggleSidebar(false);
   if (!skipHistory) history.pushState({ page: key }, '', '');
-  const titles = { dashboard:'التحرك اليومي', attendance:'الحضور والانصراف', coordination:'المتابعة اليومية', missions:'المأموريات اليومية', tasks:'المهام المنفذة', equipment:'الأجهزة المساحية', profile:'الملف الشخصي', reports:'التقارير', users:'إدارة المستخدمين', audit:'سجل العمليات' };
+  const titles = { dashboard:'لوحة التحكم والمؤشرات', attendance:'الحضور والانصراف', coordination:'متابعة اليوم', assignments:'التكليفات والمهام', missions:'المأموريات اليومية', tasks:'المهام المنفذة', equipment:'الأجهزة المساحية', profile:'الملف الشخصي', reports:'التقارير', users:'إدارة المستخدمين', audit:'سجل العمليات' };
   document.getElementById('pageTitle').textContent = titles[key] || '';
-  const renderers = { dashboard:renderDashboard, attendance:renderAttendance, coordination:renderCoordination, missions:renderMissions, tasks:renderTasks, equipment:renderEquipment, profile:renderProfile, reports:renderReports, users:renderUsers, audit:renderAudit };
+  const renderers = { dashboard:renderDashboard, attendance:renderAttendance, coordination:renderCoordination, assignments:renderAssignments, missions:renderMissions, tasks:renderTasks, equipment:renderEquipment, profile:renderProfile, reports:renderReports, users:renderUsers, audit:renderAudit };
   const content = document.getElementById('pageContent');
   content.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
   (renderers[key] || renderDashboard)(content);
@@ -862,7 +865,7 @@ async function renderDashboard(root) {
   root.innerHTML = `
     <div class="hero-panel">
       <div class="hero-badge">📊</div>
-      <h3 class="hero-title">التحرك اليومي</h3>
+      <h3 class="hero-title">لوحة التحكم والمؤشرات</h3>
       <p class="hero-sub">عرض يومي واضح للحضور والغياب والمأموريات والمهام والأجهزة مع إمكانية استعراض أي يوم سابق.</p>
     </div>
     <div class="section-toolbar">
@@ -878,7 +881,6 @@ async function renderDashboard(root) {
       <div class="summary-card"><div class="summary-label">إجمالي الحالات</div><div class="summary-value">${stats.totalCases}</div></div>
       <div class="summary-card"><div class="summary-label">الأجهزة المتاحة</div><div class="summary-value">${stats.equipmentAvailable}</div></div>
     </div>
-    ${centersOverviewHtml}
     <div class="grid-cards" style="grid-template-columns:1fr 1fr">
       <div class="panel">
         <div class="panel-head"><h3>أكثر المهندسين/الفنيين إنتاجية</h3></div>
@@ -1314,7 +1316,46 @@ window.submitCenterTask = async () => {
 };
 
 /* ========================================================================
-   المأموريات اليومية
+   التكليفات والمهام (صفحة مدمجة: تكليفات المحافظة + مهام المركز اليومية)
+   ======================================================================== */
+let assignmentsActiveTab = 'directives';
+
+async function renderAssignments(root) {
+  root.innerHTML = `
+    <div class="tabs">
+      <button class="tab-btn" data-tab="directives">تكليفات وتوجيهات</button>
+      <button class="tab-btn" data-tab="tasks">مهام المركز اليومية</button>
+    </div>
+    <div id="asgTabDirectives"></div>
+    <div id="asgTabTasks" style="display:none"></div>
+  `;
+  const directivesPane = document.getElementById('asgTabDirectives');
+  const tasksPane = document.getElementById('asgTabTasks');
+  const tabBtns = root.querySelectorAll('.tab-btn');
+
+  async function activate(tab) {
+    assignmentsActiveTab = tab;
+    tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    directivesPane.style.display = tab === 'directives' ? 'block' : 'none';
+    tasksPane.style.display = tab === 'tasks' ? 'block' : 'none';
+    if (tab === 'directives' && !directivesPane.dataset.loaded) {
+      directivesPane.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+      await renderMissions(directivesPane);
+      directivesPane.dataset.loaded = '1';
+    }
+    if (tab === 'tasks' && !tasksPane.dataset.loaded) {
+      tasksPane.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+      await renderTasks(tasksPane);
+      tasksPane.dataset.loaded = '1';
+    }
+  }
+
+  tabBtns.forEach(b => b.onclick = () => activate(b.dataset.tab));
+  await activate(assignmentsActiveTab);
+}
+
+/* ========================================================================
+   المأموريات اليومية (توجيهات وتكليفات المحافظة/مدير المركز)
    ======================================================================== */
 async function renderMissions(root) {
   const canCreate = ['SYSTEM_ADMIN','CENTER_ADMIN'].includes(CURRENT_USER.role);
@@ -1409,7 +1450,7 @@ window.submitMissionProgress = async (id) => {
     updatedBy: CURRENT_USER.id,
     updatedByName: CURRENT_USER.fullName
   });
-  closeModal(); showToast('تم تحديث حالة المأمورية','ok'); goPage('missions', true);
+  closeModal(); showToast('تم تحديث حالة المأمورية','ok'); assignmentsActiveTab = 'directives'; goPage('assignments', true);
 };
 window.openMissionModal = async () => {
   const users = await api('listUsers', {});
@@ -1559,7 +1600,7 @@ window.submitMission = async () => {
     createdBy: CURRENT_USER.id,
     createdByName: CURRENT_USER.fullName
   });
-  closeModal(); showToast('تم إنشاء المأمورية بنجاح','ok'); goPage('missions', true);
+  closeModal(); showToast('تم إنشاء المأمورية بنجاح','ok'); assignmentsActiveTab = 'directives'; goPage('assignments', true);
 };
 
 /* ========================================================================
@@ -1630,7 +1671,7 @@ window.submitTask = async () => {
     location: val('tLocation'), startTime: start, endTime: val('tEnd'), casesCount: Number(val('tCases'))||0, notes: val('tNotes'),
     status: 'PENDING', source: val('tSource') || 'CENTER', createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
   });
-  closeModal(); showToast('تم حفظ المهمة','ok'); goPage('tasks', true);
+  closeModal(); showToast('تم حفظ المهمة','ok'); assignmentsActiveTab = 'tasks'; goPage('assignments', true);
 };
 
 /* ========================================================================
@@ -1648,7 +1689,7 @@ async function renderEquipment(root) {
     </div>
     <div id="eqTabList">
       <div class="panel">
-        <div class="panel-head"><h3>الأجهزة المساحية</h3>${isAdmin?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-gold btn-sm" onclick="openAddEquipmentModal()">+ إضافة جهاز</button><button class="btn btn-outline btn-sm" onclick="openImportEquipmentModal()">📥 رفع Excel/CSV</button></div>`:''}</div>
+        <div class="panel-head"><h3>الأجهزة المساحية</h3>${isAdmin?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-gold btn-sm" onclick="openAddEquipmentModal()">+ إضافة جهاز</button><button class="btn btn-outline btn-sm" onclick="openImportEquipmentModal()">📥 رفع Excel/CSV</button>${CURRENT_USER.role==='SYSTEM_ADMIN'?`<button class="btn btn-outline btn-sm" onclick="openTransferEquipmentModal()">🔁 نقل بين المخازن</button>`:''}</div>`:''}</div>
         <div class="filter-grid" style="margin-bottom:10px">
           <div class="field"><label>بحث</label><input id="eqSearchInput" placeholder="رقم العهدة أو النوع أو الموديل"></div>
           <div class="field"><label>المركز</label><select id="eqFilterCenter"><option value="">الكل</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
@@ -1666,7 +1707,7 @@ async function renderEquipment(root) {
           <div class="field"><label>إلى</label><input id="eqLogDateTo" type="date"></div>
           <div class="field"><label>المركز</label><select id="eqLogFilterCenter"><option value="">الكل</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
         </div>
-        <div class="table-wrap" style="max-height:460px;overflow:auto"><table><thead><tr><th>رقم العهدة</th><th>المهندس</th><th>الفنيين</th><th>المركز</th><th>القرية</th><th>الغرض</th><th>وقت الخروج</th><th>وقت الرجوع</th><th>إجراء</th></tr></thead>
+        <div class="table-wrap" style="max-height:460px;overflow:auto"><table><thead><tr><th>رقم العهدة</th><th>المهندس / نوع الحركة</th><th>الفنيين</th><th>المركز / الانتقال</th><th>القرية</th><th>الغرض</th><th>وقت الخروج</th><th>وقت الرجوع</th><th>إجراء</th></tr></thead>
         <tbody id="eqLogTableBody"></tbody></table></div>
       </div>
     </div>
@@ -1694,9 +1735,16 @@ async function renderEquipment(root) {
     const logCenter = document.getElementById('eqLogFilterCenter')?.value || '';
     const filteredLogs = (window.__equipmentData.logs || []).filter(l => {
       const d = (l.deliverTime || '').slice(0, 10);
-      return (!logFrom || d >= logFrom) && (!logTo || d <= logTo) && (!logCenter || (l.center || '').includes(logCenter));
+      return (!logFrom || d >= logFrom) && (!logTo || d <= logTo) && (!logCenter || (l.center || '').includes(logCenter) || (l.fromLocation||'').includes(logCenter) || (l.toLocation||'').includes(logCenter));
     });
-    document.getElementById('eqLogTableBody').innerHTML = filteredLogs.map(l=>`<tr><td>${l.custodyNumber||'-'}</td><td>${l.engineerName||'-'}</td><td>${l.technicians||'-'}</td><td>${l.center||'-'}</td><td>${l.village||'-'}</td><td>${l.purpose||'-'}</td><td>${fmtDate(l.exitTime || l.deliverTime)}</td><td>${l.returnTime?fmtDate(l.returnTime):'<span class="chip withengineer">قيد الاستخدام</span>'}</td><td><button class="btn btn-outline btn-sm" onclick='printHandoverReport(${JSON.stringify(l).replace(/'/g,"&#39;")})'>🖨 طباعة</button></td></tr>`).join('') || `<tr><td colspan="9"><div class="empty-state">لا يوجد سجل</div></td></tr>`;
+    document.getElementById('eqLogTableBody').innerHTML = filteredLogs.map(l=>{
+      const isTransfer = l.logType === 'TRANSFER';
+      const engineerCell = isTransfer ? `<span class="chip maintenance">نقل مخزني</span>` : (l.engineerName||'-');
+      const centerCell = isTransfer ? `${l.fromLocation||'-'} ← ${l.toLocation||'-'}` : (l.center||'-');
+      const returnCell = isTransfer ? '<span class="chip approved">تم النقل</span>' : (l.returnTime?fmtDate(l.returnTime):'<span class="chip withengineer">قيد الاستخدام</span>');
+      const printBtn = isTransfer ? '-' : `<button class="btn btn-outline btn-sm" onclick='printHandoverReport(${JSON.stringify(l).replace(/'/g,"&#39;")})'>🖨 طباعة</button>`;
+      return `<tr><td>${l.custodyNumber||'-'}</td><td>${engineerCell}</td><td>${l.technicians||'-'}</td><td>${centerCell}</td><td>${l.village||'-'}</td><td>${l.purpose||'-'}</td><td>${fmtDate(l.exitTime || l.deliverTime)}</td><td>${returnCell}</td><td>${printBtn}</td></tr>`;
+    }).join('') || `<tr><td colspan="9"><div class="empty-state">لا يوجد سجل</div></td></tr>`;
   };
   ['eqSearchInput','eqFilterCenter','eqFilterStatus','eqLogDateFrom','eqLogDateTo','eqLogFilterCenter'].forEach(id => {
     const el = document.getElementById(id);
@@ -1814,6 +1862,28 @@ window.submitEquipmentImport = async () => {
     }
   };
   reader.readAsText(file);
+};
+window.openTransferEquipmentModal = () => {
+  const equipment = (window.__equipmentData.equipment || []).filter(e => e.status !== 'WITH_ENGINEER');
+  openModal(`
+    <h3>نقل جهاز بين المخازن / المراكز</h3>
+    <p style="font-size:12.5px;color:var(--ink-600);margin-top:-8px">يُستخدم هذا لنقل جهاز من مخزن الإدارة العامة إلى أحد المراكز أو العكس، أو بين مركزين، دون تسليمه لمهندس. يُسجَّل النقل في السجل تلقائيًا.</p>
+    <div class="field"><label>الجهاز *</label>
+      <select id="trEquipment">${equipment.map(e=>`<option value="${e.id}">${e.custodyNumber} - ${e.type} (حاليًا: ${e.currentCenter||e.homeCenter||'-'})</option>`).join('') || '<option value="">لا توجد أجهزة متاحة للنقل</option>'}</select>
+    </div>
+    <div class="field"><label>الموقع الجديد *</label><select id="trTarget">${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+    <div class="field"><label>سبب النقل</label><input id="trReason" placeholder="مثال: إعادة توزيع أجهزة"></div>
+    <div class="field"><label>ملاحظات</label><textarea id="trNotes" rows="2"></textarea></div>
+    <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitTransferEquipment()">تأكيد النقل</button></div>
+  `);
+};
+window.submitTransferEquipment = async () => {
+  const equipmentId = val('trEquipment'), toLocation = val('trTarget');
+  if (!equipmentId || !toLocation) { showToast('يرجى اختيار الجهاز والموقع الجديد','err'); return; }
+  try {
+    await api('transferEquipment', { equipmentId, toLocation, reason: val('trReason'), notes: val('trNotes'), createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
+    closeModal(); showToast('تم نقل الجهاز بنجاح','ok'); goPage('equipment', true);
+  } catch (e) {}
 };
 window.openEditEquipmentModal = (equipmentId, custodyNumber, serialNumber, type, model, brand, accessories, homeCenter, currentCenter, status, photoUrl, notes) => {
   openModal(`
@@ -2188,12 +2258,13 @@ async function renderAudit(root) {
     <div class="panel">
       <div class="panel-head"><h3>سجل جميع العمليات</h3></div>
       <div class="table-wrap"><table><thead><tr><th>المستخدم</th><th>الإجراء</th><th>التفاصيل</th><th>التاريخ والوقت</th></tr></thead>
-      <tbody>${logs.slice().reverse().map(l=>`<tr><td>${l.userName||'-'}</td><td>${translateAuditAction(l.action)}</td><td style="max-width:280px;white-space:normal">${translateAuditDetails(l.action, l.details)}</td><td>${fmtDate(l.timestamp)}</td></tr>`).join('') || `<tr><td colspan="4"><div class="empty-state">لا يوجد سجل عمليات بعد</div></td></tr>`}</tbody></table></div>
+      <tbody>${logs.slice().reverse().map(l=>`<tr><td>${l.userName||'-'}</td><td>${translateAuditAction(l.action)}</td><td style="max-width:360px;white-space:normal">${l.message || translateAuditDetails(l.action, l.details)}</td><td>${fmtDate(l.timestamp)}</td></tr>`).join('') || `<tr><td colspan="4"><div class="empty-state">لا يوجد سجل عمليات بعد</div></td></tr>`}</tbody></table></div>
     </div>`;
 }
 
 function translateAuditAction(action) {
   const labels = {
+    LOGIN: 'تسجيل دخول',
     REGISTER: 'تسجيل مستخدم جديد',
     APPROVE_USER: 'موافقة على مستخدم',
     REJECT_USER: 'رفض مستخدم',
@@ -2215,7 +2286,8 @@ function translateAuditAction(action) {
     UPDATE_EQUIPMENT: 'تعديل بيانات جهاز',
     UPDATE_EQUIPMENT_STATUS: 'تغيير حالة جهاز',
     HANDOVER_EQUIPMENT: 'تسليم جهاز',
-    RETURN_EQUIPMENT: 'استلام جهاز'
+    RETURN_EQUIPMENT: 'استلام جهاز',
+    TRANSFER_EQUIPMENT: 'نقل جهاز بين المخازن'
   };
   return labels[action] || (action ? action.replace(/_/g, ' ') : '-');
 }
@@ -2257,7 +2329,9 @@ function translateAuditDetails(action, details) {
       technician: 'الفني',
       technicianNames: 'أسماء الفنيين',
       mission: 'المأمورية',
-      task: 'المهمة'
+      task: 'المهمة',
+      fromLocation: 'من موقع',
+      toLocation: 'إلى موقع'
     };
     return map[key] || key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim();
   }
@@ -2301,11 +2375,13 @@ function translateAuditDetails(action, details) {
   } else if (action === 'CREATE_TASK' || action === 'UPDATE_TASK_STATUS') {
     push('معرّف المهمة', obj.taskId || obj.task);
     if (obj.status) push('الحالة', translateStatus(obj.status));
-  } else if (action === 'ADD_EQUIPMENT' || action === 'UPDATE_EQUIPMENT' || action === 'UPDATE_EQUIPMENT_STATUS' || action === 'HANDOVER_EQUIPMENT' || action === 'RETURN_EQUIPMENT') {
+  } else if (action === 'ADD_EQUIPMENT' || action === 'UPDATE_EQUIPMENT' || action === 'UPDATE_EQUIPMENT_STATUS' || action === 'HANDOVER_EQUIPMENT' || action === 'RETURN_EQUIPMENT' || action === 'TRANSFER_EQUIPMENT') {
     push('معرّف الجهاز', obj.equipmentId);
     if (obj.engineer) push('المهندس', obj.engineer);
     if (obj.purpose) push('الغرض', obj.purpose);
     if (obj.status) push('الحالة', translateEquipmentStatus(obj.status));
+    if (obj.fromLocation) push('من موقع', obj.fromLocation);
+    if (obj.toLocation) push('إلى موقع', obj.toLocation);
     if (obj.fields) push('الحقول المعدلة', Array.isArray(obj.fields) ? obj.fields.join(', ') : obj.fields);
   } else {
     Object.keys(obj).forEach(function(key) {
@@ -2407,6 +2483,13 @@ function bindFilterInputs(prefix, onChange, filterMap) {
 function openModal(html) { document.getElementById('modalBox').innerHTML = html; document.getElementById('modalOverlay').classList.add('show'); }
 function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
 document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
+function doLogout() {
+  hideAllScreens();
+  CURRENT_USER = null;
+  auth.signOut().finally(() => {
+    document.getElementById('loginScreen').style.display = 'flex';
+  });
+}
 </script>
 </body>
 </html>
