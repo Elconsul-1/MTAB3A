@@ -476,6 +476,7 @@ function registerPwaFeatures() {
   document.getElementById('installActionBtn').addEventListener('click', async () => {
     if (!deferredInstallPrompt) {
       showToast('افتح القائمة في المتصفح واختر تثبيت التطبيق أو إضافة إلى الشاشة الرئيسية', 'ok');
+      hideInstallBanner();
       return;
     }
     deferredInstallPrompt.prompt();
@@ -483,7 +484,8 @@ function registerPwaFeatures() {
     if (result.outcome === 'accepted') {
       hideInstallBanner();
     } else {
-      showToast('تم إلغاء تثبيت المنظومة', 'err');
+      showToast('تم إلغاء التثبيت', 'err');
+      hideInstallBanner();
     }
     deferredInstallPrompt = null;
   });
@@ -496,7 +498,7 @@ function registerPwaFeatures() {
 
 function showInstallBanner() {
   const banner = document.getElementById('installBanner');
-  if (!banner) return;
+  if (!banner || !deferredInstallPrompt) return;
   const alreadyDismissed = localStorage.getItem('pwaInstallDismissed') === '1';
   const alreadyInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
   if (alreadyDismissed || alreadyInstalled) return;
@@ -793,7 +795,6 @@ function updateUserAvatar() {
 function launchApp() {
   hideAllScreens();
   registerPwaFeatures();
-  showInstallBanner();
   document.getElementById('app').style.display = 'block';
   document.getElementById('sideName').textContent = CURRENT_USER.fullName;
   document.getElementById('sideRole').textContent = roleLabel(CURRENT_USER.role) + (CURRENT_USER.center ? ' - ' + CURRENT_USER.center : '');
@@ -861,7 +862,7 @@ async function renderDashboard(root) {
   root.innerHTML = `
     <div class="hero-panel">
       <div class="hero-badge">📊</div>
-      <h3 class="hero-title">لوحة تحكم تشغيلية متقدمة</h3>
+      <h3 class="hero-title">التحرك اليومي</h3>
       <p class="hero-sub">عرض يومي واضح للحضور والغياب والمأموريات والمهام والأجهزة مع إمكانية استعراض أي يوم سابق.</p>
     </div>
     <div class="section-toolbar">
@@ -936,7 +937,7 @@ function centerStatus(label, on, value) {
   return `<div class="center-status"><button class="status-pill ${on ? 'on' : ''}" disabled>${label}</button><div class="status-text">${value || '-'}</div></div>`;
 }
 function miniBadge(label, on) {
-  return `<span class="chip ${on ? 'approved' : 'rejected'}" style="font-size:12px;padding:4px 8px;min-width:70px;display:inline-block;text-align:center">${label}</span>`;
+  return `<span class="chip ${on ? 'approved' : 'rejected'}" style="font-size:11px;padding:3px 6px;min-width:56px;display:inline-block;text-align:center">${label}</span>`;
 }
 
 function miniStatus(label, on, timeVal) {
@@ -1385,7 +1386,7 @@ window.openMissionModal = async () => {
     <div class="field"><label>مصدر المأمورية *</label>
       <select id="mSource"><option value="CENTER">من مدير المركز</option><option value="GENERAL">من الإدارة العامة</option></select>
     </div>
-    <div class="field"><label>نوع التكليف *</label>
+    <div class="field"><label>الجهة الصادر لها التكليف *</label>
       <select id="mAssignmentType">
         <option value="ALL_CENTERS_MANAGERS">جميع المراكز - مدراء</option>
         <option value="ALL_CENTERS_TECHNICIANS">جميع المراكز - فنيين</option>
@@ -1402,7 +1403,6 @@ window.openMissionModal = async () => {
     </div>
     <div class="field-row">
       <div class="field"><label>الوحدة المحلية</label><input id="mUnit"></div>
-      <div class="field"><label>المركز الرئيسي</label><select id="mCenter"><option value="">اختر المركز</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
     </div>
     <div class="field-row">
       <div class="field"><label>القرية</label><input id="mVillage"></div>
@@ -1421,7 +1421,6 @@ window.openMissionModal = async () => {
 
   const assignmentType = document.getElementById('mAssignmentType');
   const targetContainer = document.getElementById('mAssignmentTarget');
-  const centerSelect = document.getElementById('mCenter');
   const selectedEngineer = document.getElementById('mEngineer');
   const selectedTechs = document.getElementById('mTechs');
 
@@ -1429,11 +1428,18 @@ window.openMissionModal = async () => {
     const type = assignmentType.value;
     if (type === 'SPECIFIC_CENTER') {
       targetContainer.innerHTML = `
-        <label style="display:block;margin-bottom:8px">اختر المركز أو أكثر</label>
+        <label style="display:block;margin-bottom:8px">اختر مركزًا واحدًا أو أكثر</label>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><input id="mAllCenters" type="checkbox"> <span>كل المراكز</span></label>
         <div style="display:flex;flex-wrap:wrap;gap:10px">${CENTERS.map(c => `<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" name="mAssignedCenters" value="${c}">${c}</label>`).join('')}</div>
       `;
       selectedEngineer.parentElement.style.display = 'none';
       selectedTechs.parentElement.style.display = 'none';
+      const allCentersCheckbox = document.getElementById('mAllCenters');
+      if (allCentersCheckbox) {
+        allCentersCheckbox.onchange = () => {
+          document.querySelectorAll('input[name="mAssignedCenters"]').forEach(chk => chk.checked = allCentersCheckbox.checked);
+        };
+      }
     } else if (type === 'SPECIFIC_ENGINEER' || type === 'SPECIFIC_TECHNICIAN') {
       const list = type === 'SPECIFIC_ENGINEER' ? engineers : technicians;
       targetContainer.innerHTML = `
@@ -1447,15 +1453,17 @@ window.openMissionModal = async () => {
       function updatePeople() {
         const center = targetCenter.value;
         const filtered = list.filter(u => !center || u.center === center);
-        specificPerson.innerHTML = `<option value="">اختر</option>${filtered.map(u => `<option value="${u.fullName}">${u.fullName} ${center ? '' : '(' + u.center + ')'}</option>`).join('')}`;
+        specificPerson.innerHTML = `<option value="">اختر</option>${filtered.map(u => `<option value="${u.fullName}" data-center="${u.center}">${u.fullName}${center ? '' : ' (' + u.center + ')'}</option>`).join('')}`;
       }
-      targetCenter.onchange = updatePeople;
+      if (targetCenter) {
+        targetCenter.onchange = updatePeople;
+      }
       updatePeople();
     } else {
       const labels = {
-        ALL_CENTERS_MANAGERS: 'ستصل المأمورية إلى جميع مدراء المراكز.',
-        ALL_CENTERS_TECHNICIANS: 'ستصل المأمورية إلى جميع الفنيين في المراكز.',
-        ALL_CENTERS_ENGINEERS: 'ستصل المأمورية إلى جميع المهندسين في المراكز.'
+        ALL_CENTERS_MANAGERS: 'سيتم توجيه التكليف إلى جميع مدراء المراكز.',
+        ALL_CENTERS_TECHNICIANS: 'سيتم توجيه التكليف إلى جميع الفنيين في المراكز.',
+        ALL_CENTERS_ENGINEERS: 'سيتم توجيه التكليف إلى جميع المهندسين في المراكز.'
       };
       targetContainer.innerHTML = `<div style="font-size:13px;color:var(--ink-600);">${labels[type] || ''}</div>`;
       selectedEngineer.parentElement.style.display = 'block';
@@ -1475,18 +1483,21 @@ window.submitMission = async () => {
   const start = val('mStart');
   if (!workType || !start) { showToast('يرجى إدخال نوع المأمورية ووقت البداية','err'); return; }
 
-  let centerValue = val('mCenter');
+  let centerValue = '';
   let assignedTo = '';
   if (assignmentType === 'SPECIFIC_CENTER') {
     const checked = Array.from(document.querySelectorAll('input[name="mAssignedCenters"]:checked')).map(i => i.value);
     if (!checked.length) { showToast('يرجى اختيار مركز واحد على الأقل','err'); return; }
-    centerValue = checked.join('، ');
-    assignedTo = 'مركز محدد';
+    centerValue = checked.length === CENTERS.length ? 'كل المراكز' : checked.join('، ');
+    assignedTo = centerValue;
   } else if (assignmentType === 'SPECIFIC_ENGINEER' || assignmentType === 'SPECIFIC_TECHNICIAN') {
-    const specific = val('mSpecificPerson');
-    if (!specific) { showToast('يرجى اختيار اسم ' + (assignmentType === 'SPECIFIC_ENGINEER' ? 'المهندس' : 'الفني'), 'err'); return; }
-    assignedTo = specific;
-    centerValue = val('mTargetCenter') || centerValue;
+    const specificEl = document.getElementById('mSpecificPerson');
+    const specificValue = specificEl ? specificEl.value : '';
+    if (!specificValue) { showToast('يرجى اختيار ' + (assignmentType === 'SPECIFIC_ENGINEER' ? 'المهندس' : 'الفني'), 'err'); return; }
+    const selectedOption = specificEl.selectedOptions[0];
+    const specificCenter = selectedOption ? selectedOption.dataset.center : '';
+    assignedTo = selectedOption ? selectedOption.textContent : specificValue;
+    centerValue = specificCenter || 'غير محدد';
   } else {
     const labels = {
       ALL_CENTERS_MANAGERS: 'جميع مدراء المراكز',
@@ -1494,7 +1505,7 @@ window.submitMission = async () => {
       ALL_CENTERS_ENGINEERS: 'جميع المهندسين'
     };
     assignedTo = labels[assignmentType] || '';
-    if (!centerValue) centerValue = 'كل المراكز';
+    centerValue = 'كل المراكز';
   }
 
   await api('createMission', {
