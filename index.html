@@ -323,7 +323,15 @@ tbody tr:hover{background:#fafcfd}
     <div class="field"><label>البريد الإلكتروني</label><input id="regEmail" disabled></div>
     <div class="field"><label>الاسم رباعي *</label><input id="regFullName" placeholder="مثال: أحمد محمد علي إبراهيم"></div>
     <div class="field-row">
-      <div class="field"><label>الوظيفة *</label><input id="regJob" placeholder="مثال: مهندس مساحة"></div>
+      <div class="field"><label>الوظيفة *</label>
+        <select id="regJob">
+          <option value="">اختر الوظيفة</option>
+          <option>الإدارة العامة</option>
+          <option>مدير المركز</option>
+          <option>فني</option>
+          <option>مهندس</option>
+        </select>
+      </div>
       <div class="field"><label>رقم الهاتف *</label><input id="regPhone" placeholder="01xxxxxxxxx"></div>
     </div>
     <div class="field-row">
@@ -332,11 +340,11 @@ tbody tr:hover{background:#fafcfd}
     </div>
     <div class="field">
       <label>نوع المستخدم *</label>
-      <select id="regRole">
-        <option value="ENGINEER">مهندس مساحة (غير مرتبط بمركز محدد)</option>
-        <option value="TECHNICIAN">فني (يتبع مدينة/قرية)</option>
-        <option value="CENTER_ADMIN">مدير البنية المعلوماتية بالمركز</option>
-        <option value="SYSTEM_ADMIN">مدير النظام (ديوان المحافظة)</option>
+      <select id="regRole" style="display:none">
+        <option value="ENGINEER">مهندس مساحة</option>
+        <option value="TECHNICIAN">فني</option>
+        <option value="CENTER_ADMIN">مدير المركز</option>
+        <option value="SYSTEM_ADMIN">الإدارة العامة</option>
       </select>
     </div>
     <div class="field"><label>ديوان المحافظة (الإدارة العامة) / المركز *</label>
@@ -345,8 +353,10 @@ tbody tr:hover{background:#fafcfd}
         <option>ديوان عام المحافظة</option>
         <option>المنيا</option><option>ملوي</option><option>مغاغة</option><option>بني مزار</option>
         <option>مطاي</option><option>سمالوط</option><option>أبو قرقاص</option><option>ديرمواس</option><option>العدوة</option>
+        <option value="RURAL_COUNCIL">مجلس قروي</option>
       </select>
     </div>
+    <div class="field" id="regRuralWrap" style="display:none"><label>اسم المجلس/المجلس القروي</label><input id="regRuralCouncil" placeholder="اكتب اسم المجلس القروي (مثال: مجلس قروي ..)"></div>
     <div class="field-row">
       <div class="field"><label>مجلس المدينة</label><input id="regCity" placeholder="اختياري"></div>
       <div class="field"><label>الوحدة المحلية</label><input id="regUnit" placeholder="اختياري"></div>
@@ -672,11 +682,21 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async () 
   const nationalId = document.getElementById('regNationalId').value.trim();
   const role = document.getElementById('regRole').value;
   const center = document.getElementById('regCenter').value;
-  const cityCouncil = document.getElementById('regCity').value.trim();
+  let cityCouncil = document.getElementById('regCity').value.trim();
   const localUnit = document.getElementById('regUnit').value.trim();
+  // إذا تم اختيار مجلس قروي، استخدم اسم المجلس المخصص
+  if (document.getElementById('regCenter').value === 'RURAL_COUNCIL') {
+    const rc = document.getElementById('regRuralCouncil').value.trim();
+    if (rc) cityCouncil = rc;
+  }
   
   if (!email || !fullName || !job || !phone || !nationalId || !center) {
     showToast('يرجى استكمال جميع الحقول الإلزامية (*)', 'err');
+    return;
+  }
+  // تحقق إضافي: إذا كان المركز هو مجلس قروي، يجب تعبئة اسم المجلس
+  if (center === 'RURAL_COUNCIL' && !cityCouncil) {
+    showToast('يرجى كتابة اسم المجلس القروي', 'err');
     return;
   }
   
@@ -807,6 +827,26 @@ function updateUserAvatar() {
     avatar.style.fontSize = '13px';
   }
 }
+
+// تهيئة سلوك نموذج التسجيل: مزامنة الوظيفة مع الدور وإظهار حقل المجلس القروي
+(function initRegisterForm(){
+  const jobSel = document.getElementById('regJob');
+  const roleSel = document.getElementById('regRole');
+  const centerSel = document.getElementById('regCenter');
+  const ruralWrap = document.getElementById('regRuralWrap');
+  if (jobSel && roleSel) {
+    const map = { 'الإدارة العامة':'SYSTEM_ADMIN', 'مدير المركز':'CENTER_ADMIN', 'فني':'TECHNICIAN', 'مهندس':'ENGINEER' };
+    jobSel.addEventListener('change', () => {
+      const v = jobSel.value;
+      if (map[v]) roleSel.value = map[v];
+    });
+  }
+  if (centerSel && ruralWrap) {
+    centerSel.addEventListener('change', () => {
+      ruralWrap.style.display = centerSel.value === 'RURAL_COUNCIL' ? 'block' : 'none';
+    });
+  }
+})();
 
 function updateTopbarAvatar() {
   const avatar = document.getElementById('topbarAvatar');
@@ -1869,8 +1909,15 @@ async function renderGeneralAssignments(root) {
   const missions = await api('listMissions', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {});
   const general = missions.filter(m => m.source === 'GENERAL');
   root.innerHTML = `<div class="panel"><div class="panel-head"><h3>تكليفات الإدارة العامة</h3></div>` +
-    `<div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>توقيت البداية</th><th>الحالة</th></tr></thead><tbody>` +
-    (general.map(m => `<tr><td>${m.engineerName||'-'}</td><td>${m.center||'-'}</td><td>${m.workType||'-'}</td><td>${m.village||'-'}</td><td>${fmtDate(m.startTime)}</td><td>${m.status||'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📭</div>لا توجد تكليفات من الإدارة العامة</div></td></tr>`) +
+    `<div class="table-wrap"><table><thead><tr><th>الجهة المصدرة</th><th>الجهة الموجه إليها</th><th>مضمون التكليف</th><th>تاريخ التكليف</th><th>ملاحظات</th><th>إجراء</th></tr></thead><tbody>` +
+    (general.map(m => `<tr>
+        <td>${m.createdByName||'-'}</td>
+        <td>${m.assignedTo || m.center || '-'}</td>
+        <td style="max-width:260px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${(m.description||m.details||m.workType)||'-'}</td>
+        <td>${fmtDate(m.startTime)}</td>
+        <td>${m.progressNote||m.notes||'-'}</td>
+        <td>${m.status!=='CLOSED' ? `<button class="btn btn-sm btn-primary" onclick="receiveMission('${m.id}')">استلام</button> <button class="btn btn-sm btn-gold" onclick="completeMission('${m.id}')">إنهاء</button>` : '<span class="chip closed">منتهى</span>'}</td>
+      </tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📭</div>لا توجد تكليفات من الإدارة العامة</div></td></tr>`) +
     `</tbody></table></div></div>`;
 }
 
@@ -1878,10 +1925,33 @@ async function renderCenterAssignments(root) {
   const missions = await api('listMissions', CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {});
   const center = missions.filter(m => m.source === 'CENTER');
   root.innerHTML = `<div class="panel"><div class="panel-head"><h3>تكليفات مدير المركز</h3></div>` +
-    `<div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>توقيت البداية</th><th>الحالة</th></tr></thead><tbody>` +
-    (center.map(m => `<tr><td>${m.engineerName||'-'}</td><td>${m.center||'-'}</td><td>${m.workType||'-'}</td><td>${m.village||'-'}</td><td>${fmtDate(m.startTime)}</td><td>${m.status||'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📭</div>لا توجد تكليفات من مدير المركز</div></td></tr>`) +
+    `<div class="table-wrap"><table><thead><tr><th>الجهة المصدرة</th><th>الجهة الموجه إليها</th><th>مضمون التكليف</th><th>تاريخ التكليف</th><th>ملاحظات</th><th>إجراء</th></tr></thead><tbody>` +
+    (center.map(m => `<tr>
+        <td>${m.createdByName||'-'}</td>
+        <td>${m.assignedTo || m.center || '-'}</td>
+        <td style="max-width:260px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${(m.description||m.details||m.workType)||'-'}</td>
+        <td>${fmtDate(m.startTime)}</td>
+        <td>${m.progressNote||m.notes||'-'}</td>
+        <td>${m.status!=='CLOSED' ? `<button class="btn btn-sm btn-primary" onclick="receiveMission('${m.id}')">استلام</button> <button class="btn btn-sm btn-gold" onclick="completeMission('${m.id}')">إنهاء</button>` : '<span class="chip closed">منتهى</span>'}</td>
+      </tr>`).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ic">📭</div>لا توجد تكليفات من مدير المركز</div></td></tr>`) +
     `</tbody></table></div></div>`;
 }
+
+window.receiveMission = async (missionId) => {
+  try {
+    await api('updateMissionStatus', { missionId, status: 'RECEIVED', updatedBy: CURRENT_USER.id, updatedByName: CURRENT_USER.fullName });
+    showToast('تم استلام التكليف', 'ok');
+    goPage('assignments', true);
+  } catch (e) { showToast(e.message || 'فشل استلام التكليف', 'err'); }
+};
+
+window.completeMission = async (missionId) => {
+  try {
+    await api('updateMissionStatus', { missionId, status: 'CLOSED', endTime: new Date().toISOString(), updatedBy: CURRENT_USER.id, updatedByName: CURRENT_USER.fullName });
+    showToast('تم إنهاء التكليف', 'ok');
+    goPage('assignments', true);
+  } catch (e) { showToast(e.message || 'فشل إنهاء التكليف', 'err'); }
+};
 
 window.openAssignmentModal = async () => {
   const users = await api('listUsers', {});
