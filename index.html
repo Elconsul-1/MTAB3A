@@ -743,7 +743,7 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async () 
 // إطلاق التطبيق
 // ========================================================================
 const NAV_ITEMS = [
-  { key:'dashboard', label:'لوحة التحكم', icon:'📊', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
+  { key:'dashboard', label:'التحرك اليومي', icon:'📊', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'attendance', label:'الحضور والانصراف', icon:'🕒', roles:['CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
   { key:'coordination', label:'المتابعة اليومية للمركز', icon:'🧭', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'missions', label:'المأموريات اليومية', icon:'🗺️', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
@@ -840,7 +840,7 @@ function goPage(key, skipHistory) {
   if (navEl) navEl.classList.add('active');
   toggleSidebar(false);
   if (!skipHistory) history.pushState({ page: key }, '', '');
-  const titles = { dashboard:'لوحة التحكم', attendance:'الحضور والانصراف', coordination:'المتابعة اليومية للمركز', missions:'المأموريات اليومية', tasks:'المهام المنفذة', equipment:'الأجهزة المساحية', profile:'الملف الشخصي', reports:'التقارير', users:'إدارة المستخدمين', audit:'سجل العمليات' };
+  const titles = { dashboard:'التحرك اليومي', attendance:'الحضور والانصراف', coordination:'المتابعة اليومية', missions:'المأموريات اليومية', tasks:'المهام المنفذة', equipment:'الأجهزة المساحية', profile:'الملف الشخصي', reports:'التقارير', users:'إدارة المستخدمين', audit:'سجل العمليات' };
   document.getElementById('pageTitle').textContent = titles[key] || '';
   const renderers = { dashboard:renderDashboard, attendance:renderAttendance, coordination:renderCoordination, missions:renderMissions, tasks:renderTasks, equipment:renderEquipment, profile:renderProfile, reports:renderReports, users:renderUsers, audit:renderAudit };
   const content = document.getElementById('pageContent');
@@ -877,6 +877,7 @@ async function renderDashboard(root) {
       <div class="summary-card"><div class="summary-label">إجمالي الحالات</div><div class="summary-value">${stats.totalCases}</div></div>
       <div class="summary-card"><div class="summary-label">الأجهزة المتاحة</div><div class="summary-value">${stats.equipmentAvailable}</div></div>
     </div>
+    ${centersOverviewHtml}
     <div class="grid-cards" style="grid-template-columns:1fr 1fr">
       <div class="panel">
         <div class="panel-head"><h3>أكثر المهندسين/الفنيين إنتاجية</h3></div>
@@ -917,30 +918,25 @@ async function renderCentersOverviewPanel(selectedDate) {
   });
   return `
     <div class="panel">
-      <div class="panel-head"><h3>الموقف اليومي لجميع المراكز</h3></div>
-      <div class="center-overview-grid">
-        ${data.map(c => `
-          <div class="center-card">
-            <div class="center-card-header">
-              <div class="center-card-title">${c.center}</div>
-              <div class="center-card-meta">الهدف: <strong>${c.targetCount}</strong></div>
-            </div>
-            <div class="status-row">
-              ${centerStatus('تواجد المدير', c.directorPresent, c.directorTime ? fmtDate(c.directorTime) : '-')}
-              ${centerStatus('تواجد المهندس', c.engineerPresent, c.engineerTime ? fmtDate(c.engineerTime) : '-')}
-              ${centerStatus('تواجد السيارة', c.vehicleAvailable, c.vehicleTime ? fmtDate(c.vehicleTime) : '-')}
-              ${centerStatus('بدء العمل', !!c.workStart, c.workStart ? fmtDate(c.workStart) : '-')}
-              ${centerStatus('انتهاء العمل', !!c.workEnd, c.workEnd ? fmtDate(c.workEnd) : '-')}
-              ${centerStatus('ما تم إنجازه', c.accomplishedCount > 0, c.accomplishedCount + ' سجل')}
-            </div>
-          </div>
-        `).join('')}
-      </div>
+      <div class="panel-head"><h3>تحرك المراكز</h3></div>
+      <div class="table-wrap"><table><thead><tr><th>المركز</th><th>المدير</th><th>المهندس</th><th>العربة</th><th>بدء العمل</th><th>انتهاء العمل</th><th>الإنجاز</th></tr></thead>
+      <tbody>${data.map(c => `<tr>
+        <td>${c.center}</td>
+        <td>${miniBadge('المدير', c.directorPresent)}</td>
+        <td>${miniBadge('المهندس', c.engineerPresent)}</td>
+        <td>${miniBadge('العربة', c.vehicleAvailable)}</td>
+        <td>${c.workStart ? fmtDate(c.workStart) : '<span style="color:var(--ink-500)">غير معلوم</span>'}</td>
+        <td>${c.workEnd ? fmtDate(c.workEnd) : '<span style="color:var(--ink-500)">غير معلوم</span>'}</td>
+        <td>${c.accomplishedCount > 0 ? c.accomplishedCount + ' سجل' : '<span style="color:var(--ink-500)">لا يوجد</span>'}</td>
+      </tr>`).join('') || `<tr><td colspan="7"><div class="empty-state">لا توجد بيانات للمراكز</div></td></tr>`}</tbody></table></div>
     </div>`;
 }
 
 function centerStatus(label, on, value) {
   return `<div class="center-status"><button class="status-pill ${on ? 'on' : ''}" disabled>${label}</button><div class="status-text">${value || '-'}</div></div>`;
+}
+function miniBadge(label, on) {
+  return `<span class="chip ${on ? 'approved' : 'rejected'}" style="font-size:12px;padding:4px 8px;min-width:70px;display:inline-block;text-align:center">${label}</span>`;
 }
 
 function miniStatus(label, on, timeVal) {
@@ -1058,17 +1054,35 @@ function doAttendance(action) {
    ======================================================================== */
 async function renderCoordination(root) {
   const selectedDate = localStorage.getItem('coordinationDate') || new Date().toISOString().slice(0,10);
-  const center = CURRENT_USER.role === 'CENTER_ADMIN' ? CURRENT_USER.center : (CENTERS.find(c=>c!=='ديوان عام المحافظة') || '');
-  const [users, coord, equipment, summary] = await Promise.all([
+  const [users, attendance, missions, tasks, coord, equipment] = await Promise.all([
     api('listUsers', {}),
-    api('listDailyCoordination', { center, date: selectedDate }),
-    api('listEquipment', {}),
-    api('centerDailySummary', { center, date: selectedDate })
+    api('listAttendance', { date: selectedDate }),
+    api('listMissions', { dateFrom: selectedDate, dateTo: selectedDate }),
+    api('listTasks', { dateFrom: selectedDate, dateTo: selectedDate }),
+    api('listDailyCoordination', { date: selectedDate }),
+    api('listEquipment', {})
   ]);
-  const team = users.filter(u => u.status === 'APPROVED' && u.center === center && ['ENGINEER','TECHNICIAN'].includes(u.role));
-  const engineerRecords = {};
-  coord.filter(r => r.recordType === 'ENGINEER').forEach(r => { engineerRecords[r.engineerName] = r; });
-  const vehicleRecord = coord.filter(r => r.recordType === 'VEHICLE')[0] || null;
+  const centers = CENTERS.filter(c => c && c !== 'ديوان عام المحافظة');
+  const centerSummary = centers.map(center => {
+    const centerStaff = users.filter(u => u.status === 'APPROVED' && u.center === center && u.role !== 'SYSTEM_ADMIN');
+    const presentIds = new Set(attendance.filter(a => a.center === center && a.type === 'IN').map(a => a.userId));
+    const presentNames = centerStaff.filter(u => presentIds.has(u.id)).map(u => u.fullName);
+    const absentNames = centerStaff.filter(u => !presentIds.has(u.id)).map(u => u.fullName);
+    const requiredMissions = missions.filter(m => m.center === center && m.status === 'OPEN').length;
+    const centerTasks = tasks.filter(t => t.center === center);
+    const completedTasks = centerTasks.filter(t => t.status === 'DONE').length;
+    const pendingTasks = centerTasks.length - completedTasks;
+    return {
+      center,
+      totalEmployees: centerStaff.length,
+      presentCount: presentNames.length,
+      absentCount: absentNames.length,
+      requiredMissions: requiredMissions,
+      taskStatus: centerTasks.length ? `${completedTasks} منفذة / ${pendingTasks} قيد التنفيذ` : 'لا توجد مهام',
+      presentNames: presentNames,
+      absentNames: absentNames
+    };
+  });
   const targetRecord = coord.filter(r => r.recordType === 'TARGET')[0] || null;
 
   root.innerHTML = `
@@ -1076,64 +1090,51 @@ async function renderCoordination(root) {
       <div style="font-size:13px;color:var(--ink-600)">تاريخ العرض</div>
       <input id="coordinationDateFilter" type="date" value="${selectedDate}" style="width:220px">
     </div>
-    <div class="summary-grid">
-      <div class="summary-card"><div class="summary-label">الحضور</div><div class="summary-value">${summary.presentCount}</div></div>
-      <div class="summary-card"><div class="summary-label">الغياب</div><div class="summary-value">${summary.absentCount}</div></div>
-      <div class="summary-card"><div class="summary-label">الهدف</div><div class="summary-value">${summary.targetCount}</div></div>
-      <div class="summary-card"><div class="summary-label">المنجز</div><div class="summary-value">${summary.completedCount}</div></div>
+    <div class="panel">
+      <div class="panel-head"><h3>ملخص متابعة المراكز</h3></div>
+      <div class="table-wrap"><table><thead><tr><th>المركز</th><th>إجمالي الموظفين</th><th>الحضور</th><th>الغياب</th><th>المهام المطلوبة</th><th>موقف المهام</th></tr></thead>
+      <tbody>${centerSummary.map(c => `
+        <tr>
+          <td>${c.center}</td>
+          <td>${c.totalEmployees}</td>
+          <td>${c.presentCount}</td>
+          <td>${c.absentCount}</td>
+          <td>${c.requiredMissions}</td>
+          <td>${c.taskStatus}</td>
+        </tr>
+      `).join('') || `<tr><td colspan="6"><div class="empty-state">لا توجد بيانات للمراكز</div></td></tr>`}</tbody></table></div>
     </div>
     <div class="panel">
-      <div class="panel-head"><h3>عدد المعاينات المستهدفة - ${center || '-'}</h3></div>
-      <p style="margin:0 0 12px;font-size:13.5px;color:var(--ink-600)">العدد المستهدف: <b>${targetRecord ? targetRecord.notes : '0'}</b> معاينة</p>
+      <div class="panel-head"><h3>تفاصيل الحضور والغياب</h3></div>
+      <div class="table-wrap"><table><thead><tr><th>المركز</th><th>الحضور</th><th>الغياب</th></tr></thead>
+      <tbody>${centerSummary.map(c => `
+        <tr>
+          <td>${c.center}</td>
+          <td>${c.presentNames.length ? c.presentNames.join('، ') : '-'}</td>
+          <td>${c.absentNames.length ? c.absentNames.join('، ') : '-'}</td>
+        </tr>
+      `).join('') || `<tr><td colspan="3"><div class="empty-state">لا توجد بيانات الحضور</div></td></tr>`}</tbody></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>العدد المستهدف العام</h3></div>
+      <p style="margin:0 0 12px;font-size:13.5px;color:var(--ink-600)">عدد المعاينات المستهدفة اليوم: <b>${targetRecord ? targetRecord.notes : '0'}</b></p>
       <button class="btn btn-outline btn-sm" onclick="openTargetModal()">تحديد / تعديل العدد المستهدف</button>
     </div>
-
-    <div class="panel">
-      <div class="panel-head"><h3>تواجد المهندسين/الفنيين - ${center || '-'}</h3></div>
-      <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الحالة</th><th>وقت التواجد</th><th>إجراء</th></tr></thead>
-      <tbody>${team.map(u => {
-        const rec = engineerRecords[u.fullName];
-        const isPresent = rec && (rec.isPresent === 'true' || rec.isPresent === true);
-        return `<tr>
-          <td>${u.fullName}</td><td>${roleLabel(u.role)}</td>
-          <td>${rec ? `<span class="chip ${isPresent?'approved':'rejected'}">${isPresent?'متواجد':'غير متواجد'}</span>` : '<span class="chip pending">لم يُسجّل</span>'}</td>
-          <td>${rec && rec.arrivalTime ? rec.arrivalTime : '-'}</td>
-          <td><button class="btn btn-outline btn-sm" onclick="openEngineerStatusModal('${u.fullName.replace(/'/g,"\\'")}')">تحديث</button></td>
-        </tr>`;
-      }).join('') || `<tr><td colspan="5"><div class="empty-state">لا يوجد مهندسون/فنيون بهذا المركز</div></td></tr>`}</tbody></table></div>
-    </div>
-
     <div class="grid-cards" style="grid-template-columns:1fr 1fr">
       <div class="panel">
         <div class="panel-head"><h3>توفر عربة المركز</h3></div>
-        <p style="margin:0 0 12px;font-size:13.5px;color:var(--ink-600)">
-          الحالة: ${vehicleRecord ? `<span class="chip ${vehicleRecord.vehicleAvailable==='true'||vehicleRecord.vehicleAvailable===true?'available':'outofservice'}">${vehicleRecord.vehicleAvailable==='true'||vehicleRecord.vehicleAvailable===true?'متوفرة':'غير متوفرة'}</span> ${vehicleRecord.vehicleAvailableTime? '- منذ الساعة '+vehicleRecord.vehicleAvailableTime : ''}` : 'لم يتم تسجيل حالة العربة بعد'}
-        </p>
+        <p style="margin:0 0 12px;font-size:13.5px;color:var(--ink-600)">يمكن تحديث حالة العربة الخاصة بالمركز من هنا.</p>
         <button class="btn btn-primary btn-sm" onclick="openVehicleStatusModal()">تحديث حالة العربة</button>
       </div>
       <div class="panel">
-        <div class="panel-head"><h3>محضر تسليم جهاز</h3></div>
-        <p style="margin:0 0 12px;font-size:13.5px;color:var(--ink-600)">إصدار محضر تسليم جهاز مساحي مع تحديد الغرض من الاستخدام وطباعته للتوقيع.</p>
-        <button class="btn btn-gold btn-sm" onclick="openCenterHandoverModal()">+ إصدار محضر تسليم</button>
+        <div class="panel-head"><h3>تسجيل مهمّات المركز</h3></div>
+        <p style="margin:0 0 12px;font-size:13.5px;color:var(--ink-600)">احفظ المهام اليومية وأوضاعها مباشرة من صفحة المتابعة.</p>
+        <button class="btn btn-gold btn-sm" onclick="openCenterTaskModal()">+ تسجيل عمل منجز</button>
       </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><h3>موقف الأجهزة المساحية</h3></div>
-      <div id="coordEquipmentStatus"><div class="loader"><div class="spinner"></div></div></div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><h3>تسجيل ما تم إنجازه</h3></div>
-      <p style="margin:0 0 12px;font-size:13.5px;color:var(--ink-600)">تسجيل الأعمال الميدانية التي أنجزها المهندس/الفني اليوم: رفع مساحي، تحديد منسوب، تقنين أملاك دولة، مرافق، أو غير ذلك.</p>
-      <button class="btn btn-primary btn-sm" onclick="openCenterTaskModal()">+ تسجيل عمل منجز</button>
     </div>
   `;
 
-  window.__coordTeam = team;
-  window.__coordCenter = center;
-  window.__coordEquipment = equipment;
-  loadCoordEquipmentStatus(center);
+  window.__coordCenter = CURRENT_USER.center || centers[0] || '';
   const dateInput = document.getElementById('coordinationDateFilter');
   if (dateInput) {
     dateInput.onchange = () => {
@@ -1302,7 +1303,7 @@ async function renderMissions(root) {
         <div class="summary-card"><div class="summary-label">المفتوحة</div><div class="summary-value">${missions.filter(m=>m.status==='OPEN').length}</div></div>
         <div class="summary-card"><div class="summary-label">المغلقة</div><div class="summary-value">${missions.filter(m=>m.status==='CLOSED').length}</div></div>
       </div>
-      <div class="table-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>المهندس</th><th>المركز</th><th>القرية</th><th>نوع العمل</th><th>الجهة الطالبة</th><th>البداية</th><th>المصدر</th><th>الحالة</th>${canCreate?'<th>إجراء</th>':''}</tr></thead>
+      <div class="table-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>المهندس</th><th>المركز</th><th>موجه إلى</th><th>القرية</th><th>نوع العمل</th><th>الجهة الطالبة</th><th>البداية</th><th>المصدر</th><th>الحالة</th>${canCreate?'<th>إجراء</th>':''}</tr></thead>
       <tbody id="missionTableBody"></tbody></table></div>
     </div>`;
   renderMissionRows(missions, canCreate, root);
@@ -1313,11 +1314,11 @@ function renderMissionRows(data, canCreate, root) {
   const body = root.querySelector('#missionTableBody');
   if (!body) return;
   body.innerHTML = data.map(m => `<tr>
-    <td>${m.engineerName}</td><td>${m.center}</td><td>${m.village||'-'}</td><td>${m.workType}</td><td>${m.requestingEntity||'-'}</td><td>${fmtDate(m.startTime)}</td>
+    <td>${m.engineerName}</td><td>${m.center}</td><td>${m.assignedTo || '-'}</td><td>${m.village||'-'}</td><td>${m.workType}</td><td>${m.requestingEntity||'-'}</td><td>${fmtDate(m.startTime)}</td>
     <td>${m.source==='GENERAL'?'<span class="chip pending">من الإدارة العامة</span>':'<span class="chip approved">من مدير المركز</span>'}</td>
     <td><span class="chip ${m.status==='OPEN'?'open':'closed'}">${m.status==='OPEN'?'مفتوحة':'مغلقة'}</span></td>
     ${canCreate?`<td>${m.status==='OPEN'?`<button class="btn btn-outline btn-sm" onclick="openMissionProgressModal('${m.id}')">تحديث</button>`:'-'}</td>`:''}
-  </tr>`).join('') || `<tr><td colspan="9"><div class="empty-state"><div class="ic">🗺️</div>لا توجد مأموريات مسجلة</div></td></tr>`;
+  </tr>`).join('') || `<tr><td colspan="10"><div class="empty-state"><div class="ic">🗺️</div>لا توجد مأموريات مسجلة</div></td></tr>`;
 }
 
 function bindMissionFilters(canCreate, root) {
@@ -1375,17 +1376,33 @@ window.submitMissionProgress = async (id) => {
   });
   closeModal(); showToast('تم تحديث حالة المأمورية','ok'); goPage('missions', true);
 };
-window.openMissionModal = () => {
+window.openMissionModal = async () => {
+  const users = await api('listUsers', {});
+  const engineers = users.filter(u => u.status === 'APPROVED' && u.role === 'ENGINEER');
+  const technicians = users.filter(u => u.status === 'APPROVED' && u.role === 'TECHNICIAN');
   openModal(`
     <h3>إنشاء مأمورية جديدة</h3>
     <div class="field"><label>مصدر المأمورية *</label>
       <select id="mSource"><option value="CENTER">من مدير المركز</option><option value="GENERAL">من الإدارة العامة</option></select>
     </div>
-    <div class="field"><label>اسم المهندس *</label><input id="mEngineer"></div>
-    <div class="field"><label>الفنيون المشاركون</label><input id="mTechs" placeholder="افصل بينهم بفاصلة"></div>
+    <div class="field"><label>نوع التكليف *</label>
+      <select id="mAssignmentType">
+        <option value="ALL_CENTERS_MANAGERS">جميع المراكز - مدراء</option>
+        <option value="ALL_CENTERS_TECHNICIANS">جميع المراكز - فنيين</option>
+        <option value="ALL_CENTERS_ENGINEERS">جميع المراكز - مهندسين</option>
+        <option value="SPECIFIC_CENTER">مركز محدد أو أكثر</option>
+        <option value="SPECIFIC_TECHNICIAN">فني محدد</option>
+        <option value="SPECIFIC_ENGINEER">مهندس محدد</option>
+      </select>
+    </div>
+    <div id="mAssignmentTarget" class="field"></div>
     <div class="field-row">
-      <div class="field"><label>المركز *</label><select id="mCenter">${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+      <div class="field"><label>المهندس المسؤول</label><input id="mEngineer"></div>
+      <div class="field"><label>الفنيون المشاركون</label><input id="mTechs" placeholder="افصل بينهم بفاصلة"></div>
+    </div>
+    <div class="field-row">
       <div class="field"><label>الوحدة المحلية</label><input id="mUnit"></div>
+      <div class="field"><label>المركز الرئيسي</label><select id="mCenter"><option value="">اختر المركز</option>${CENTERS.map(c=>`<option>${c}</option>`).join('')}</select></div>
     </div>
     <div class="field-row">
       <div class="field"><label>القرية</label><input id="mVillage"></div>
@@ -1401,15 +1418,101 @@ window.openMissionModal = () => {
     </div>
     <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitMission()">حفظ المأمورية</button></div>
   `);
+
+  const assignmentType = document.getElementById('mAssignmentType');
+  const targetContainer = document.getElementById('mAssignmentTarget');
+  const centerSelect = document.getElementById('mCenter');
+  const selectedEngineer = document.getElementById('mEngineer');
+  const selectedTechs = document.getElementById('mTechs');
+
+  function renderAssignmentTarget() {
+    const type = assignmentType.value;
+    if (type === 'SPECIFIC_CENTER') {
+      targetContainer.innerHTML = `
+        <label style="display:block;margin-bottom:8px">اختر المركز أو أكثر</label>
+        <div style="display:flex;flex-wrap:wrap;gap:10px">${CENTERS.map(c => `<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" name="mAssignedCenters" value="${c}">${c}</label>`).join('')}</div>
+      `;
+      selectedEngineer.parentElement.style.display = 'none';
+      selectedTechs.parentElement.style.display = 'none';
+    } else if (type === 'SPECIFIC_ENGINEER' || type === 'SPECIFIC_TECHNICIAN') {
+      const list = type === 'SPECIFIC_ENGINEER' ? engineers : technicians;
+      targetContainer.innerHTML = `
+        <div class="field"><label>اختر المركز (اختياري)</label><select id="mTargetCenter"><option value="">الكل</option>${CENTERS.map(c => `<option>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>اختر ${type === 'SPECIFIC_ENGINEER' ? 'مهندسًا' : 'فنيًا'} *</label><select id="mSpecificPerson"><option value="">اختر</option></select></div>
+      `;
+      selectedEngineer.parentElement.style.display = 'none';
+      selectedTechs.parentElement.style.display = 'none';
+      const targetCenter = document.getElementById('mTargetCenter');
+      const specificPerson = document.getElementById('mSpecificPerson');
+      function updatePeople() {
+        const center = targetCenter.value;
+        const filtered = list.filter(u => !center || u.center === center);
+        specificPerson.innerHTML = `<option value="">اختر</option>${filtered.map(u => `<option value="${u.fullName}">${u.fullName} ${center ? '' : '(' + u.center + ')'}</option>`).join('')}`;
+      }
+      targetCenter.onchange = updatePeople;
+      updatePeople();
+    } else {
+      const labels = {
+        ALL_CENTERS_MANAGERS: 'ستصل المأمورية إلى جميع مدراء المراكز.',
+        ALL_CENTERS_TECHNICIANS: 'ستصل المأمورية إلى جميع الفنيين في المراكز.',
+        ALL_CENTERS_ENGINEERS: 'ستصل المأمورية إلى جميع المهندسين في المراكز.'
+      };
+      targetContainer.innerHTML = `<div style="font-size:13px;color:var(--ink-600);">${labels[type] || ''}</div>`;
+      selectedEngineer.parentElement.style.display = 'block';
+      selectedTechs.parentElement.style.display = 'block';
+    }
+  }
+
+  assignmentType.onchange = renderAssignmentTarget;
+  renderAssignmentTarget();
 };
 window.submitMission = async () => {
-  const engineerName = val('mEngineer'), workType = val('mWorkType'), start = val('mStart');
-  if (!engineerName || !start) { showToast('يرجى إدخال اسم المهندس ووقت البداية','err'); return; }
+  const source = val('mSource');
+  const assignmentType = val('mAssignmentType');
+  const engineerName = val('mEngineer');
+  const techs = val('mTechs').split('،').join(',').split(',').map(s=>s.trim()).filter(Boolean);
+  const workType = val('mWorkType');
+  const start = val('mStart');
+  if (!workType || !start) { showToast('يرجى إدخال نوع المأمورية ووقت البداية','err'); return; }
+
+  let centerValue = val('mCenter');
+  let assignedTo = '';
+  if (assignmentType === 'SPECIFIC_CENTER') {
+    const checked = Array.from(document.querySelectorAll('input[name="mAssignedCenters"]:checked')).map(i => i.value);
+    if (!checked.length) { showToast('يرجى اختيار مركز واحد على الأقل','err'); return; }
+    centerValue = checked.join('، ');
+    assignedTo = 'مركز محدد';
+  } else if (assignmentType === 'SPECIFIC_ENGINEER' || assignmentType === 'SPECIFIC_TECHNICIAN') {
+    const specific = val('mSpecificPerson');
+    if (!specific) { showToast('يرجى اختيار اسم ' + (assignmentType === 'SPECIFIC_ENGINEER' ? 'المهندس' : 'الفني'), 'err'); return; }
+    assignedTo = specific;
+    centerValue = val('mTargetCenter') || centerValue;
+  } else {
+    const labels = {
+      ALL_CENTERS_MANAGERS: 'جميع مدراء المراكز',
+      ALL_CENTERS_TECHNICIANS: 'جميع الفنيين',
+      ALL_CENTERS_ENGINEERS: 'جميع المهندسين'
+    };
+    assignedTo = labels[assignmentType] || '';
+    if (!centerValue) centerValue = 'كل المراكز';
+  }
+
   await api('createMission', {
-    engineerName, technicians: val('mTechs').split('،').join(',').split(',').map(s=>s.trim()).filter(Boolean),
-    center: val('mCenter'), localUnit: val('mUnit'), village: val('mVillage'), workType,
-    requestingEntity: val('mEntity'), description: val('mDesc'), startTime: start, endTime: val('mEnd'),
-    source: val('mSource') || 'CENTER', createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
+    engineerName: engineerName || assignedTo || 'غير محدد',
+    technicians: techs,
+    center: centerValue,
+    localUnit: val('mUnit'),
+    village: val('mVillage'),
+    workType,
+    requestingEntity: val('mEntity'),
+    description: val('mDesc'),
+    startTime: start,
+    endTime: val('mEnd'),
+    source: source || 'CENTER',
+    assignmentType: assignmentType,
+    assignedTo: assignedTo,
+    createdBy: CURRENT_USER.id,
+    createdByName: CURRENT_USER.fullName
   });
   closeModal(); showToast('تم إنشاء المأمورية بنجاح','ok'); goPage('missions', true);
 };
@@ -2035,8 +2138,151 @@ async function renderAudit(root) {
     <div class="panel">
       <div class="panel-head"><h3>سجل جميع العمليات</h3></div>
       <div class="table-wrap"><table><thead><tr><th>المستخدم</th><th>الإجراء</th><th>التفاصيل</th><th>التاريخ والوقت</th></tr></thead>
-      <tbody>${logs.slice().reverse().map(l=>`<tr><td>${l.userName||'-'}</td><td>${l.action}</td><td style="max-width:280px;white-space:normal">${l.details}</td><td>${fmtDate(l.timestamp)}</td></tr>`).join('') || `<tr><td colspan="4"><div class="empty-state">لا يوجد سجل عمليات بعد</div></td></tr>`}</tbody></table></div>
+      <tbody>${logs.slice().reverse().map(l=>`<tr><td>${l.userName||'-'}</td><td>${translateAuditAction(l.action)}</td><td style="max-width:280px;white-space:normal">${translateAuditDetails(l.action, l.details)}</td><td>${fmtDate(l.timestamp)}</td></tr>`).join('') || `<tr><td colspan="4"><div class="empty-state">لا يوجد سجل عمليات بعد</div></td></tr>`}</tbody></table></div>
     </div>`;
+}
+
+function translateAuditAction(action) {
+  const labels = {
+    REGISTER: 'تسجيل مستخدم جديد',
+    APPROVE_USER: 'موافقة على مستخدم',
+    REJECT_USER: 'رفض مستخدم',
+    UPDATE_ROLE: 'تغيير دور المستخدم',
+    UPDATE_USER_BY_ADMIN: 'تعديل بيانات المستخدم',
+    DEACTIVATE_USER: 'إيقاف حساب المستخدم',
+    UPDATE_PROFILE: 'تحديث الملف الشخصي',
+    CHECK_IN: 'تسجيل حضور',
+    CHECK_OUT: 'تسجيل انصراف',
+    AUTO_CHECKOUT: 'انصراف تلقائي',
+    SAVE_ENGINEER_STATUS: 'تحديث حالة المهندس/الفني',
+    SAVE_VEHICLE_STATUS: 'تحديث حالة العربة',
+    SAVE_TARGET_INSPECTIONS: 'تحديد عدد المعاينات المستهدفة',
+    CREATE_MISSION: 'إنشاء مأمورية',
+    UPDATE_MISSION_STATUS: 'تحديث حالة مأمورية',
+    CREATE_TASK: 'إضافة مهمة',
+    UPDATE_TASK_STATUS: 'تحديث حالة مهمة',
+    ADD_EQUIPMENT: 'إضافة جهاز',
+    UPDATE_EQUIPMENT: 'تعديل بيانات جهاز',
+    UPDATE_EQUIPMENT_STATUS: 'تغيير حالة جهاز',
+    HANDOVER_EQUIPMENT: 'تسليم جهاز',
+    RETURN_EQUIPMENT: 'استلام جهاز'
+  };
+  return labels[action] || (action ? action.replace(/_/g, ' ') : '-');
+}
+
+function translateAuditDetails(action, details) {
+  if (!details) return '-';
+  var obj = {};
+  if (typeof details === 'string') {
+    try { obj = JSON.parse(details); } catch (e) { return details; }
+  } else {
+    obj = details;
+  }
+  var lines = [];
+  function push(key, value) {
+    if (value === undefined || value === null || value === '') return;
+    lines.push(key + ': ' + value);
+  }
+  function translateKey(key) {
+    const map = {
+      userId: 'معرّف المستخدم',
+      userName: 'اسم المستخدم',
+      role: 'الدور',
+      status: 'الحالة',
+      reason: 'السبب',
+      fields: 'الحقول',
+      lat: 'خط العرض',
+      lng: 'خط الطول',
+      mapsLink: 'رابط الخريطة',
+      engineerName: 'اسم المهندس/الفني',
+      isPresent: 'حاضر',
+      vehicleAvailable: 'العربة متوفرة',
+      vehicleAvailableTime: 'وقت التوفر',
+      center: 'المركز',
+      targetCount: 'عدد المعاينات المستهدفة',
+      missionId: 'معرّف المأمورية',
+      taskId: 'معرّف المهمة',
+      equipmentId: 'معرّف الجهاز',
+      purpose: 'الغرض',
+      technician: 'الفني',
+      technicianNames: 'أسماء الفنيين',
+      mission: 'المأمورية',
+      task: 'المهمة'
+    };
+    return map[key] || key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim();
+  }
+  function stringify(value) {
+    if (value === true) return 'نعم';
+    if (value === false) return 'لا';
+    if (Array.isArray(value)) return value.join(', ');
+    return String(value);
+  }
+  if (action === 'REGISTER') {
+    push('البريد الإلكتروني', obj.email);
+    if (obj.hasPhoto !== undefined) push('صورة المستخدم', obj.hasPhoto ? 'موجودة' : 'غير موجودة');
+  } else if (action === 'APPROVE_USER' || action === 'REJECT_USER' || action === 'DEACTIVATE_USER') {
+    push('معرّف المستخدم', obj.userId);
+    if (obj.reason) push('السبب', obj.reason);
+  } else if (action === 'UPDATE_ROLE') {
+    push('معرّف المستخدم', obj.userId);
+    push('الدور الجديد', obj.role);
+  } else if (action === 'UPDATE_USER_BY_ADMIN' || action === 'UPDATE_PROFILE') {
+    push('معرّف المستخدم', obj.userId);
+    push('الحقول المعدلة', Array.isArray(obj.fields) ? obj.fields.join(', ') : obj.fields);
+  } else if (action === 'CHECK_IN' || action === 'CHECK_OUT' || action === 'AUTO_CHECKOUT') {
+    push('خط العرض', obj.lat);
+    push('خط الطول', obj.lng);
+    push('رابط الخريطة', obj.mapsLink);
+    push('انصراف تلقائي', obj.autoCheckout === true || obj.autoCheckout === 'true' ? 'نعم' : 'لا');
+  } else if (action === 'SAVE_ENGINEER_STATUS') {
+    push('اسم المهندس/الفني', obj.engineerName);
+    push('متواجد', obj.isPresent === true || obj.isPresent === 'true' ? 'نعم' : 'لا');
+  } else if (action === 'SAVE_VEHICLE_STATUS') {
+    push('العربة متوفرة', obj.vehicleAvailable === true || obj.vehicleAvailable === 'true' ? 'نعم' : 'لا');
+    push('وقت التوفر', obj.vehicleAvailableTime);
+  } else if (action === 'SAVE_TARGET_INSPECTIONS') {
+    push('المركز', obj.center);
+    push('العدد المستهدف', obj.targetCount);
+  } else if (action === 'CREATE_MISSION' || action === 'UPDATE_MISSION_STATUS') {
+    push('معرّف المأمورية', obj.missionId || obj.mission);
+    if (obj.status) push('الحالة', translateStatus(obj.status));
+    if (obj.progressNote) push('ملاحظات', obj.progressNote);
+    if (obj.completionReason) push('سبب الإغلاق', obj.completionReason);
+  } else if (action === 'CREATE_TASK' || action === 'UPDATE_TASK_STATUS') {
+    push('معرّف المهمة', obj.taskId || obj.task);
+    if (obj.status) push('الحالة', translateStatus(obj.status));
+  } else if (action === 'ADD_EQUIPMENT' || action === 'UPDATE_EQUIPMENT' || action === 'UPDATE_EQUIPMENT_STATUS' || action === 'HANDOVER_EQUIPMENT' || action === 'RETURN_EQUIPMENT') {
+    push('معرّف الجهاز', obj.equipmentId);
+    if (obj.engineer) push('المهندس', obj.engineer);
+    if (obj.purpose) push('الغرض', obj.purpose);
+    if (obj.status) push('الحالة', translateEquipmentStatus(obj.status));
+    if (obj.fields) push('الحقول المعدلة', Array.isArray(obj.fields) ? obj.fields.join(', ') : obj.fields);
+  } else {
+    Object.keys(obj).forEach(function(key) {
+      push(translateKey(key), stringify(obj[key]));
+    });
+  }
+  return lines.length ? lines.join('<br>') : '-';
+}
+
+function translateStatus(value) {
+  const map = {
+    OPEN: 'مفتوحة',
+    CLOSED: 'مغلقة',
+    DONE: 'منفذة',
+    PENDING: 'قيد التنفيذ'
+  };
+  return map[value] || value;
+}
+
+function translateEquipmentStatus(value) {
+  const map = {
+    AVAILABLE: 'متاح',
+    WITH_ENGINEER: 'مع مهندس',
+    MAINTENANCE: 'صيانة',
+    OUT_OF_SERVICE: 'خارج الخدمة'
+  };
+  return map[value] || value;
 }
 
 /* ========================================================================
@@ -2063,7 +2309,7 @@ window.openNotifModal = async () => {
 
 /* ---------------------------- أدوات مساعدة عامة ---------------------------- */
 function val(id) { return document.getElementById(id).value.trim ? document.getElementById(id).value.trim() : document.getElementById(id).value; }
-function fmtDate(iso) { if (!iso) return '-'; const d = new Date(iso); return d.toLocaleString('ar-EG', { dateStyle:'medium', timeStyle:'short' }); }
+function fmtDate(iso) { if (!iso) return '-'; const d = iso instanceof Date ? iso : new Date(iso); if (Number.isNaN(d.getTime())) return '-'; return d.toLocaleString('ar-EG', { dateStyle:'medium', timeStyle:'short' }); }
 function getDateKey(value) {
   if (!value) return '';
   if (typeof value === 'string') return value.slice(0,10);
