@@ -15,5 +15,5 @@
   <circle cx="256" cy="256" r="255" fill="none" stroke="rgba(201,162,39,0.35)" stroke-width="2"/>
   <circle cx="256" cy="256" r="158" fill="url(#gold)"/>
   <circle cx="256" cy="256" r="158" fill="none" stroke="#071b2e" stroke-width="3" opacity="0.25"/>
-  <text x="256" y="312" font-family="Cairo, Tahoma, Arial, sans-serif" font-size="192" font-weight="800" fill="#071b2e" text-anchor="middle">م</text>
+  <text x="256" y="312" font-family="Cairo, Tahoma, Arial, sans-serif" font-size="192" font-weight="800" fill="#071b2e" text-anchor="middle">M</text>
 </svg>
