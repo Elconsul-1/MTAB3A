@@ -1149,6 +1149,17 @@ window.sendAttendanceReminder = async () => {
   showToast(`تم إرسال ${result.reminderSent || 0} تذكيرًا عبر البريد`, 'ok');
 };
 
+async function loadAttendanceWindowConfig(force = false) {
+  if (!force && window.__attendanceWindowConfig) return window.__attendanceWindowConfig;
+  try {
+    const res = await api('getAttendanceWindowSettings', {});
+    window.__attendanceWindowConfig = res || { startTime: '10:00', endTime: '22:00' };
+    return window.__attendanceWindowConfig;
+  } catch (e) {
+    return window.__attendanceWindowConfig || { startTime: '10:00', endTime: '22:00' };
+  }
+}
+
 window.openAttendanceWindowSettingsModal = async () => {
   const cfg = await loadAttendanceWindowConfig(true);
   openModal(`
