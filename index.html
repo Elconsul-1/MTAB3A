@@ -279,12 +279,16 @@ tbody tr:hover{background:#fafcfd}
 .center-overview-name{display:flex;align-items:center;font-weight:800;font-size:15px;min-width:130px;color:var(--navy-900)}
 .center-overview-grid{display:flex;flex-direction:column;gap:12px;margin:0;}
 .center-overview-cards{display:flex;flex:1;gap:10px;flex-wrap:wrap;}
-.center-card-pill{flex:1 1 180px;min-width:160px;border-radius:16px;border:1px solid var(--line);padding:14px 16px;background:var(--line);color:var(--ink-600);text-align:right;display:flex;flex-direction:column;gap:8px;cursor:pointer;transition:.2s;}
-.center-card-pill.on{background:linear-gradient(135deg, #1f8a55, #0e5e3b);border-color:transparent;color:#fff;}
-.center-card-pill.off{background:#f5f6f7;color:var(--ink-600);}
-.center-card-title{font-size:14px;font-weight:800;}
-.center-card-state{font-size:13px;font-weight:700;}
-.center-card-time{font-size:12px;color:inherit;opacity:.9;}
+.dashboard-status-card{flex:1 1 180px;min-width:170px;border-radius:14px;padding:12px 13px;border:1px solid var(--line);background:#f7f9fc;color:var(--ink-600);display:flex;flex-direction:column;gap:6px;transition:.2s;}
+.dashboard-status-card.on,.dashboard-status-card.approved{background:linear-gradient(135deg,#e7f6ee,#f4fcf7);border-color:rgba(31,138,85,.25);color:var(--good);}
+.dashboard-status-card.pending{background:linear-gradient(135deg,#fff8e8,#fffdf4);border-color:rgba(204,153,0,.28);color:var(--warn);}
+.dashboard-status-card.rejected{background:linear-gradient(135deg,#fdeaea,#fff5f5);border-color:rgba(220,76,76,.24);color:var(--bad);}
+.dashboard-status-card.off{background:#f7f9fc;color:var(--ink-600);}
+.dashboard-status-icon{font-size:18px;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(11,44,71,.08)}
+.dashboard-status-title{font-size:12.5px;font-weight:800;color:inherit;}
+.dashboard-status-value{font-size:13.5px;font-weight:800;color:var(--navy-950);line-height:1.5;}
+.dashboard-status-time{font-size:11.5px;color:inherit;opacity:.9;}
+.dashboard-status-extra{font-size:11px;color:var(--ink-600);line-height:1.4;}
 .dashboard-topline{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 0 10px;border-bottom:1px solid var(--line);margin-bottom:16px;}
 .dashboard-controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
 .dashboard-clock{font-size:14px;font-weight:800;color:var(--navy-950);}
@@ -550,7 +554,7 @@ if (location.protocol === 'file:') {
 /* ---------------------------- حالة التطبيق ---------------------------- */
 let CURRENT_USER = null;   // بيانات المستخدم من قاعدة البيانات (Sheet)
 let FIREBASE_USER = null;  // بيانات Firebase Auth
-let CENTERS = ['ديوان عام المحافظة','المنيا','ملوي','مغاغة','بني مزار','مطاي','سمالوط','أبو قرقاص','ديرمواس','العدوة'];
+let CENTERS = ['مجمع الذكاء','المنيا','ملوي','مغاغة','بني مزار','مطاي','سمالوط','أبو قرقاص','ديرمواس','العدوة'];
 let currentPage = 'dashboard';
 const PAGE_CACHE = {};
 let deferredInstallPrompt = null;
@@ -1068,10 +1072,16 @@ async function renderHome(root) {
    لوحة التحكم
    ======================================================================== */
 async function renderDashboard(root) {
-  const selectedDate = localStorage.getItem('dashboardDate') || new Date().toISOString().slice(0,10);
+  const selectedDate = localStorage.getItem('dashboardDate') || getEgyptDateKey(getEgyptNow());
   const isSystemAdmin = CURRENT_USER.role === 'SYSTEM_ADMIN';
-  const stats = await api('dashboardStats', Object.assign(CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {}, { date: selectedDate }));
-  const centers = await api('centersOverviewToday', Object.assign({ date: selectedDate }, CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {}));
+  const [stats, centers, users, attendance, tasks, coordination] = await Promise.all([
+    api('dashboardStats', Object.assign(CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {}, { date: selectedDate })),
+    api('centersOverviewToday', Object.assign({ date: selectedDate }, CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {})),
+    api('listUsers', {}),
+    api('listAttendance', { date: selectedDate }),
+    api('listTasks', { dateFrom: selectedDate, dateTo: selectedDate }),
+    api('listDailyCoordination', { date: selectedDate })
+  ]);
 
   const presentManagers = centers.filter(c => c.directorPresent).length;
   const presentEngineers = centers.filter(c => c.engineerPresent).length;
@@ -1083,6 +1093,7 @@ async function renderDashboard(root) {
       <button class="btn btn-gold btn-sm" onclick="openMissionModal('GENERAL')">+ إنشاء تكليف إداري موحد</button>
       <button class="btn btn-primary btn-sm" onclick="goPage('assignments', true)">عرض تكليفات الإدارة العامة</button>
       <button class="btn btn-outline btn-sm" onclick="goPage('equipment', true)">إدارة العهد الفنية</button>
+      <button class="btn btn-outline btn-sm" onclick="openAttendanceWindowSettingsModal()">⏰ ضبط نافذة الحضور</button>
       <button class="btn btn-outline btn-sm" onclick="resetSchemaAction()">🔄 إعادة تهيئة الأوراق والأعمدة</button>
       ${reminderButton}
     </div>
@@ -1114,7 +1125,7 @@ async function renderDashboard(root) {
     ${systemAdminActions}
     <div class="panel">
       <div class="panel-head"><h3>حالة الحركة للمراكز</h3></div>
-      ${isSystemAdmin ? renderCentersOverviewRows(centers) : '<div class="empty-state">لا توجد صلاحية لعرض هذه البيانات</div>'}
+      ${isSystemAdmin ? renderCentersOverviewRows(centers, users, attendance, tasks, coordination) : '<div class="empty-state">لا توجد صلاحية لعرض هذه البيانات</div>'}
     </div>
   `;
 
@@ -1136,6 +1147,40 @@ window.sendAttendanceReminder = async () => {
   showToast(`تم إرسال ${result.reminderSent || 0} تذكيرًا عبر البريد`, 'ok');
 };
 
+window.openAttendanceWindowSettingsModal = async () => {
+  const cfg = await loadAttendanceWindowConfig(true);
+  openModal(`
+    <h3>إعداد نافذة الحضور والانصراف</h3>
+    <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">يمكنك تحديد الفترة التي يُسمح فيها بتسجيل الحضور والانصراف يوميًا.</p>
+    <div class="field">
+      <label>وقت البدء</label>
+      <input id="attendanceWindowStart" type="time" value="${cfg.startTime}">
+    </div>
+    <div class="field">
+      <label>وقت الانتهاء</label>
+      <input id="attendanceWindowEnd" type="time" value="${cfg.endTime}">
+    </div>
+    <div class="modal-close-row">
+      <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveAttendanceWindowSettings()">حفظ</button>
+    </div>
+  `);
+};
+
+window.saveAttendanceWindowSettings = async () => {
+  const startTime = document.getElementById('attendanceWindowStart')?.value || '10:00';
+  const endTime = document.getElementById('attendanceWindowEnd')?.value || '22:00';
+  try {
+    const result = await api('saveAttendanceWindowSettings', { userId: CURRENT_USER.id, startTime, endTime });
+    window.__attendanceWindowConfig = result;
+    closeModal();
+    showToast('تم حفظ نافذة الحضور والانصراف', 'ok');
+    goPage('attendance', true);
+  } catch (e) {
+    showToast('فشل حفظ الإعداد', 'err');
+  }
+};
+
 window.resetSchemaAction = async () => {
   if (!confirm('هل تريد إعادة تهيئة الأوراق والأعمدة لتتطابق مع متطلبات الواجهة؟ لن يتم حذف أي بيانات.')) return;
   const result = await api('resetSchema');
@@ -1146,47 +1191,114 @@ window.resetSchemaAction = async () => {
   }
 };
 
-function renderCentersOverviewRows(centers) {
-  if (!centers || !centers.length) {
-    return `<div class="empty-state"><div class="ic">📭</div>لا توجد بيانات للحركة لهذا التاريخ</div>`;
-  }
-  return `<div class="center-overview-grid">${centers.map(c => `
-      <div class="center-overview-row">
-        <div class="center-overview-name">${c.center}</div>
-        <div class="center-overview-cards">
-          ${centerStatusCard(c.center, 'director', 'المدير', c.directorPresent, c.directorTime)}
-          ${centerStatusCard(c.center, 'engineer', 'المهندس', c.engineerPresent, c.engineerTime)}
-          ${centerStatusCard(c.center, 'vehicle', 'العربة', c.vehicleAvailable, c.vehicleTime)}
-        </div>
-      </div>
-    `).join('')}</div>`;
+function isCompletedTask(task) {
+  const status = (task && task.status ? String(task.status).toUpperCase() : '');
+  return status === 'DONE' || status === 'COMPLETED' || status === 'APPROVED';
 }
 
-function centerStatusCard(center, type, label, active, time) {
+function normalizeTaskType(value) {
+  const text = String(value || '').trim();
+  const map = {
+    'رفع مساحي': 'رفع مساحي',
+    'رفع مساحى': 'رفع مساحي',
+    'تقنين': 'تقنين',
+    'مرافق': 'مرافق',
+    'منسوب': 'منسوب',
+    'طرق': 'طرق',
+    'أخرى': 'أخرى',
+    'أعمال مكتبية': 'أخرى'
+  };
+  return map[text] || (['تقنين','مرافق','منسوب','رفع مساحي','طرق'].includes(text) ? text : 'أخرى');
+}
+
+function buildCenterMetricCard(icon, title, active, value, timeText, hint, state = null) {
+  const cssState = state || (active ? 'on' : 'off');
   return `
-    <button type="button" class="center-card-pill ${active ? 'on' : 'off'}" data-center="${center}" data-type="${type}" data-time="${time || ''}" onclick="toggleCenterCard(this)">
-      <div class="center-card-title">${label}</div>
-      <div class="center-card-state">${active ? 'موجود' : 'غير موجود'}</div>
-      <div class="center-card-time">${active ? (time || '') : ''}</div>
-    </button>
+    <div class="dashboard-status-card ${cssState}">
+      <div class="dashboard-status-icon">${icon}</div>
+      <div class="dashboard-status-title">${title}</div>
+      <div class="dashboard-status-value">${value || '-'}</div>
+      <div class="dashboard-status-time">${timeText || '-'}</div>
+      ${hint ? `<div class="dashboard-status-extra">${hint}</div>` : ''}
+    </div>
   `;
 }
 
-window.toggleCenterCard = function(btn) {
-  if (!btn) return;
-  const active = btn.classList.toggle('on');
-  btn.classList.toggle('off', !active);
-  const stateEl = btn.querySelector('.center-card-state');
-  const timeEl = btn.querySelector('.center-card-time');
-  const time = btn.dataset.time || '';
-  if (active) {
-    stateEl.textContent = 'موجود';
-    timeEl.textContent = time;
-  } else {
-    stateEl.textContent = 'غير موجود';
-    timeEl.textContent = '';
+function getEngineerApprovalState(record) {
+  if (!record) return { state: 'off', label: 'غير متواجد' };
+  const status = String(record.approvalStatus || '').toUpperCase();
+  if (status === 'APPROVED') return { state: 'approved', label: 'مؤكد' };
+  if (status === 'REJECTED') return { state: 'rejected', label: 'مرفوض' };
+  if (record.isPresent === true || record.isPresent === 'true') return { state: 'pending', label: 'في انتظار التأكيد' };
+  return { state: 'off', label: 'غير متواجد' };
+}
+
+function renderCentersOverviewRows(centers, users = [], attendance = [], tasks = [], coordination = []) {
+  if (!centers || !centers.length) {
+    return `<div class="empty-state"><div class="ic">📭</div>لا توجد بيانات للحركة لهذا التاريخ</div>`;
   }
-};
+
+  const approvedUsers = (users || []).filter(u => u && u.status === 'APPROVED');
+  const directorsByCenter = new Map(approvedUsers.filter(u => u.role === 'CENTER_ADMIN').map(u => [u.center, u]));
+  const engineersByCenter = new Map();
+  approvedUsers.filter(u => u.role === 'ENGINEER' && u.center).forEach(u => {
+    if (!engineersByCenter.has(u.center)) engineersByCenter.set(u.center, []);
+    engineersByCenter.get(u.center).push(u);
+  });
+
+  const attendanceByUser = new Map();
+  (attendance || []).filter(a => a && a.type === 'IN').forEach(a => {
+    if (!attendanceByUser.has(a.userId)) attendanceByUser.set(a.userId, []);
+    attendanceByUser.get(a.userId).push(a);
+  });
+
+  const accomplishmentsByCenter = new Map();
+  (tasks || []).filter(isCompletedTask).forEach(task => {
+    const center = (task.center || '').toString().trim();
+    if (!center) return;
+    const entry = accomplishmentsByCenter.get(center) || { count: 0, breakdown: {} };
+    entry.count += 1;
+    const type = normalizeTaskType(task.taskType || task.workType || task.type || 'أخرى');
+    entry.breakdown[type] = (entry.breakdown[type] || 0) + 1;
+    accomplishmentsByCenter.set(center, entry);
+  });
+
+  return `<div class="center-overview-grid">${centers.map(c => {
+    const directorUser = directorsByCenter.get(c.center);
+    const directorAttendance = directorUser ? (attendanceByUser.get(directorUser.id) || []).find(a => a.center === c.center || !a.center) : null;
+    const directorActive = Boolean(c.directorPresent || directorAttendance);
+    const centerCoordination = (coordination || []).filter(r => r && r.recordType === 'ENGINEER' && r.center === c.center);
+    const engineerUsers = (engineersByCenter.get(c.center) || []).filter(Boolean);
+    const engineerEntries = engineerUsers.map(u => {
+      const attendanceEntries = (attendanceByUser.get(u.id) || []).filter(a => a.center === c.center || !a.center);
+      const coordRecord = centerCoordination.find(r => (r.engineerName || '').trim() === (u.fullName || '').trim()) || null;
+      const baseRecord = coordRecord || (attendanceEntries[0] || null);
+      if (!baseRecord) return null;
+      const approvalState = getEngineerApprovalState(coordRecord || baseRecord);
+      return { user: u, record: baseRecord, coordRecord, approvalState };
+    }).filter(Boolean);
+    const vehicleActive = Boolean(c.vehicleAvailable);
+    const workStartActive = Boolean(c.workStart);
+    const workEndActive = Boolean(c.workEnd);
+    const accomplishment = accomplishmentsByCenter.get(c.center) || { count: 0, breakdown: {} };
+    const accomplishmentActive = accomplishment.count > 0;
+    const accomplishmentText = accomplishment.count ? Object.entries(accomplishment.breakdown).map(([k, v]) => `${k}: ${v}`).join(' • ') : 'لا يوجد';
+
+    return `
+      <div class="center-overview-row">
+        <div class="center-overview-name">${c.center}</div>
+        <div class="center-overview-cards">
+          ${buildCenterMetricCard('👨‍💼', 'حضور المدير', directorActive, directorUser?.fullName || (directorActive ? 'متواجد' : 'غير متواجد'), directorAttendance ? fmtTime(directorAttendance.timestamp || directorAttendance.createdAt || c.directorTime) : (c.directorTime ? fmtTime(c.directorTime) : ''), directorActive ? 'تم تسجيل الحضور' : 'غير متواجد')}
+          ${engineerEntries.length ? engineerEntries.map(entry => buildCenterMetricCard('👷', 'حضور المهندس', true, entry.user.fullName, fmtTime((entry.coordRecord && (entry.coordRecord.arrivalTime || entry.coordRecord.createdAt)) || (entry.record.timestamp || entry.record.createdAt)), entry.approvalState.label, entry.approvalState.state)).join('') : buildCenterMetricCard('👷', 'حضور المهندس', false, 'لا يوجد مهندسين', '', 'غير متواجد', 'off')}
+          ${buildCenterMetricCard('🚗', 'توافر السيارة', vehicleActive, vehicleActive ? 'متوفرة' : 'غير متوفرة', c.vehicleTime ? fmtTime(c.vehicleTime) : '', vehicleActive ? 'متوفرة' : 'غير متوفرة')}
+          ${buildCenterMetricCard('▶️', 'بدء العمل', workStartActive, workStartActive ? 'مسجل' : 'غير مسجل', c.workStart ? fmtTime(c.workStart) : '', workStartActive ? 'تم تسجيل البداية' : 'لم يبدأ')}
+          ${buildCenterMetricCard('⏹️', 'انتهاء العمل', workEndActive, workEndActive ? 'مسجل' : 'غير مسجل', c.workEnd ? fmtTime(c.workEnd) : '', workEndActive ? 'تم تسجيل النهاية' : 'لم ينته')}
+          ${buildCenterMetricCard('🎯', 'ما تم إنجازه', accomplishmentActive, `${accomplishment.count || 0} حالة`, accomplishmentText, 'أنواع المعاينات')}
+        </div>
+      </div>
+    `;
+  }).join('')}</div>`;
+}
 
 function updateDashboardClock() {
   const el = document.getElementById('dashboardClock');
@@ -1218,7 +1330,7 @@ function listBars(arr) {
     </div>`).join('');
 }
 
-/* الموقف اليومي لجميع المراكز - للإدارة العامة (ديوان المحافظة) */
+/* الموقف اليومي لجميع المراكز - للإدارة العامة (مجمع الذكاء) */
 async function renderCentersOverviewPanel(selectedDate) {
   const order = ['العدوة','مغاغة','بني مزار','مطاي','سمالوط','المنيا','أبو قرقاص','ملوي','ديرمواس'];
   const data = await api('centersOverviewToday', Object.assign({ date: selectedDate }, CURRENT_USER.role === 'SYSTEM_ADMIN' ? {} : { center: CURRENT_USER.center }));
@@ -1294,17 +1406,24 @@ async function renderAttendance(root) {
   const monthlyStats = await api('monthlyAttendanceSummary', { userId: CURRENT_USER.id });
   const isFieldRole = ['ENGINEER','TECHNICIAN'].includes(CURRENT_USER.role);
   const isCenterAdmin = CURRENT_USER.role === 'CENTER_ADMIN';
-  const today = new Date().toISOString().slice(0,10);
+  const attendanceWindow = await loadAttendanceWindowConfig();
+  const windowState = getAttendanceWindowState(getEgyptNow());
+  const today = getEgyptDateKey(getEgyptNow());
   const savedTargetTasks = localStorage.getItem('dailyTargetTasks_' + today) || '';
   const CHECK_IN_DEADLINE_HOUR = 10; // مطابق لقاعدة الحضور في الباك إند
-  const isAbsentToday = new Date().getHours() >= CHECK_IN_DEADLINE_HOUR && !status.hasCheckedIn;
+  const attendanceLockKey = 'attendanceCheckinFlag_' + today;
+  const localCheckedInToday = localStorage.getItem(attendanceLockKey) === '1';
+  const checkedInToday = Boolean(status.hasCheckedIn || localCheckedInToday);
+  const attendanceCutoffMinutes = parseTimeToMinutes(attendanceWindow.startTime) ?? (10 * 60 + 30);
+  const isAbsentToday = (getEgyptNow().getHours() * 60 + getEgyptNow().getMinutes()) >= attendanceCutoffMinutes && !checkedInToday;
+  let coordToday = [];
 
   // بيانات إجراءات المتابعة السريعة (لمدير المركز فقط) - نجيبها هنا عشان تظهر الأزرار
   // بحالتها الصحيحة (مسجّل / غير مسجّل) من أول ما تُفتح الصفحة، مش بس بعد الضغط
   let coordFlags = { director:{done:false,time:''}, engineer:{done:false,time:''}, vehicle:{done:false,time:''}, startWork:{done:false,time:''}, endWork:{done:false,time:''}, target:{done:false,time:'',value:0} };
   if (isCenterAdmin) {
     try {
-      const coordToday = await api('listDailyCoordination', { date: today, center: CURRENT_USER.center });
+      coordToday = await api('listDailyCoordination', { date: today, center: CURRENT_USER.center });
       const findRec = (type) => (coordToday || []).find(r => r.recordType === type);
       const directorRec = findRec('DIRECTOR');
       const engineerRec = findRec('ENGINEER');
@@ -1350,43 +1469,60 @@ async function renderAttendance(root) {
 
   if (isCenterAdmin) {
     const team = await api('centerAttendanceToday', { center: CURRENT_USER.center });
-    const canExportAbsence = new Date().getHours() >= 10;
+    const canExportAbsence = getEgyptNow().getHours() >= 10;
+    const coordByEngineer = new Map((coordToday || []).filter(r => r && r.recordType === 'ENGINEER' && r.center === CURRENT_USER.center).map(r => [String(r.engineerName || '').trim(), r]));
+    const teamWithApproval = team.map(u => {
+      const record = coordByEngineer.get(String(u.fullName || '').trim());
+      return Object.assign({}, u, { approvalStatus: record ? (record.approvalStatus || (record.isPresent === true || record.isPresent === 'true' ? 'PENDING' : '')) : '' });
+    });
+    const pendingEngineerApprovals = (coordToday || []).filter(r => r && r.recordType === 'ENGINEER' && r.center === CURRENT_USER.center && ((r.approvalStatus === 'PENDING') || (!r.approvalStatus && (r.isPresent === true || r.isPresent === 'true'))));
     extraHtml = `
       <div class="panel">
+        <div class="panel-head"><h3>تأكيد حضور المهندسين</h3></div>
+        <div class="quick-actions-grid">
+          ${pendingEngineerApprovals.length ? pendingEngineerApprovals.map(r => `
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fffdf4">
+              <div style="font-weight:800;color:var(--navy-900)">${r.engineerName || 'مهندس'}</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-primary btn-sm" onclick="handleEngineerAttendanceDecision('${(r.engineerName || '').replace(/'/g, "\\'")}', 'APPROVED')">✅ تأكيد</button>
+                <button class="btn btn-danger btn-sm" onclick="handleEngineerAttendanceDecision('${(r.engineerName || '').replace(/'/g, "\\'")}', 'REJECTED')">❌ رفض</button>
+              </div>
+            </div>
+          `).join('') : '<div class="empty-state">لا توجد طلبات حضور معلّقة حاليًا</div>'}
+        </div>
+      </div>
+      <div class="panel">
         <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center"><h3>حالة حضور موظفي المركز اليوم</h3><button class="btn btn-gold btn-sm" onclick="exportTodayAbsenceReport()" ${canExportAbsence ? '' : 'disabled'}>⬇ كشف غياب اليوم</button></div>
-        <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الحضور</th><th>وقت الحضور</th><th>وقت الانصراف</th></tr></thead>
-        <tbody>${team.map(u => `<tr><td>${u.fullName}</td><td>${roleLabel(u.role)}</td><td><span class="chip ${u.hasCheckedIn?'approved':'rejected'}">${u.hasCheckedIn?'حاضر':'غائب'}</span></td><td>${u.checkInTime?fmtDate(u.checkInTime):'-'}</td><td>${u.checkOutTime?fmtDate(u.checkOutTime):'-'}</td></tr>`).join('') || `<tr><td colspan="5"><div class="empty-state">لا يوجد موظفون بهذا المركز</div></td></tr>`}</tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الحضور</th><th>الحالة</th><th>وقت الحضور</th><th>وقت الانصراف</th></tr></thead>
+        <tbody>${teamWithApproval.map(u => `<tr><td>${u.fullName}</td><td>${roleLabel(u.role)}</td><td><span class="chip ${u.hasCheckedIn?'approved':'rejected'}">${u.hasCheckedIn?'حاضر':'غائب'}</span></td><td>${u.approvalStatus === 'APPROVED' ? '<span class="chip approved">مؤكد</span>' : (u.approvalStatus === 'REJECTED' ? '<span class="chip rejected">مرفوض</span>' : '<span class="chip pending">في الانتظار</span>')}</td><td>${u.checkInTime?fmtDate(u.checkInTime):'-'}</td><td>${u.checkOutTime?fmtDate(u.checkOutTime):'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state">لا يوجد موظفون بهذا المركز</div></td></tr>`}</tbody></table></div>
         <p style="color:var(--ink-400);font-size:12px;margin:10px 2px 0">${canExportAbsence ? 'يمكنك تحميل كشف الغياب بعد الساعة 10 صباحًا.' : 'يكون كشف الغياب متاحًا للتحميل بعد الساعة 10 صباحًا.'}</p>
       </div>`;
   }
 
   root.innerHTML = `
     <div class="panel" style="text-align:center;padding:34px 20px">
-      <div style="font-size:14px;color:var(--ink-600);margin-bottom:6px">${new Date().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+      <div style="font-size:14px;color:var(--ink-600);margin-bottom:6px">${getEgyptNow().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+      <div style="background:${windowState.isOpen ? '#eef8f0' : '#fff6e5'};border:1px solid ${windowState.isOpen ? 'var(--good)' : 'var(--warn)'};border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13.5px;color:var(--navy-900)">
+        <strong>نافذة الحضور والانصراف:</strong> ${windowState.isOpen ? `مفتوحة الآن من ${formatClockLabel(attendanceWindow.startTime)} إلى ${formatClockLabel(attendanceWindow.endTime)}` : (windowState.isBeforeStart ? `ستبدأ عند ${formatClockLabel(attendanceWindow.startTime)}` : `انتهت عند ${formatClockLabel(attendanceWindow.endTime)}`)}
+      </div>
       <div style="font-size:32px;font-weight:800;margin-bottom:22px" id="clockNow"></div>
       <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
         ${isAbsentToday ? `
           <div style="background:#fdeaea;border:1.5px solid var(--bad);border-radius:12px;padding:14px 22px;display:flex;align-items:center;gap:10px;color:var(--bad);font-weight:800;font-size:14.5px">
-            <span style="font-size:20px">🚫</span> تم تسجيلك غائبًا اليوم لعدم تسجيل الحضور قبل الساعة 10:00 صباحًا
+            <span style="font-size:20px">🚫</span> تم تسجيلك غائبًا اليوم لعدم تسجيل الحضور قبل ${formatClockLabel(attendanceWindow.startTime)}
           </div>
         ` : `
-        <button class="btn btn-primary ${status.hasCheckedIn ? 'btn-done' : ''}" id="checkInBtn" ${status.hasCheckedIn ? 'disabled' : ''} onclick="doAttendanceWithModal()">✅ ${status.hasCheckedIn ? 'تم تسجيل الحضور الساعة ' + fmtTime(status.lastIn && status.lastIn.timestamp) : 'تسجيل حضور'}</button>
-        <button class="btn btn-danger ${status.hasCheckedOut ? 'btn-done' : ''}" id="checkOutBtn" ${(!status.hasCheckedIn || status.hasCheckedOut) ? 'disabled' : ''}>⏹ ${status.hasCheckedOut ? 'تم تسجيل الانصراف الساعة ' + fmtTime(status.lastOut && status.lastOut.timestamp) : 'تسجيل انصراف'}</button>
+        <button class="btn btn-primary ${checkedInToday ? 'btn-done' : ''}" id="checkInBtn" ${checkedInToday || !windowState.canCheckIn ? 'disabled' : ''} onclick="doAttendanceWithModal()">✅ ${checkedInToday ? 'تم تسجيل الحضور الساعة ' + fmtTime(status.lastIn && status.lastIn.timestamp) : (windowState.canCheckIn ? 'تسجيل حضور' : 'غير متاح الآن')}</button>
+        <button class="btn btn-danger ${status.hasCheckedOut ? 'btn-done' : ''}" id="checkOutBtn" ${(!checkedInToday || status.hasCheckedOut || !windowState.canCheckOut) ? 'disabled' : ''}>⏹ ${status.hasCheckedOut ? 'تم تسجيل الانصراف الساعة ' + fmtTime(status.lastOut && status.lastOut.timestamp) : (windowState.canCheckOut ? 'تسجيل انصراف' : 'غير متاح الآن')}</button>
         `}
         ${isCenterAdmin ? `
           <div style="display:flex;align-items:center;gap:10px">
-            <div id="movementCards" style="display:flex;gap:10px;align-items:center">
-              <div class="movement-card" data-val="OPEN_FULL" onclick="selectMovementCard(this)" style="background:#f3f6f8;padding:10px 14px;border-radius:10px;cursor:pointer;min-width:160px;text-align:center;border:1px solid var(--line);color:var(--ink-600)">✅ مفتوح وكامل الطاقم</div>
-              <div class="movement-card" data-val="OPEN_PARTIAL" onclick="selectMovementCard(this)" style="background:#f3f6f8;padding:10px 14px;border-radius:10px;cursor:pointer;min-width:160px;text-align:center;border:1px solid var(--line);color:var(--ink-600)">⚠️ مفتوح وناقص الطاقم</div>
-              <div class="movement-card" data-val="CLOSED" onclick="selectMovementCard(this)" style="background:#f3f6f8;padding:10px 14px;border-radius:10px;cursor:pointer;min-width:120px;text-align:center;border:1px solid var(--line);color:var(--ink-600)">❌ مغلق</div>
-            </div>
-            <button class="btn btn-primary btn-sm" id="saveMovementBtn" onclick="saveOfficeMovement()">حفظ</button>
             <button class="btn btn-outline btn-sm" onclick="openDailyCoordinationModal()">تفاصيل</button>
           </div>
         ` : ''}
       </div>
-      <div class="gps-box" id="gpsBox" style="justify-content:center">📍 سيتم تحديد موقعك تلقائيًا عند التسجيل</div>
-      ${(!status.hasCheckedIn && !isAbsentToday) ? `<p style="color:var(--warn);font-size:12.5px;margin-top:10px">⚠ يُعتبر الموظف غائبًا إذا لم يسجل الحضور قبل الساعة 10:00 صباحًا</p>` : ''}
+      <div class="gps-box" id="gpsBox" style="justify-content:center"></div>
+      ${(!checkedInToday && !isAbsentToday) ? `<p style="color:var(--warn);font-size:12.5px;margin-top:10px">⚠ يُعتبر الموظف غائبًا إذا لم يسجل الحضور قبل ${formatClockLabel(attendanceWindow.startTime)}</p>` : ''}
       ${isCenterAdmin ? `
       <div class="quick-actions-grid">
         <button class="btn ${coordFlags.director.done ? 'btn-done' : 'btn-outline'}" id="qaDirector" ${coordFlags.director.done ? 'disabled' : ''}>👨‍💼 ${coordFlags.director.done ? 'تم تسجيل تواجد المدير الساعة ' + coordFlags.director.time : 'تسجيل تواجد المدير'}</button>
@@ -1409,9 +1545,9 @@ async function renderAttendance(root) {
     </div>`;
   setInterval(() => {
     const c = document.getElementById('clockNow');
-    if (c) c.textContent = new Date().toLocaleTimeString('ar-EG');
+    if (c) c.textContent = getEgyptNow().toLocaleTimeString('ar-EG');
     // إعادة رسم الصفحة تلقائيًا لحظة تجاوز الساعة 10 صباحًا حتى تختفي أزرار الحضور فورًا دون الحاجة لتحديث يدوي
-    if (!isAbsentToday && !status.hasCheckedIn && new Date().getHours() >= CHECK_IN_DEADLINE_HOUR && currentPage === 'attendance') {
+    if (!isAbsentToday && !checkedInToday && (getEgyptNow().getHours() * 60 + getEgyptNow().getMinutes()) >= attendanceCutoffMinutes && currentPage === 'attendance') {
       goPage('attendance', true);
     }
   }, 1000);
@@ -1423,22 +1559,6 @@ async function renderAttendance(root) {
       document.getElementById('checkOutBtn').onclick = () => doAttendance('checkOut');
     }
   }
-  // initialize movement card selection if center admin
-  if (isCenterAdmin) {
-    // fetch today's saved coordination to mark selection if exists
-    api('listDailyCoordination', { date: new Date().toISOString().slice(0,10), center: CURRENT_USER.center }).then(list => {
-      if (Array.isArray(list) && list.length) {
-        const office = list.find(r => r.recordType === 'OFFICE');
-        if (office && office.notes) {
-          const val = (office.notes || '').toString();
-          const mapping = { 'OPEN_FULL':'OPEN_FULL','OPEN_PARTIAL':'OPEN_PARTIAL','CLOSED':'CLOSED' };
-          const el = Array.from(document.querySelectorAll('#movementCards .movement-card')).find(x => x.dataset.val === mapping[val] || x.dataset.val === val);
-          if (el) el.classList.add('active');
-        }
-      }
-    }).catch(() => {});
-  }
-
   // ربط أزرار إجراءات المتابعة السريعة (مدير المركز فقط): ضغطة واحدة، تتحول للأخضر، وتعرض وقت التسجيل
   if (isCenterAdmin) {
     const wireQuickBtn = (id, field, valueFn, doneLabel) => {
@@ -1452,7 +1572,7 @@ async function renderAttendance(root) {
         try {
           const value = valueFn();
           await api('updateDailyCoordinationStatus', { center: CURRENT_USER.center, field, value, engineerName: CURRENT_USER.fullName, createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
-          const timeStr = fmtTime(new Date());
+          const timeStr = fmtTime(getEgyptNow());
           btn.innerHTML = doneLabel(timeStr);
           btn.classList.remove('btn-outline', 'btn-primary');
           btn.classList.add('btn-done');
@@ -1466,8 +1586,8 @@ async function renderAttendance(root) {
     wireQuickBtn('qaDirector', 'directorStatus', () => 'PRESENT', (t) => `👨‍💼 تم تسجيل تواجد المدير الساعة ${t}`);
     wireQuickBtn('qaEngineer', 'engineerStatus', () => 'PRESENT', (t) => `👷 تم تسجيل تواجد المهندس الساعة ${t}`);
     wireQuickBtn('qaVehicle', 'vehicleStatus', () => 'AVAILABLE', (t) => `🚗 تم تسجيل توافر العربة الساعة ${t}`);
-    wireQuickBtn('qaStartWork', 'startWork', () => new Date().toISOString(), (t) => `▶️ تم تسجيل بدء العمل الساعة ${t}`);
-    wireQuickBtn('qaEndWork', 'endWork', () => new Date().toISOString(), (t) => `⏹️ تم تسجيل انتهاء العمل الساعة ${t}`);
+    wireQuickBtn('qaStartWork', 'startWork', () => getEgyptNow().toISOString(), (t) => `▶️ تم تسجيل بدء العمل الساعة ${t}`);
+    wireQuickBtn('qaEndWork', 'endWork', () => getEgyptNow().toISOString(), (t) => `⏹️ تم تسجيل انتهاء العمل الساعة ${t}`);
     const qaTarget = document.getElementById('qaTarget');
     if (qaTarget && !qaTarget.disabled) {
       qaTarget.onclick = async () => {
@@ -1479,7 +1599,7 @@ async function renderAttendance(root) {
         qaTarget.innerHTML = '... جارِ الحفظ';
         try {
           await api('updateDailyCoordinationStatus', { center: CURRENT_USER.center, field: 'targetCount', value: Number(n), createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
-          const timeStr = fmtTime(new Date());
+          const timeStr = fmtTime(getEgyptNow());
           qaTarget.innerHTML = `🎯 تم تعيين عدد المعاينات (${Number(n)}) الساعة ${timeStr}`;
           qaTarget.classList.remove('btn-primary');
           qaTarget.classList.add('btn-done');
@@ -1501,14 +1621,63 @@ async function renderAttendance(root) {
   }
 }
 
-// دالة الحضور مع نافذة المهام المستهدفة
+window.handleEngineerAttendanceDecision = async (engineerName, status) => {
+  try {
+    await api('updateDailyCoordinationStatus', {
+      center: CURRENT_USER.center,
+      field: 'engineerAttendanceApproval',
+      engineerName,
+      value: status,
+      createdBy: CURRENT_USER.id,
+      createdByName: CURRENT_USER.fullName
+    });
+    showToast(status === 'APPROVED' ? 'تم تأكيد حضور المهندس' : 'تم رفض حضور المهندس', 'ok');
+    goPage('attendance', true);
+  } catch (e) {
+    console.warn('failed engineer approval', e);
+  }
+};
+
+// دالة الحضور مع نافذة اختيار المركز ونوع العمل للمهندس
 window.doAttendanceWithModal = () => {
-  const today = new Date().toISOString().slice(0,10);
+  if (CURRENT_USER?.role === 'ENGINEER') {
+    openModal(`
+      <h3>تسجيل حضور المهندس</h3>
+      <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">اختر المركز الذي سيتواجد فيه اليوم ونوع العمل</p>
+      <div class="field">
+        <label>المركز</label>
+        <select id="engineerAttendanceCenter" style="width:100%">
+          ${CENTERS.map(c => `<option value="${c}" ${CURRENT_USER.center === c ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>نوع العمل</label>
+        <select id="engineerAttendanceWorkType" style="width:100%">
+          <option value="FIELD">ميداني</option>
+          <option value="OFFICE">مكتبي</option>
+        </select>
+      </div>
+      <div class="modal-close-row">
+        <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+        <button class="btn btn-primary" onclick="submitEngineerAttendance()">تسجيل الحضور</button>
+      </div>
+    `);
+    return;
+  }
+
+  const today = getEgyptDateKey(getEgyptNow());
   const savedTasks = localStorage.getItem('dailyTargetTasks_' + today);
   if (!savedTasks) {
     openDailyTargetTasksModal();
   }
   doAttendance('checkIn');
+};
+
+window.submitEngineerAttendance = () => {
+  const center = document.getElementById('engineerAttendanceCenter')?.value || CURRENT_USER?.center || '';
+  const workType = document.getElementById('engineerAttendanceWorkType')?.value || 'FIELD';
+  closeModal();
+  doAttendance('checkIn', { center, workType });
 };
 
 // عند تسجيل الانصراف للفني/المهندس: فتح مربع لإدخال ما تم إنجازه ثم تسجيل الانصراف
@@ -1524,7 +1693,7 @@ window.submitCheckoutAndSignOut = async () => {
   const note = document.getElementById('checkoutNote')?.value || '';
   try {
     // سجل الملاحظة كملاحظة شخصية لليوم (سطر في DailyCoordination مع recordType خاص)
-    await api('recordDailyCoordination', { date: new Date().toISOString().slice(0,10), center: CURRENT_USER.center, notes: note, recordedBy: CURRENT_USER.id, recordedAt: new Date().toISOString() });
+    await api('recordDailyCoordination', { date: getEgyptDateKey(getEgyptNow()), center: CURRENT_USER.center, notes: note, recordedBy: CURRENT_USER.id, recordedAt: getEgyptNow().toISOString() });
   } catch (e) {
     // لا نمنع الانصراف إن فشل حفظ الملاحظة
     console.warn('failed to save checkout note', e);
@@ -1545,29 +1714,52 @@ function taskStatusChip(status) {
   return `<span class="chip ${v[0]}">${v[1]}</span>`;
 }
 
-function doAttendance(action) {
+function doAttendance(action, extra = {}) {
   const btn = document.getElementById(action === 'checkIn' ? 'checkInBtn' : 'checkOutBtn');
   if (btn) { btn.disabled = true; btn.classList.add('btn-done'); }
   const box = document.getElementById('gpsBox');
-  box.textContent = '📍 جاري تحديد الموقع...';
+  if (box) box.textContent = '';
+  if (action === 'checkIn') {
+    const today = getEgyptDateKey(getEgyptNow());
+    localStorage.setItem('attendanceCheckinFlag_' + today, '1');
+  }
   navigator.geolocation.getCurrentPosition(async (pos) => {
     try {
-      await api(action, {
-        userId: CURRENT_USER.id, userName: CURRENT_USER.fullName, center: CURRENT_USER.center,
-        lat: pos.coords.latitude, lng: pos.coords.longitude
-      });
+      const payload = {
+        userId: CURRENT_USER.id,
+        userName: CURRENT_USER.fullName,
+        center: extra.center || CURRENT_USER.center,
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude
+      };
+      if (action === 'checkIn' && extra.workType) payload.workType = extra.workType;
+      await api(action, payload);
       showToast(action === 'checkIn' ? 'تم تسجيل الحضور بنجاح' : 'تم تسجيل الانصراف بنجاح', 'ok');
       goPage('attendance', true);
     } catch (e) {
+      if (action === 'checkIn') {
+        const today = getEgyptDateKey(getEgyptNow());
+        localStorage.removeItem('attendanceCheckinFlag_' + today);
+      }
       if (btn) { btn.disabled = false; btn.classList.remove('btn-done'); }
     }
   }, async () => {
     // في حال رفض المستخدم صلاحية الموقع، يتم التسجيل بدون إحداثيات
     try {
-      await api(action, { userId: CURRENT_USER.id, userName: CURRENT_USER.fullName, center: CURRENT_USER.center });
+      const payload = {
+        userId: CURRENT_USER.id,
+        userName: CURRENT_USER.fullName,
+        center: extra.center || CURRENT_USER.center
+      };
+      if (action === 'checkIn' && extra.workType) payload.workType = extra.workType;
+      await api(action, payload);
       showToast('تم التسجيل بدون تحديد الموقع (الصلاحية غير مفعّلة)', 'ok');
       goPage('attendance', true);
     } catch (e) {
+      if (action === 'checkIn') {
+        const today = getEgyptDateKey(getEgyptNow());
+        localStorage.removeItem('attendanceCheckinFlag_' + today);
+      }
       if (btn) { btn.disabled = false; btn.classList.remove('btn-done'); }
     }
   });
@@ -1587,7 +1779,7 @@ window.openDailyTargetTasksModal = () => {
 
 window.saveDailyTargetTasks = () => {
   const tasks = document.getElementById('dailyTasks')?.value || '';
-  localStorage.setItem('dailyTargetTasks_' + new Date().toISOString().slice(0,10), tasks);
+  localStorage.setItem('dailyTargetTasks_' + getEgyptDateKey(getEgyptNow()), tasks);
   closeModal();
   showToast('تم حفظ المهام المستهدفة', 'ok');
 };
@@ -1684,7 +1876,7 @@ async function renderTechnicianAssignments(root) {
       <div class="panel">
         <div class="panel-head"><h3>التكليفات من الإدارة العامة</h3></div>
         <div style="background:#fff3cd;border:1.5px solid #ffc107;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#856404">
-          🔔 <strong>تكليفات مهمة من الإدارة العامة:</strong> هذه التكليفات موجهة مباشرة من ديوان المحافظة ولها أولوية عالية.
+          🔔 <strong>تكليفات مهمة من الإدارة العامة:</strong> هذه التكليفات موجهة مباشرة من مجمع الذكاء ولها أولوية عالية.
         </div>
         ${filterBar('system')}
         <div class="table-wrap" style="max-height:400px;overflow:auto">
@@ -1761,12 +1953,12 @@ window.submitAssignmentStatusUpdate = async (assignmentId, newStatus) => {
 };
 
 window.exportTodayAbsenceReport = async () => {
-  const now = new Date();
+  const now = getEgyptNow();
   if (now.getHours() < 10) {
     showToast('يمكن تحميل كشف الغياب بعد الساعة 10 صباحًا فقط', 'err');
     return;
   }
-  const today = now.toISOString().slice(0,10);
+  const today = getEgyptDateKey(now);
   const users = await api('listUsers', { center: CURRENT_USER.center, status: 'APPROVED' });
   const attendance = await api('listAttendance', { center: CURRENT_USER.center, date: today });
   const presentIds = new Set(attendance.filter(a => a.type === 'IN').map(a => a.userId));
@@ -1797,18 +1989,9 @@ window.exportTodayAbsenceReport = async () => {
    نافذة المتابعة اليومية الشاملة لمدير المركز
    ======================================================================== */
 window.openDailyCoordinationModal = () => {
-  const today = new Date().toISOString().slice(0,10);
+  const today = getEgyptDateKey(getEgyptNow());
   openModal(`
-    <h3>📋 متابعة اليوم - ${new Date().toLocaleDateString('ar-EG', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</h3>
-    <div class="field">
-      <label>🏢 هل المكتب مفتوح ومكتمل الطاقم؟</label>
-      <select id="officeStatus" style="width:100%">
-        <option value="">اختر...</option>
-        <option value="OPEN_FULL">✅ مفتوح وكامل الطاقم</option>
-        <option value="OPEN_PARTIAL">⚠️ مفتوح وناقص الطاقم</option>
-        <option value="CLOSED">❌ مغلق</option>
-      </select>
-    </div>
+    <h3>📋 متابعة اليوم - ${getEgyptNow().toLocaleDateString('ar-EG', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</h3>
     <div class="field">
       <label>👷 هل المهندس موجود بالمركز؟</label>
       <select id="engineerStatus" style="width:100%">
@@ -1833,7 +2016,7 @@ window.openDailyCoordinationModal = () => {
     </div>
     <div class="field">
       <label>⏰ وقت بداية العمل</label>
-      <input id="workStart" type="time" value="${new Date().toTimeString().slice(0,5)}">
+      <input id="workStart" type="time" value="${getEgyptNow().toTimeString().slice(0,5)}">
     </div>
     <div class="field">
       <label>⏹️ وقت نهاية العمل (اختياري)</label>
@@ -1851,7 +2034,7 @@ window.openDailyCoordinationModal = () => {
 };
 
 window.submitDailyCoordination = async () => {
-  const today = new Date().toISOString().slice(0,10);
+  const today = getEgyptDateKey(getEgyptNow());
   const officeStatus = document.getElementById('officeStatus')?.value;
   const engineerStatus = document.getElementById('engineerStatus')?.value;
   const vehicleStatus = document.getElementById('vehicleStatus')?.value;
@@ -1877,7 +2060,7 @@ window.submitDailyCoordination = async () => {
       workEnd,
       notes: dailyNotes,
       recordedBy: CURRENT_USER.fullName,
-      recordedAt: new Date().toISOString()
+      recordedAt: getEgyptNow().toISOString()
     });
     closeModal();
     showToast('تم حفظ متابعة اليوم بنجاح', 'ok');
@@ -1885,81 +2068,6 @@ window.submitDailyCoordination = async () => {
   } catch (e) {
     showToast('خطأ في حفظ البيانات', 'err');
   }
-};
-
-// Helper for movement cards
-window.selectMovementCard = (el) => {
-  if (!el) return;
-  // toggle active exclusively
-  document.querySelectorAll('#movementCards .movement-card').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-};
-
-window.saveOfficeMovement = async () => {
-  const el = document.querySelector('#movementCards .movement-card.active');
-  if (!el) { showToast('اختر حالة المكتب أولاً', 'err'); return; }
-  const officeStatus = el.dataset.val;
-  const today = new Date().toISOString().slice(0,10);
-  try {
-    // Record minimal coord: officeStatus only
-    await api('recordDailyCoordination', {
-      date: today,
-      center: CURRENT_USER.center,
-      officeStatus,
-      engineerStatus: '',
-      vehicleStatus: '',
-      targetCount: 0,
-      workStart: '',
-      workEnd: '',
-      notes: 'تحديث سريع من شاشة الحضور',
-      recordedBy: CURRENT_USER.fullName,
-      recordedAt: new Date().toISOString()
-    });
-    showToast('تم حفظ موقف التحرك', 'ok');
-  } catch (e) {
-    showToast('فشل حفظ موقف التحرك', 'err');
-  }
-};
-
-/* نافذة تحديث حالة المكتب */
-window.openOfficeStatusModal = () => {
-  openModal(`
-    <h3>🏢 حالة المكتب</h3>
-    <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">حدّث حالة المكتب الحالية</p>
-    <div class="field">
-      <label>الحالة</label>
-      <select id="officeStatusSelect" style="width:100%">
-        <option value="OPEN_FULL">✅ مفتوح وكامل الطاقم</option>
-        <option value="OPEN_PARTIAL">⚠️ مفتوح وناقص الطاقم</option>
-        <option value="CLOSED">❌ مغلق</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>الملاحظات</label>
-      <textarea id="officeNotes" rows="2" placeholder="سبب التغيير أو ملاحظات..."></textarea>
-    </div>
-    <div class="modal-close-row">
-      <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-      <button class="btn btn-primary" onclick="submitOfficeStatus()">تحديث</button>
-    </div>
-  `);
-};
-
-window.submitOfficeStatus = async () => {
-  const status = document.getElementById('officeStatusSelect')?.value;
-  const notes = document.getElementById('officeNotes')?.value;
-  try {
-    await api('updateDailyCoordinationStatus', {
-      date: new Date().toISOString().slice(0,10),
-      center: CURRENT_USER.center,
-      field: 'officeStatus',
-      value: status,
-      notes
-    });
-    closeModal();
-    showToast('تم تحديث حالة المكتب', 'ok');
-    goPage('coordination', true);
-  } catch (e) {}
 };
 
 /* نافذة تحديث حالة المهندس */
@@ -2048,7 +2156,7 @@ window.submitVehicleStatus = async () => {
    المتابعة اليومية للمركز (لمدير البنية المعلوماتية بالمركز)
    ======================================================================== */
 async function renderCoordination(root) {
-  const selectedDate = localStorage.getItem('coordinationDate') || new Date().toISOString().slice(0,10);
+  const selectedDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
   const [users, attendance, missions, tasks, coord, equipment] = await Promise.all([
     api('listUsers', {}),
     api('listAttendance', { date: selectedDate }),
@@ -2059,8 +2167,8 @@ async function renderCoordination(root) {
   ]);
 
   const isCenterAdmin = CURRENT_USER.role === 'CENTER_ADMIN';
-  const centers = isCenterAdmin ? [CURRENT_USER.center] : CENTERS.filter(c => c && c !== 'ديوان عام المحافظة');
-  const today = selectedDate === new Date().toISOString().slice(0,10);
+  const centers = isCenterAdmin ? [CURRENT_USER.center] : CENTERS.filter(c => c && c !== 'مجمع الذكاء');
+  const today = selectedDate === getEgyptDateKey(getEgyptNow());
   const centerSummary = centers.map(center => {
     const centerStaff = users.filter(u => u.status === 'APPROVED' && u.center === center && u.role !== 'SYSTEM_ADMIN');
     const presentIds = new Set(attendance.filter(a => a.center === center && a.type === 'IN').map(a => a.userId));
@@ -2183,12 +2291,12 @@ async function renderCoordination(root) {
 }
 
 window.exportCoordinationReport = async () => {
-  const today = new Date().toISOString().slice(0,10);
+  const today = getEgyptDateKey(getEgyptNow());
   const data = await api('getDailyCoordinationReport', { date: today, center: CURRENT_USER.center });
   
   let csv = '\uFEFF';
   csv += 'تقرير متابعة اليوم\\n';
-  csv += `التاريخ,${new Date().toLocaleDateString('ar-EG')}\\n`;
+  csv += `التاريخ,${getEgyptNow().toLocaleDateString('ar-EG')}\\n`;
   csv += `المركز,${CURRENT_USER.center}\\n\\n`;
   csv += 'البيانات الأساسية\\n';
   csv += `حالة المكتب,${data.officeStatus}\\n`;
@@ -3563,31 +3671,52 @@ window.openNotifModal = async () => {
 
 /* ---------------------------- أدوات مساعدة عامة ---------------------------- */
 function val(id) { return document.getElementById(id).value.trim ? document.getElementById(id).value.trim() : document.getElementById(id).value; }
+function toEgyptTime(dateValue) {
+  const d = dateValue instanceof Date ? dateValue : new Date(dateValue);
+  if (Number.isNaN(d.getTime())) return null;
+  const utc = d.getTime();
+  const offsetMinutes = 2 * 60;
+  return new Date(utc + offsetMinutes * 60000);
+}
+function getEgyptNow() {
+  return toEgyptTime(new Date()) || new Date();
+}
+function getEgyptDateKey(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const egypt = toEgyptTime(d);
+  if (!egypt) return '';
+  return egypt.toISOString().slice(0, 10);
+}
 function fmtDate(iso) {
   if (!iso) return '-';
   const d = iso instanceof Date ? iso : new Date(iso);
   if (Number.isNaN(d.getTime())) return '-';
-  const hour = d.getHours() % 12 || 12;
-  const minute = d.getMinutes().toString().padStart(2, '0');
-  const period = d.getHours() < 12 ? 'ص' : 'م';
-  const day = d.getDate();
-  const month = d.getMonth() + 1;
-  const year = d.getFullYear();
+  const egypt = toEgyptTime(d);
+  if (!egypt) return '-';
+  const hour = egypt.getHours() % 12 || 12;
+  const minute = egypt.getMinutes().toString().padStart(2, '0');
+  const period = egypt.getHours() < 12 ? 'ص' : 'م';
+  const day = egypt.getDate();
+  const month = egypt.getMonth() + 1;
+  const year = egypt.getFullYear();
   return `${hour}.${minute}${period} ${day}/${month}/${year}`;
 }
 function fmtTime(iso) {
   if (!iso) return '';
   const d = iso instanceof Date ? iso : new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  const hour = d.getHours() % 12 || 12;
-  const minute = d.getMinutes().toString().padStart(2, '0');
-  const period = d.getHours() < 12 ? 'ص' : 'م';
+  const egypt = toEgyptTime(d);
+  if (!egypt) return '';
+  const hour = egypt.getHours() % 12 || 12;
+  const minute = egypt.getMinutes().toString().padStart(2, '0');
+  const period = egypt.getHours() < 12 ? 'ص' : 'م';
   return `${hour}:${minute} ${period}`;
 }
 function getDateKey(value) {
   if (!value) return '';
   if (typeof value === 'string') return value.slice(0,10);
-  if (value instanceof Date) return value.toISOString().slice(0,10);
+  if (value instanceof Date) return getEgyptDateKey(value);
   return '';
 }
 function isSameDate(value, date) {
