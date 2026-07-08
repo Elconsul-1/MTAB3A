@@ -1424,12 +1424,11 @@ async function renderAttendance(root) {
   const windowState = getAttendanceWindowState(getEgyptNow());
   const today = getEgyptDateKey(getEgyptNow());
   const savedTargetTasks = localStorage.getItem('dailyTargetTasks_' + today) || '';
-  const CHECK_IN_DEADLINE_HOUR = 10; // مطابق لقاعدة الحضور في الباك إند
   const attendanceLockKey = 'attendanceCheckinFlag_' + today;
   const localCheckedInToday = localStorage.getItem(attendanceLockKey) === '1';
   const checkedInToday = Boolean(status.hasCheckedIn || localCheckedInToday);
-  const attendanceCutoffMinutes = parseTimeToMinutes(attendanceWindow.startTime) ?? (10 * 60 + 30);
-  const isAbsentToday = (getEgyptNow().getHours() * 60 + getEgyptNow().getMinutes()) >= attendanceCutoffMinutes && !checkedInToday;
+  const attendanceCutoffMinutes = windowState.checkInDeadline;
+  const isAbsentToday = windowState.currentMinutes >= attendanceCutoffMinutes && !checkedInToday;
   let coordToday = [];
 
   // بيانات إجراءات المتابعة السريعة (لمدير المركز فقط) - نجيبها هنا عشان تظهر الأزرار
@@ -1526,8 +1525,8 @@ async function renderAttendance(root) {
             <span style="font-size:20px">🚫</span> تم تسجيلك غائبًا اليوم لعدم تسجيل الحضور قبل ${formatClockLabel(attendanceWindow.startTime)}
           </div>
         ` : `
-        <button class="btn btn-primary ${checkedInToday ? 'btn-done' : ''}" id="checkInBtn" ${checkedInToday || !windowState.canCheckIn ? 'disabled' : ''} onclick="doAttendanceWithModal()">✅ ${checkedInToday ? 'تم تسجيل الحضور الساعة ' + fmtTime(status.lastIn && status.lastIn.timestamp) : (windowState.canCheckIn ? 'تسجيل حضور' : 'غير متاح الآن')}</button>
-        <button class="btn btn-danger ${status.hasCheckedOut ? 'btn-done' : ''}" id="checkOutBtn" ${(!checkedInToday || status.hasCheckedOut || !windowState.canCheckOut) ? 'disabled' : ''}>⏹ ${status.hasCheckedOut ? 'تم تسجيل الانصراف الساعة ' + fmtTime(status.lastOut && status.lastOut.timestamp) : (windowState.canCheckOut ? 'تسجيل انصراف' : 'غير متاح الآن')}</button>
+        <button class="btn btn-primary ${checkedInToday ? 'btn-done' : ''}" id="checkInBtn" ${checkedInToday || windowState.isAfterEnd ? 'disabled' : ''} onclick="doAttendanceWithModal()">✅ ${checkedInToday ? 'تم تسجيل الحضور الساعة ' + fmtTime(status.lastIn && status.lastIn.timestamp) : (!windowState.isAfterEnd ? 'تسجيل حضور' : 'غير متاح الآن')}</button>
+        <button class="btn btn-danger ${status.hasCheckedOut ? 'btn-done' : ''}" id="checkOutBtn" ${(!checkedInToday || status.hasCheckedOut || !windowState.isDuringWorkWindow) ? 'disabled' : ''}>⏹ ${status.hasCheckedOut ? 'تم تسجيل الانصراف الساعة ' + fmtTime(status.lastOut && status.lastOut.timestamp) : (windowState.isDuringWorkWindow ? 'تسجيل انصراف' : 'غير متاح الآن')}</button>
         `}
         ${isCenterAdmin ? `
           <div style="display:flex;align-items:center;gap:10px">
@@ -3696,18 +3695,19 @@ function getAttendanceWindowState(nowDate) {
   const currentMinutes = egyptNow.getHours() * 60 + egyptNow.getMinutes();
   const checkInDeadline = parseTimeToMinutes(config.startTime) ?? 10 * 60;
   const checkOutEnd = parseTimeToMinutes(config.endTime) ?? 22 * 60;
-  const isInCheckInWindow = currentMinutes < checkInDeadline;
-  const isInCheckOutWindow = currentMinutes >= checkInDeadline && currentMinutes < checkOutEnd;
+  const isBeforeCheckInDeadline = currentMinutes < checkInDeadline;
+  const isDuringWorkWindow = currentMinutes >= checkInDeadline && currentMinutes < checkOutEnd;
   const isAfterEnd = currentMinutes >= checkOutEnd;
   return {
-    isOpen: !isAfterEnd,
-    isBeforeStart: isInCheckInWindow,
-    isDuringCheckOutWindow: isInCheckOutWindow,
+    startTime: config.startTime,
+    endTime: config.endTime,
+    currentMinutes: currentMinutes,
+    checkInDeadline: checkInDeadline,
+    checkOutEnd: checkOutEnd,
+    isBeforeCheckInDeadline: isBeforeCheckInDeadline,
+    isDuringWorkWindow: isDuringWorkWindow,
     isAfterEnd: isAfterEnd,
-    canCheckIn: isInCheckInWindow,
-    canCheckOut: isInCheckOutWindow,
-    startMinutes: checkInDeadline,
-    endMinutes: checkOutEnd,
+    isOpen: !isAfterEnd,
   };
 }
 function getDateKey(value) {
