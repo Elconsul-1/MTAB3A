@@ -3614,12 +3614,31 @@ window.openNotifModal = async () => {
 
 /* ---------------------------- أدوات مساعدة عامة ---------------------------- */
 function val(id) { return document.getElementById(id).value.trim ? document.getElementById(id).value.trim() : document.getElementById(id).value; }
-function toEgyptTime(dateValue) {
+function parseEgyptTimeParts(dateValue) {
   const d = dateValue instanceof Date ? dateValue : new Date(dateValue);
   if (Number.isNaN(d.getTime())) return null;
-  const utc = d.getTime();
-  const offsetMinutes = 2 * 60;
-  return new Date(utc + offsetMinutes * 60000);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Cairo',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  }).formatToParts(d);
+  const result = {};
+  parts.forEach(p => {
+    if (p.type === 'year') result.year = p.value;
+    if (p.type === 'month') result.month = p.value;
+    if (p.type === 'day') result.day = p.value;
+    if (p.type === 'hour') result.hour = p.value;
+    if (p.type === 'minute') result.minute = p.value;
+    if (p.type === 'second') result.second = p.value;
+  });
+  if (!result.year) return null;
+  return result;
+}
+function toEgyptTime(dateValue) {
+  const parts = parseEgyptTimeParts(dateValue);
+  if (!parts) return null;
+  return new Date(`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`);
 }
 function getEgyptNow() {
   return toEgyptTime(new Date()) || new Date();
@@ -3629,7 +3648,7 @@ function getEgyptDateKey(value) {
   if (Number.isNaN(d.getTime())) return '';
   const egypt = toEgyptTime(d);
   if (!egypt) return '';
-  return egypt.toISOString().slice(0, 10);
+  return `${egypt.getFullYear().toString().padStart(4,'0')}-${(egypt.getMonth()+1).toString().padStart(2,'0')}-${egypt.getDate().toString().padStart(2,'0')}`;
 }
 function fmtDate(iso) {
   if (!iso) return '-';
