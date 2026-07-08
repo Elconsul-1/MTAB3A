@@ -3654,6 +3654,42 @@ function fmtTime(iso) {
   const minute = egypt.getMinutes().toString().padStart(2, '0');
   return `${hour}.${minute}`;
 }
+function parseTimeToMinutes(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const parts = timeStr.split(':');
+  if (parts.length !== 2) return null;
+  const hours = Number(parts[0]);
+  const minutes = Number(parts[1]);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return hours * 60 + minutes;
+}
+function formatClockLabel(timeStr) {
+  const minutes = parseTimeToMinutes(timeStr);
+  if (minutes === null) return '-';
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+}
+function getAttendanceWindowState(nowDate) {
+  const config = window.__attendanceWindowConfig || { startTime: '10:00', endTime: '22:00' };
+  const now = nowDate instanceof Date ? nowDate : new Date(nowDate);
+  const egyptNow = toEgyptTime(now);
+  const currentMinutes = egyptNow.getHours() * 60 + egyptNow.getMinutes();
+  const startMinutes = parseTimeToMinutes(config.startTime) ?? 10 * 60;
+  const endMinutes = parseTimeToMinutes(config.endTime) ?? 22 * 60;
+  const isBeforeStart = currentMinutes < startMinutes;
+  const isAfterEnd = currentMinutes >= endMinutes;
+  const isOpen = !isBeforeStart && !isAfterEnd;
+  return {
+    isOpen,
+    isBeforeStart,
+    isAfterEnd,
+    canCheckIn: isOpen && !isAfterEnd,
+    canCheckOut: isOpen && !isBeforeStart,
+    startMinutes,
+    endMinutes,
+  };
+}
 function getDateKey(value) {
   if (!value) return '';
   if (typeof value === 'string') return value.slice(0,10);
