@@ -3694,19 +3694,20 @@ function getAttendanceWindowState(nowDate) {
   const now = nowDate instanceof Date ? nowDate : new Date(nowDate);
   const egyptNow = toEgyptTime(now);
   const currentMinutes = egyptNow.getHours() * 60 + egyptNow.getMinutes();
-  const startMinutes = parseTimeToMinutes(config.startTime) ?? 10 * 60;
-  const endMinutes = parseTimeToMinutes(config.endTime) ?? 22 * 60;
-  const isBeforeStart = currentMinutes < startMinutes;
-  const isAfterEnd = currentMinutes >= endMinutes;
-  const isOpen = !isBeforeStart && !isAfterEnd;
+  const checkInDeadline = parseTimeToMinutes(config.startTime) ?? 10 * 60;
+  const checkOutEnd = parseTimeToMinutes(config.endTime) ?? 22 * 60;
+  const isInCheckInWindow = currentMinutes < checkInDeadline;
+  const isInCheckOutWindow = currentMinutes >= checkInDeadline && currentMinutes < checkOutEnd;
+  const isAfterEnd = currentMinutes >= checkOutEnd;
   return {
-    isOpen,
-    isBeforeStart,
-    isAfterEnd,
-    canCheckIn: isOpen && !isAfterEnd,
-    canCheckOut: isOpen && !isBeforeStart,
-    startMinutes,
-    endMinutes,
+    isOpen: !isAfterEnd,
+    isBeforeStart: isInCheckInWindow,
+    isDuringCheckOutWindow: isInCheckOutWindow,
+    isAfterEnd: isAfterEnd,
+    canCheckIn: isInCheckInWindow,
+    canCheckOut: isInCheckOutWindow,
+    startMinutes: checkInDeadline,
+    endMinutes: checkOutEnd,
   };
 }
 function getDateKey(value) {
