@@ -59,6 +59,20 @@ button{font-family:var(--font-body);cursor:pointer}
 input,select,textarea{font-family:var(--font-body)}
 a{color:inherit}
 
+/* ---------- مربع جارى الحفظ في منتصف الشاشة ---------- */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+#savingOverlay {
+    animation: fadeIn 0.2s ease;
+}
+
 /* ---------- شاشة الدخول ---------- */
 #loginScreen{
   min-height:100vh;display:flex;align-items:center;justify-content:center;
@@ -385,28 +399,14 @@ tbody tr:hover{background:#fafcfd}
   .grid-cards,.summary-grid,.filter-grid{grid-template-columns:1fr}
   .topbar h2{max-width:38vw}
 }
-
-/* ---------- نافذة التحميل العامة (تظهر عند أي إجراء حتى اكتمال التحميل) ---------- */
-#globalLoader{
-  position:fixed;inset:0;z-index:300;background:rgba(7,27,46,.5);
-  display:none;align-items:center;justify-content:center;padding:16px;
-}
-#globalLoader .globalLoaderBox{
-  background:#fff;border-radius:16px;padding:28px 36px;min-width:220px;
-  display:flex;flex-direction:column;align-items:center;gap:14px;
-  box-shadow:0 24px 60px rgba(0,0,0,.35);
-}
-#globalLoaderMsg{font-size:14px;color:var(--navy-900);font-weight:800;text-align:center}
 </style>
 </head>
 <body>
 
-<!-- نافذة تحميل عامة (Blocking Modal): تظهر عند أي إجراء عبر الخادم حتى اكتمال التحميل -->
-<div id="globalLoader">
-  <div class="globalLoaderBox">
-    <div class="spinner" style="width:38px;height:38px;border-width:4px;border-top-color:var(--navy-900)"></div>
-    <div id="globalLoaderMsg">جاري المعالجة...</div>
-  </div>
+<!-- Global small loader (toast) -->
+<div id="globalLoader" style="display:none;position:fixed;right:18px;bottom:18px;z-index:120;background:#fff;border:1px solid var(--line);box-shadow:0 6px 22px rgba(11,44,71,.12);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+  <div class="spinner" style="width:28px;height:28px;border-width:3px;border-top-color:var(--navy-900)"></div>
+  <div id="globalLoaderMsg" style="font-size:13px;color:var(--navy-900);font-weight:700">جاري المعالجة...</div>
 </div>
 
 <!-- ================= شاشة تسجيل الدخول ================= -->
@@ -573,26 +573,6 @@ let currentPage = 'dashboard';
 const PAGE_CACHE = {};
 let deferredInstallPrompt = null;
 
-/* ---------------------------- نافذة التحميل العامة (Blocking) ---------------------------- */
-// تظهر عند أي إجراء يتصل بالخادم (تسجيل حضور/انصراف/حفظ بيانات...) وتبقى ظاهرة
-// حتى ينتهي الإجراء بالكامل (بما في ذلك إعادة تحميل الصفحة إن وُجدت)، حتى لا يظن المستخدم
-// أن الزر لم يعمل بينما العملية ما زالت جارية فعليًا في الخلفية.
-let __globalLoaderDepth = 0;
-function showGlobalLoader(msg) {
-  __globalLoaderDepth++;
-  const loader = document.getElementById('globalLoader');
-  const loaderMsg = document.getElementById('globalLoaderMsg');
-  if (loader) loader.style.display = 'flex';
-  if (loaderMsg) loaderMsg.textContent = msg || 'جاري المعالجة...';
-}
-function hideGlobalLoader(force) {
-  __globalLoaderDepth = force ? 0 : Math.max(0, __globalLoaderDepth - 1);
-  if (__globalLoaderDepth === 0) {
-    const loader = document.getElementById('globalLoader');
-    if (loader) loader.style.display = 'none';
-  }
-}
-
 function registerPwaFeatures() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -697,11 +677,14 @@ async function api(action, params) {
   } catch (e) {
     // ignore if CURRENT_USER not available yet
   }
-  // إظهار نافذة التحميل العامة المانعة (Blocking) طوال مدة الاتصال بالخادم
+  // Show global loader and disable the active button (if any)
   const activeEl = document.activeElement;
   let prevText = null;
-  showGlobalLoader(action === 'uploadPhotoToDrive' ? 'جاري رفع الصورة...' : 'جاري الحفظ...');
   try {
+    const loader = document.getElementById('globalLoader');
+    const loaderMsg = document.getElementById('globalLoaderMsg');
+    if (loader) loader.style.display = 'flex';
+    if (loaderMsg) loaderMsg.textContent = action === 'uploadPhotoToDrive' ? 'جاري رفع الصورة...' : 'جاري الحفظ...';
     if (activeEl && (activeEl.tagName === 'BUTTON' || activeEl.tagName === 'INPUT')) {
       prevText = activeEl.textContent;
       try { activeEl.disabled = true; activeEl.textContent = 'جارٍ الحفظ...'; } catch (e) {}
@@ -721,13 +704,88 @@ async function api(action, params) {
     throw e;
   } finally {
     try {
-      hideGlobalLoader();
+      const loader = document.getElementById('globalLoader');
+      if (loader) loader.style.display = 'none';
       if (activeEl && prevText !== null) { try { activeEl.disabled = false; activeEl.textContent = prevText; } catch (er) {} }
     } catch (er) {}
   }
 }
 
+/* ---------------------------- دالة عرض مربع الحفظ (بدون تأثير خلفية) ---------------------------- */
+function showSavingModal(message = 'جارى الحفظ...') {
+    // إزالة أي مربع موجود مسبقاً
+    hideSavingModal();
+    
+    const overlay = document.createElement('div');
+    overlay.id = 'savingOverlay';
+    overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        pointer-events: none;
+    `;
+    
+    overlay.innerHTML = `
+        <div style="
+            background: white;
+            border-radius: 16px;
+            padding: 30px 40px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+            max-width: 90vw;
+            min-width: 200px;
+            direction: rtl;
+            pointer-events: auto;
+            border: 2px solid var(--navy-700);
+        ">
+            <div style="
+                width: 48px;
+                height: 48px;
+                border: 4px solid var(--line);
+                border-top-color: var(--navy-700);
+                border-radius: 50%;
+                animation: spin 0.8s linear infinite;
+                margin: 0 auto 16px;
+            "></div>
+            <div style="
+                font-size: 16px;
+                font-weight: 700;
+                color: var(--navy-950);
+                font-family: var(--font-display);
+            ">${message}</div>
+            <div style="
+                font-size: 13px;
+                color: var(--ink-600);
+                margin-top: 6px;
+            ">يرجى الانتظار...</div>
+            <button onclick="hideSavingModal()" style="
+                margin-top: 16px;
+                padding: 6px 18px;
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                background: #f4f6f8;
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--ink-600);
+                cursor: pointer;
+                pointer-events: auto;
+            ">إلغاء</button>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+}
+
+function hideSavingModal() {
+    const existing = document.getElementById('savingOverlay');
+    if (existing) existing.remove();
+}
+
 function showToast(msg, type) {
+  hideSavingModal();
   const wrap = document.getElementById('toastWrap');
   const el = document.createElement('div');
   el.className = 'toast' + (type === 'err' ? ' err' : type === 'ok' ? ' ok' : '');
@@ -954,10 +1012,6 @@ const NAV_ITEMS = [
   { key:'equipment', label:'الأجهزة المساحية', icon:'🛠️', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
   { key:'users', label:'إدارة المستخدمين', icon:'👥', roles:['SYSTEM_ADMIN'] },
 ];
-/* ملاحظة: قسمي "التقارير" و"سجل العمليات" لم يُحذفا من الكود،
-   تم فقط إخفاؤهما من القائمة الجانبية ضمن خطوة تبسيط الأقسام. الدوال البرمجية
-   الخاصة بهما (renderReports / renderAudit) ما زالت موجودة
-   بالكامل ويمكن إعادة إظهارها في القائمة لاحقًا بإضافة سطر واحد فقط هنا. */
 
 // دالة تحديث الصورة في الـ Sidebar
 function updateUserAvatar() {
@@ -1442,7 +1496,7 @@ function miniStatus(label, on, timeVal) {
 }
 
 /* ========================================================================
-   الحضور والانصراف
+   الحضور والانصراف (مع إزالة رسالة النافذة وإظهار الأزرار دائمًا)
    ======================================================================== */
 async function renderAttendance(root) {
   const status = await api('todayAttendanceStatus', { userId: CURRENT_USER.id });
@@ -1457,10 +1511,11 @@ async function renderAttendance(root) {
   const attendanceLockKey = 'attendanceCheckinFlag_' + today;
   const localCheckedInToday = localStorage.getItem(attendanceLockKey) === '1';
   const checkedInToday = Boolean(status.hasCheckedIn || localCheckedInToday);
+  const attendanceCutoffMinutes = windowState.checkInDeadline;
+  const isAbsentToday = windowState.currentMinutes >= attendanceCutoffMinutes && !checkedInToday;
   let coordToday = [];
 
-  // بيانات إجراءات المتابعة السريعة (لمدير المركز فقط) - نجيبها هنا عشان تظهر الأزرار
-  // بحالتها الصحيحة (مسجّل / غير مسجّل) من أول ما تُفتح الصفحة، مش بس بعد الضغط
+  // بيانات إجراءات المتابعة السريعة (لمدير المركز فقط)
   let coordFlags = { director:{done:false,time:''}, engineer:{done:false,time:''}, vehicle:{done:false,time:''}, startWork:{done:false,time:''}, endWork:{done:false,time:''}, target:{done:false,time:'',value:0} };
   if (isCenterAdmin) {
     try {
@@ -1542,13 +1597,15 @@ async function renderAttendance(root) {
       </div>`;
   }
 
+  // عرض الصفحة بدون رسالة نافذة الحضور، والأزرار تظهر دائمًا
   root.innerHTML = `
     <div class="panel" style="text-align:center;padding:34px 20px">
       <div style="font-size:14px;color:var(--ink-600);margin-bottom:6px">${getEgyptNow().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+      <!-- تم إزالة رسالة نافذة الحضور والانصراف حسب الطلب -->
       <div style="font-size:32px;font-weight:800;margin-bottom:22px" id="clockNow"></div>
       <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-primary ${checkedInToday ? 'btn-done' : ''}" id="checkInBtn" ${checkedInToday ? 'disabled' : ''} onclick="doAttendanceWithModal()">✅ ${checkedInToday ? 'تم تسجيل الحضور الساعة ' + fmtTime(status.lastIn && status.lastIn.timestamp) : 'تسجيل حضور'}</button>
-        <button class="btn btn-danger ${status.hasCheckedOut ? 'btn-done' : ''}" id="checkOutBtn" ${(!checkedInToday || status.hasCheckedOut) ? 'disabled' : ''}>⏹ ${status.hasCheckedOut ? 'تم تسجيل الانصراف الساعة ' + fmtTime(status.lastOut && status.lastOut.timestamp) : 'تسجيل انصراف'}</button>
+        <button class="btn btn-primary" id="checkInBtn" onclick="doAttendanceWithModal()">✅ تسجيل حضور</button>
+        <button class="btn btn-danger" id="checkOutBtn" onclick="doCheckoutWithModal()">⏹ تسجيل انصراف</button>
         ${isCenterAdmin ? `
           <div style="display:flex;align-items:center;gap:10px">
             <button class="btn btn-outline btn-sm" onclick="openDailyCoordinationModal()">تفاصيل</button>
@@ -1584,36 +1641,42 @@ async function renderAttendance(root) {
     const c = document.getElementById('clockNow');
     if (c) c.textContent = getEgyptNow().toLocaleTimeString('ar-EG');
   }, 1000);
-  document.getElementById('checkInBtn').onclick = () => doAttendanceWithModal();
-  if (isFieldRole) {
-    document.getElementById('checkOutBtn').onclick = () => doCheckoutWithModal();
-  } else {
-    document.getElementById('checkOutBtn').onclick = () => doAttendance('checkOut');
-  }
-  // ربط أزرار إجراءات المتابعة السريعة (مدير المركز فقط): ضغطة واحدة، تتحول للأخضر، وتعرض وقت التسجيل
+  
+  // ربط أزرار إجراءات المتابعة السريعة (مدير المركز فقط)
   if (isCenterAdmin) {
     const wireQuickBtn = (id, field, valueFn, doneLabel) => {
       const btn = document.getElementById(id);
       if (!btn || btn.disabled) return;
       btn.onclick = async () => {
-        if (btn.disabled) return; // يمنع الضغط أكثر من مرة
+        if (btn.disabled) return;
         btn.disabled = true;
         const originalText = btn.innerHTML;
         btn.innerHTML = '... جارِ الحفظ';
-        showGlobalLoader('جاري الحفظ...');
+        
+        // إظهار مربع جارى الحفظ
+        showSavingModal('جارى حفظ البيانات...');
+        
         try {
           const value = valueFn();
-          await api('updateDailyCoordinationStatus', { center: CURRENT_USER.center, field, value, engineerName: CURRENT_USER.fullName, createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
+          await api('updateDailyCoordinationStatus', { 
+            center: CURRENT_USER.center, 
+            field, 
+            value, 
+            engineerName: CURRENT_USER.fullName, 
+            createdBy: CURRENT_USER.id, 
+            createdByName: CURRENT_USER.fullName 
+          });
           const timeStr = fmtTime(getEgyptNow());
           btn.innerHTML = doneLabel(timeStr);
           btn.classList.remove('btn-outline', 'btn-primary');
           btn.classList.add('btn-done');
+          hideSavingModal();
+          showToast('تم الحفظ بنجاح', 'ok');
         } catch (e) {
+          hideSavingModal();
           btn.disabled = false;
           btn.innerHTML = originalText;
           showToast('فشل التسجيل، حاول مرة أخرى', 'err');
-        } finally {
-          hideGlobalLoader();
         }
       };
     };
@@ -1631,19 +1694,20 @@ async function renderAttendance(root) {
         qaTarget.disabled = true;
         const originalText = qaTarget.innerHTML;
         qaTarget.innerHTML = '... جارِ الحفظ';
-        showGlobalLoader('جاري الحفظ...');
+        showSavingModal('جارى حفظ البيانات...');
         try {
           await api('updateDailyCoordinationStatus', { center: CURRENT_USER.center, field: 'targetCount', value: Number(n), createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
           const timeStr = fmtTime(getEgyptNow());
           qaTarget.innerHTML = `🎯 تم تعيين عدد المعاينات (${Number(n)}) الساعة ${timeStr}`;
           qaTarget.classList.remove('btn-primary');
           qaTarget.classList.add('btn-done');
+          hideSavingModal();
+          showToast('تم الحفظ بنجاح', 'ok');
         } catch (e) {
+          hideSavingModal();
           qaTarget.disabled = false;
           qaTarget.innerHTML = originalText;
           showToast('فشل الحفظ، حاول مرة أخرى', 'err');
-        } finally {
-          hideGlobalLoader();
         }
       };
     }
@@ -1728,7 +1792,6 @@ window.doCheckoutWithModal = () => {
 
 window.submitCheckoutAndSignOut = async () => {
   const note = document.getElementById('checkoutNote')?.value || '';
-  showGlobalLoader('جاري تسجيل الانصراف...');
   try {
     // سجل الملاحظة كملاحظة شخصية لليوم (سطر في DailyCoordination مع recordType خاص)
     await api('recordDailyCoordination', { date: getEgyptDateKey(getEgyptNow()), center: CURRENT_USER.center, notes: note, recordedBy: CURRENT_USER.id, recordedAt: getEgyptNow().toISOString() });
@@ -1737,8 +1800,7 @@ window.submitCheckoutAndSignOut = async () => {
     console.warn('failed to save checkout note', e);
   }
   closeModal();
-  await doAttendance('checkOut');
-  hideGlobalLoader(true);
+  doAttendance('checkOut');
 };
 
 function execModeChip(mode) {
@@ -1753,64 +1815,63 @@ function taskStatusChip(status) {
   return `<span class="chip ${v[0]}">${v[1]}</span>`;
 }
 
-async function doAttendance(action, extra = {}) {
-  const btn = document.getElementById(action === 'checkIn' ? 'checkInBtn' : 'checkOutBtn');
-  if (btn) { btn.disabled = true; btn.classList.add('btn-done'); }
-  const box = document.getElementById('gpsBox');
-  if (box) box.textContent = '';
-  if (action === 'checkIn') {
-    const today = getEgyptDateKey(getEgyptNow());
-    localStorage.setItem('attendanceCheckinFlag_' + today, '1');
-  }
-  showGlobalLoader(action === 'checkIn' ? 'جاري تسجيل الحضور...' : 'جاري تسجيل الانصراف...');
-  return new Promise((resolve) => {
+// تعديل دالة doAttendance لإظهار مربع جارى الحفظ
+function doAttendance(action, extra = {}) {
+    // إظهار مربع جارى الحفظ
+    showSavingModal(action === 'checkIn' ? 'جارى تسجيل الحضور...' : 'جارى تسجيل الانصراف...');
+    
+    const btn = document.getElementById(action === 'checkIn' ? 'checkInBtn' : 'checkOutBtn');
+    if (btn) { btn.disabled = true; btn.classList.add('btn-done'); }
+    const box = document.getElementById('gpsBox');
+    if (box) box.textContent = '';
+    if (action === 'checkIn') {
+        const today = getEgyptDateKey(getEgyptNow());
+        localStorage.setItem('attendanceCheckinFlag_' + today, '1');
+    }
     navigator.geolocation.getCurrentPosition(async (pos) => {
-      try {
-        const payload = {
-          userId: CURRENT_USER.id,
-          userName: CURRENT_USER.fullName,
-          center: extra.center || CURRENT_USER.center,
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude
-        };
-        if (action === 'checkIn' && extra.workType) payload.workType = extra.workType;
-        await api(action, payload);
-        showToast(action === 'checkIn' ? 'تم تسجيل الحضور بنجاح' : 'تم تسجيل الانصراف بنجاح', 'ok');
-        await goPage('attendance', true);
-      } catch (e) {
-        if (action === 'checkIn') {
-          const today = getEgyptDateKey(getEgyptNow());
-          localStorage.removeItem('attendanceCheckinFlag_' + today);
+        try {
+            const payload = {
+                userId: CURRENT_USER.id,
+                userName: CURRENT_USER.fullName,
+                center: extra.center || CURRENT_USER.center,
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude
+            };
+            if (action === 'checkIn' && extra.workType) payload.workType = extra.workType;
+            await api(action, payload);
+            hideSavingModal(); // إخفاء مربع الحفظ
+            showToast(action === 'checkIn' ? 'تم تسجيل الحضور بنجاح' : 'تم تسجيل الانصراف بنجاح', 'ok');
+            goPage('attendance', true);
+        } catch (e) {
+            hideSavingModal(); // إخفاء مربع الحفظ في حالة الخطأ
+            if (action === 'checkIn') {
+                const today = getEgyptDateKey(getEgyptNow());
+                localStorage.removeItem('attendanceCheckinFlag_' + today);
+            }
+            if (btn) { btn.disabled = false; btn.classList.remove('btn-done'); }
         }
-        if (btn) { btn.disabled = false; btn.classList.remove('btn-done'); }
-      } finally {
-        hideGlobalLoader(true);
-        resolve();
-      }
     }, async () => {
-      // في حال رفض المستخدم صلاحية الموقع، يتم التسجيل بدون إحداثيات
-      try {
-        const payload = {
-          userId: CURRENT_USER.id,
-          userName: CURRENT_USER.fullName,
-          center: extra.center || CURRENT_USER.center
-        };
-        if (action === 'checkIn' && extra.workType) payload.workType = extra.workType;
-        await api(action, payload);
-        showToast('تم التسجيل بدون تحديد الموقع (الصلاحية غير مفعّلة)', 'ok');
-        await goPage('attendance', true);
-      } catch (e) {
-        if (action === 'checkIn') {
-          const today = getEgyptDateKey(getEgyptNow());
-          localStorage.removeItem('attendanceCheckinFlag_' + today);
+        // في حال رفض المستخدم صلاحية الموقع، يتم التسجيل بدون إحداثيات
+        try {
+            const payload = {
+                userId: CURRENT_USER.id,
+                userName: CURRENT_USER.fullName,
+                center: extra.center || CURRENT_USER.center
+            };
+            if (action === 'checkIn' && extra.workType) payload.workType = extra.workType;
+            await api(action, payload);
+            hideSavingModal();
+            showToast('تم التسجيل بدون تحديد الموقع (الصلاحية غير مفعّلة)', 'ok');
+            goPage('attendance', true);
+        } catch (e) {
+            hideSavingModal();
+            if (action === 'checkIn') {
+                const today = getEgyptDateKey(getEgyptNow());
+                localStorage.removeItem('attendanceCheckinFlag_' + today);
+            }
+            if (btn) { btn.disabled = false; btn.classList.remove('btn-done'); }
         }
-        if (btn) { btn.disabled = false; btn.classList.remove('btn-done'); }
-      } finally {
-        hideGlobalLoader(true);
-        resolve();
-      }
     });
-  });
 }
 
 /* ========================================================================
