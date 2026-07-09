@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#071b2e">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="متابعة المراكز">
@@ -13,9 +14,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
 
-<!-- تحميل Firebase بشكل غير متزامن -->
-<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<!-- تحميل Firebase بشكل متزامن (بدون defer) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
 <style>
 /* =====================================================================
@@ -456,10 +457,16 @@ const NAV_ITEMS = [
 ];
 
 // =====================================================================
-// Firebase
+// Firebase - تأكد من تحميل Firebase قبل استخدامه
 // =====================================================================
-firebase.initializeApp(FIREBASE_CONFIG);
-const auth = firebase.auth();
+if (typeof firebase === 'undefined') {
+  console.error('❌ Firebase not loaded! Please check script includes.');
+} else {
+  console.log('✅ Firebase loaded successfully');
+  firebase.initializeApp(FIREBASE_CONFIG);
+}
+
+const auth = firebase.auth ? firebase.auth() : null;
 
 // =====================================================================
 // API (مبسطة)
@@ -500,6 +507,10 @@ document.getElementById('googleLoginBtn').addEventListener('click', () => {
     showToast('يجب فتح الموقع عبر سيرفر ويب (http/https)', 'err');
     return;
   }
+  if (!auth) {
+    showToast('Firebase غير جاهز، حاول تحديث الصفحة', 'err');
+    return;
+  }
   const provider = new firebase.auth.GoogleAuthProvider();
   auth.signInWithPopup(provider).catch((e) => {
     if (e.code === 'auth/popup-blocked') {
@@ -510,27 +521,28 @@ document.getElementById('googleLoginBtn').addEventListener('click', () => {
   });
 });
 
-auth.onAuthStateChanged(async (user) => {
-  if (!user) {
-    hideAllScreens();
-    document.getElementById('loginScreen').style.display = 'flex';
-    return;
-  }
-  FIREBASE_USER = user;
-  
-  // استخدام الكاش أولاً
-  const cached = getCachedSession();
-  if (cached && cached.email === user.email && cached.status === 'APPROVED') {
-    CURRENT_USER = cached;
-    hideAllScreens();
-    launchApp();
-    // تحديث الخلفية بشكل غير متزامن
-    refreshMyStatus(true);
-    return;
-  }
-  
-  await refreshMyStatus(false);
-});
+if (auth) {
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) {
+      hideAllScreens();
+      document.getElementById('loginScreen').style.display = 'flex';
+      return;
+    }
+    FIREBASE_USER = user;
+    
+    // استخدام الكاش أولاً
+    const cached = getCachedSession();
+    if (cached && cached.email === user.email && cached.status === 'APPROVED') {
+      CURRENT_USER = cached;
+      hideAllScreens();
+      launchApp();
+      refreshMyStatus(true);
+      return;
+    }
+    
+    await refreshMyStatus(false);
+  });
+}
 
 async function refreshMyStatus(force = false) {
   try {
@@ -555,7 +567,7 @@ async function refreshMyStatus(force = false) {
       launchApp();
     }
   } catch (e) {
-    // عرض خطأ لكن لا نمنع المستخدم من المحاولة مرة أخرى
+    console.error('refreshMyStatus error:', e);
   }
 }
 
@@ -573,7 +585,6 @@ function launchApp() {
   hideAllScreens();
   document.getElementById('app').style.display = 'block';
   
-  // تحديث الـ Sidebar
   document.getElementById('sideName').textContent = CURRENT_USER.fullName;
   document.getElementById('sideRole').textContent = roleLabel(CURRENT_USER.role) + (CURRENT_USER.center ? ' - ' + CURRENT_USER.center : '');
   updateAvatar();
@@ -664,7 +675,6 @@ function renderHome(root) {
 // الحضور والانصراف (مبسط)
 // =====================================================================
 async function renderAttendance(root) {
-  // محاولة استخدام الكاش
   let cached = getCachedAttendance();
   let data = cached;
   
@@ -684,7 +694,6 @@ async function renderAttendance(root) {
   const { status, myRecords, monthly } = data;
   const checkedIn = status.hasCheckedIn || false;
   const checkedOut = status.hasCheckedOut || false;
-  const today = getEgyptDateKey(new Date());
   
   root.innerHTML = `
     <div class="panel" style="text-align:center;padding:24px 16px">
@@ -731,12 +740,10 @@ async function renderAttendance(root) {
     </div>
   `;
   
-  // تحديث الساعة
   updateClock();
   if (window.clockInterval) clearInterval(window.clockInterval);
   window.clockInterval = setInterval(updateClock, 1000);
   
-  // تحديث الكاش كل دقيقة
   if (!cached) {
     setTimeout(() => {
       localStorage.removeItem(ATTENDANCE_CACHE_KEY);
@@ -753,7 +760,7 @@ function updateClock() {
 // دالة الحضور والانصراف
 // =====================================================================
 function doAttendance(action) {
-  const btn = document.getElementById(action === 'checkIn' ? 'checkInBtn' : 'checkOutBtn');
+  const btn = document.querySelector(action === 'checkIn' ? '.btn-primary' : '.btn-danger');
   if (btn) { btn.disabled = true; btn.textContent = 'جاري...'; }
   
   navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -772,7 +779,6 @@ function doAttendance(action) {
       if (btn) { btn.disabled = false; btn.textContent = action === 'checkIn' ? 'تسجيل حضور' : 'تسجيل انصراف'; }
     }
   }, async () => {
-    // بدون موقع
     try {
       await api(action, {
         userId: CURRENT_USER.id,
@@ -795,7 +801,6 @@ async function renderCoordination(root) {
   const isCenterAdmin = CURRENT_USER.role === 'CENTER_ADMIN';
   const isSystemAdmin = CURRENT_USER.role === 'SYSTEM_ADMIN';
   
-  // استخدام الكاش
   let cached = getCached(COORD_CACHE_KEY);
   let data = cached;
   
@@ -825,7 +830,6 @@ async function renderCoordination(root) {
     </div>
   `;
   
-  // عرض تفاصيل المركز (للمدير فقط)
   if (isCenterAdmin && data.details) {
     html += `
       <div class="panel">
@@ -851,7 +855,6 @@ async function renderCoordination(root) {
     `;
   }
   
-  // عرض جميع المراكز (للمدير العام)
   if (isSystemAdmin && data.allCenters) {
     html += `
       <div class="panel">
@@ -877,7 +880,6 @@ async function renderCoordination(root) {
   
   root.innerHTML = html;
   
-  // تحديث الكاش كل دقيقة
   if (!cached) {
     setTimeout(() => {
       localStorage.removeItem(COORD_CACHE_KEY);
@@ -938,9 +940,13 @@ function doLogout() {
   localStorage.removeItem(SESSION_KEY);
   localStorage.removeItem(ATTENDANCE_CACHE_KEY);
   localStorage.removeItem(COORD_CACHE_KEY);
-  auth.signOut().finally(() => {
+  if (auth) {
+    auth.signOut().finally(() => {
+      document.getElementById('loginScreen').style.display = 'flex';
+    });
+  } else {
     document.getElementById('loginScreen').style.display = 'flex';
-  });
+  }
 }
 
 // =====================================================================
@@ -988,7 +994,6 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async () 
       return;
     }
     
-    // تحويل الصورة إلى Base64
     const reader = new FileReader();
     const base64 = await new Promise((resolve, reject) => {
       reader.onload = () => resolve(reader.result.split(',')[1]);
