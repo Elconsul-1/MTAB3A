@@ -3653,23 +3653,13 @@ function toEgyptTime(dateValue) {
 function getEgyptNow() {
   return toEgyptTime(new Date()) || new Date();
 }
-// القيم القادمة من الخادم (Attendance/Missions/... إلخ) مُخزَّنة بالفعل كأرقام توقيت القاهرة
-// المحلي (حتى وإن انتهت بحرف Z في صيغة ISO) - وأي كائن Date ناتج عن getEgyptNow() يحمل بالفعل
-// قيم القاهرة في حقوله العادية. لذلك عند العرض يجب قراءة هذه القيم مباشرة بدون أي تحويل توقيت
-// إضافي، وإلا سيتكرر إضافة فارق التوقيت مرتين ويظهر الوقت بعد ساعتين من الوقت الحقيقي.
+// كل القيم القادمة من الخادم دلوقتي UTC حقيقي (بما فيها الأرقام اللي بتنتهي بحرف Z).
+// التحويل لتوقيت القاهرة بيحصل هنا فقط، بمعرفة حقيقية بفارق التوقيت (بما فيه التوقيت الصيفي).
 function egyptParts(value) {
   if (!value) return null;
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) return null;
-    return {
-      year: value.getFullYear(), month: value.getMonth() + 1, day: value.getDate(),
-      hour: value.getHours(), minute: value.getMinutes(), second: value.getSeconds()
-    };
-  }
-  const str = String(value);
-  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
-  if (!m) return null;
-  return { year: +m[1], month: +m[2], day: +m[3], hour: +m[4], minute: +m[5], second: +m[6] };
+  const p = parseEgyptTimeParts(value);
+  if (!p) return null;
+  return { year: +p.year, month: +p.month, day: +p.day, hour: +p.hour, minute: +p.minute, second: +p.second };
 }
 function getEgyptDateKey(value) {
   const d = value instanceof Date ? value : new Date(value);
