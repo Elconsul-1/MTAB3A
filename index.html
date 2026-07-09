@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="متابعة المراكز">
+<meta name="app-version" content="2026-07-09-1">
 <title>متابعة المراكز</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.svg">
@@ -540,6 +541,35 @@ const API_URL = "https://script.google.com/macros/s/AKfycbzvLzXmAEvDvgeYB87PTusZ
 
 firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
+// نضمن إن جلسة الدخول تفضل محفوظة على نفس الجهاز/المتصفح حتى لو قفل المتصفح وفتحه تاني
+// (ده أصلاً السلوك الافتراضي، بس بنحددها بوضوح عشان منعتمدش على الافتراضي)
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
+
+/* ---------------------------- التحقق التلقائي من وجود تحديث ----------------------------
+   بدل ما نحتاج نفرّغ الكاش يدويًا بعد كل تعديل: الصفحة بتجيب نسخة جديدة (بدون كاش) من نفسها
+   بشكل دوري، وتقارن رقم النسخة (app-version) مع النسخة المفتوحة حاليًا. لو فيه فرق تظهر رسالة
+   بسيطة تحت الشاشة تطلب من المستخدم الضغط للتحديث، من غير ما تعمل تحديث مفاجئ يقاطعه وهو شغال. */
+const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || '';
+async function checkForUpdate() {
+  try {
+    const res = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' });
+    const html = await res.text();
+    const match = html.match(/<meta\s+name=["']app-version["']\s+content=["']([^"']+)["']/i);
+    const latest = match ? match[1] : null;
+    if (latest && APP_VERSION && latest !== APP_VERSION) showUpdateBanner();
+  } catch (e) { /* تجاهل أخطاء الشبكة، هنعيد المحاولة في المرة الجاية */ }
+}
+function showUpdateBanner() {
+  if (document.getElementById('updateBanner')) return;
+  const bar = document.createElement('div');
+  bar.id = 'updateBanner';
+  bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#1a2b4c;color:#fff;padding:12px 16px;display:flex;justify-content:center;align-items:center;gap:12px;z-index:99999;font-size:14px;font-weight:700;box-shadow:0 -2px 10px rgba(0,0,0,.2)';
+  bar.innerHTML = '🔄 يوجد تحديث جديد للنظام<button id="updateReloadBtn" style="background:#f4c542;color:#1a2b4c;border:none;padding:8px 18px;border-radius:8px;font-weight:800;cursor:pointer">تحديث الآن</button>';
+  document.body.appendChild(bar);
+  document.getElementById('updateReloadBtn').onclick = () => location.reload();
+}
+checkForUpdate();
+setInterval(checkForUpdate, 5 * 60 * 1000); // إعادة التحقق كل 5 دقائق
 
 /* تحذير واضح لو الملف مفتوح مباشرة بدون سيرفر (file://) - Firebase Auth لا يعمل في هذه الحالة */
 if (location.protocol === 'file:') {
@@ -1093,7 +1123,7 @@ async function renderDashboard(root) {
       <button class="btn btn-gold btn-sm" onclick="openMissionModal('GENERAL')">+ إنشاء تكليف إداري موحد</button>
       <button class="btn btn-primary btn-sm" onclick="goPage('assignments', true)">عرض تكليفات الإدارة العامة</button>
       <button class="btn btn-outline btn-sm" onclick="goPage('equipment', true)">إدارة العهد الفنية</button>
-      <button class="btn btn-outline btn-sm" onclick="openAttendanceWindowSettingsModal()">⏰ ضبط نافذة الحضور</button>
+      <button class="btn btn-outline btn-sm" onclick="openAttendanceWindowSettingsModal()">⏰ موعد اعتبار الغياب</button>
       <button class="btn btn-outline btn-sm" onclick="resetSchemaAction()">🔄 إعادة تهيئة الأوراق والأعمدة</button>
       ${reminderButton}
     </div>
@@ -1153,25 +1183,21 @@ async function loadAttendanceWindowConfig(force = false) {
   if (!force && window.__attendanceWindowConfig) return window.__attendanceWindowConfig;
   try {
     const res = await api('getAttendanceWindowSettings', {});
-    window.__attendanceWindowConfig = res || { startTime: '10:00', endTime: '22:00' };
+    window.__attendanceWindowConfig = res || { startTime: '10:00' };
     return window.__attendanceWindowConfig;
   } catch (e) {
-    return window.__attendanceWindowConfig || { startTime: '10:00', endTime: '22:00' };
+    return window.__attendanceWindowConfig || { startTime: '10:00' };
   }
 }
 
 window.openAttendanceWindowSettingsModal = async () => {
   const cfg = await loadAttendanceWindowConfig(true);
   openModal(`
-    <h3>إعداد نافذة الحضور والانصراف</h3>
-    <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">يمكنك تحديد الفترة التي يُسمح فيها بتسجيل الحضور والانصراف يوميًا.</p>
+    <h3>موعد اعتبار الغياب</h3>
+    <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">تسجيل الحضور والانصراف متاح دائمًا على مدار اليوم. حدّد فقط الساعة التي إذا سجّل الموظف حضوره بعدها يُحتسب يومه غيابًا.</p>
     <div class="field">
-      <label>وقت البدء</label>
+      <label>يُعتبر غائبًا إذا سجّل الحضور بعد الساعة</label>
       <input id="attendanceWindowStart" type="time" value="${cfg.startTime}">
-    </div>
-    <div class="field">
-      <label>وقت الانتهاء</label>
-      <input id="attendanceWindowEnd" type="time" value="${cfg.endTime}">
     </div>
     <div class="modal-close-row">
       <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
@@ -1182,12 +1208,11 @@ window.openAttendanceWindowSettingsModal = async () => {
 
 window.saveAttendanceWindowSettings = async () => {
   const startTime = document.getElementById('attendanceWindowStart')?.value || '10:00';
-  const endTime = document.getElementById('attendanceWindowEnd')?.value || '22:00';
   try {
-    const result = await api('saveAttendanceWindowSettings', { userId: CURRENT_USER.id, startTime, endTime });
+    const result = await api('saveAttendanceWindowSettings', { userId: CURRENT_USER.id, startTime });
     window.__attendanceWindowConfig = result;
     closeModal();
-    showToast('تم حفظ نافذة الحضور والانصراف', 'ok');
+    showToast('تم حفظ موعد اعتبار الغياب', 'ok');
     goPage('attendance', true);
   } catch (e) {
     showToast('فشل حفظ الإعداد', 'err');
@@ -1321,16 +1346,9 @@ function updateDashboardClock() {
 }
 function formatDashboardDateTime(value) {
   if (!value) return '-';
-  const date = value instanceof Date ? value : new Date(value);
-  if (isNaN(date.getTime())) return '-';
-  const egypt = toEgyptTime(date);
-  if (!egypt) return '-';
-  const hour = egypt.getHours();
-  const minute = egypt.getMinutes().toString().padStart(2, '0');
-  const day = egypt.getDate();
-  const month = egypt.getMonth() + 1;
-  const year = egypt.getFullYear();
-  return `${hour}.${minute} ${day}/${month}/${year}`;
+  const p = egyptParts(value);
+  if (!p) return '-';
+  return `${p.hour}.${p.minute.toString().padStart(2, '0')} ${p.day}/${p.month}/${p.year}`;
 }
 function listBars(arr) {
   if (!arr || !arr.length) return `<div class="empty-state"><div class="ic">📭</div>لا توجد بيانات كافية بعد</div>`;
@@ -1427,8 +1445,7 @@ async function renderAttendance(root) {
   const attendanceLockKey = 'attendanceCheckinFlag_' + today;
   const localCheckedInToday = localStorage.getItem(attendanceLockKey) === '1';
   const checkedInToday = Boolean(status.hasCheckedIn || localCheckedInToday);
-  const attendanceCutoffMinutes = windowState.checkInDeadline;
-  const isAbsentToday = windowState.currentMinutes >= attendanceCutoffMinutes && !checkedInToday;
+  const isLateCheckIn = Boolean(status.isLateCheckIn);
   let coordToday = [];
 
   // بيانات إجراءات المتابعة السريعة (لمدير المركز فقط) - نجيبها هنا عشان تظهر الأزرار
@@ -1465,6 +1482,7 @@ async function renderAttendance(root) {
       <div class="summary-grid">
         <div class="summary-card"><div class="summary-label">أيام الحضور هذا الشهر</div><div class="summary-value">${monthlyStats.presentDays}</div></div>
         <div class="summary-card"><div class="summary-label">أيام الغياب هذا الشهر</div><div class="summary-value">${monthlyStats.absentDays}</div></div>
+        <div class="summary-card"><div class="summary-label">حضور متأخر (محتسب غيابًا)</div><div class="summary-value">${monthlyStats.lateDays || 0}</div></div>
         <div class="summary-card"><div class="summary-label">الانصراف التلقائي</div><div class="summary-value">${monthlyStats.autoCheckoutDays}</div></div>
       </div>
       ${status.hasCheckedIn ? `
@@ -1482,7 +1500,7 @@ async function renderAttendance(root) {
 
   if (isCenterAdmin) {
     const team = await api('centerAttendanceToday', { center: CURRENT_USER.center });
-    const canExportAbsence = getEgyptNow().getHours() >= 10;
+    const canExportAbsence = windowState.isLate;
     const coordByEngineer = new Map((coordToday || []).filter(r => r && r.recordType === 'ENGINEER' && r.center === CURRENT_USER.center).map(r => [String(r.engineerName || '').trim(), r]));
     const teamWithApproval = team.map(u => {
       const record = coordByEngineer.get(String(u.fullName || '').trim());
@@ -1507,27 +1525,18 @@ async function renderAttendance(root) {
       <div class="panel">
         <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center"><h3>حالة حضور موظفي المركز اليوم</h3><button class="btn btn-gold btn-sm" onclick="exportTodayAbsenceReport()" ${canExportAbsence ? '' : 'disabled'}>⬇ كشف غياب اليوم</button></div>
         <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الحضور</th><th>الحالة</th><th>وقت الحضور</th><th>وقت الانصراف</th></tr></thead>
-        <tbody>${teamWithApproval.map(u => `<tr><td>${u.fullName}</td><td>${roleLabel(u.role)}</td><td><span class="chip ${u.hasCheckedIn?'approved':'rejected'}">${u.hasCheckedIn?'حاضر':'غائب'}</span></td><td>${u.approvalStatus === 'APPROVED' ? '<span class="chip approved">مؤكد</span>' : (u.approvalStatus === 'REJECTED' ? '<span class="chip rejected">مرفوض</span>' : '<span class="chip pending">في الانتظار</span>')}</td><td>${u.checkInTime?fmtDate(u.checkInTime):'-'}</td><td>${u.checkOutTime?fmtDate(u.checkOutTime):'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state">لا يوجد موظفون بهذا المركز</div></td></tr>`}</tbody></table></div>
-        <p style="color:var(--ink-400);font-size:12px;margin:10px 2px 0">${canExportAbsence ? 'يمكنك تحميل كشف الغياب بعد الساعة 10 صباحًا.' : 'يكون كشف الغياب متاحًا للتحميل بعد الساعة 10 صباحًا.'}</p>
+        <tbody>${teamWithApproval.map(u => `<tr><td>${u.fullName}</td><td>${roleLabel(u.role)}</td><td><span class="chip ${u.hasCheckedIn && !u.isLate?'approved':'rejected'}">${u.hasCheckedIn ? (u.isLate ? 'حاضر متأخر (غياب)' : 'حاضر') : 'غائب'}</span></td><td>${u.approvalStatus === 'APPROVED' ? '<span class="chip approved">مؤكد</span>' : (u.approvalStatus === 'REJECTED' ? '<span class="chip rejected">مرفوض</span>' : '<span class="chip pending">في الانتظار</span>')}</td><td>${u.checkInTime?fmtDate(u.checkInTime):'-'}</td><td>${u.checkOutTime?fmtDate(u.checkOutTime):'-'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state">لا يوجد موظفون بهذا المركز</div></td></tr>`}</tbody></table></div>
+        <p style="color:var(--ink-400);font-size:12px;margin:10px 2px 0">${canExportAbsence ? `يمكنك تحميل كشف الغياب بعد الساعة ${formatClockLabel(attendanceWindow.startTime)}.` : `يكون كشف الغياب متاحًا للتحميل بعد الساعة ${formatClockLabel(attendanceWindow.startTime)}.`}</p>
       </div>`;
   }
 
   root.innerHTML = `
     <div class="panel" style="text-align:center;padding:34px 20px">
       <div style="font-size:14px;color:var(--ink-600);margin-bottom:6px">${getEgyptNow().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
-      <div style="background:${windowState.isOpen ? '#eef8f0' : '#fff6e5'};border:1px solid ${windowState.isOpen ? 'var(--good)' : 'var(--warn)'};border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13.5px;color:var(--navy-900)">
-        <strong>نافذة الحضور والانصراف:</strong> ${windowState.isOpen ? `مفتوحة الآن من ${formatClockLabel(attendanceWindow.startTime)} إلى ${formatClockLabel(attendanceWindow.endTime)}` : (windowState.isBeforeStart ? `ستبدأ عند ${formatClockLabel(attendanceWindow.startTime)}` : `انتهت عند ${formatClockLabel(attendanceWindow.endTime)}`)}
-      </div>
       <div style="font-size:32px;font-weight:800;margin-bottom:22px" id="clockNow"></div>
       <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
-        ${isAbsentToday ? `
-          <div style="background:#fdeaea;border:1.5px solid var(--bad);border-radius:12px;padding:14px 22px;display:flex;align-items:center;gap:10px;color:var(--bad);font-weight:800;font-size:14.5px">
-            <span style="font-size:20px">🚫</span> تم تسجيلك غائبًا اليوم لعدم تسجيل الحضور قبل ${formatClockLabel(attendanceWindow.startTime)}
-          </div>
-        ` : `
-        <button class="btn btn-primary ${checkedInToday ? 'btn-done' : ''}" id="checkInBtn" ${checkedInToday || windowState.isAfterEnd ? 'disabled' : ''} onclick="doAttendanceWithModal()">✅ ${checkedInToday ? 'تم تسجيل الحضور الساعة ' + fmtTime(status.lastIn && status.lastIn.timestamp) : (!windowState.isAfterEnd ? 'تسجيل حضور' : 'غير متاح الآن')}</button>
-        <button class="btn btn-danger ${status.hasCheckedOut ? 'btn-done' : ''}" id="checkOutBtn" ${(!checkedInToday || status.hasCheckedOut || !windowState.isDuringWorkWindow) ? 'disabled' : ''}>⏹ ${status.hasCheckedOut ? 'تم تسجيل الانصراف الساعة ' + fmtTime(status.lastOut && status.lastOut.timestamp) : (windowState.isDuringWorkWindow ? 'تسجيل انصراف' : 'غير متاح الآن')}</button>
-        `}
+        <button class="btn btn-primary ${checkedInToday ? 'btn-done' : ''}" id="checkInBtn" ${checkedInToday ? 'disabled' : ''} onclick="doAttendanceWithModal()">✅ ${checkedInToday ? ('تم تسجيل الحضور الساعة ' + fmtTime(status.lastIn && status.lastIn.timestamp) + (isLateCheckIn ? ' <span style="color:var(--warn);font-weight:800">(تأخير)</span>' : '')) : 'اضغط لتسجيل الحضور'}</button>
+        <button class="btn btn-danger ${status.hasCheckedOut ? 'btn-done' : ''}" id="checkOutBtn" ${(!checkedInToday || status.hasCheckedOut) ? 'disabled' : ''}>⏹ ${status.hasCheckedOut ? 'تم تسجيل الانصراف الساعة ' + fmtTime(status.lastOut && status.lastOut.timestamp) : 'اضغط لتسجيل الانصراف'}</button>
         ${isCenterAdmin ? `
           <div style="display:flex;align-items:center;gap:10px">
             <button class="btn btn-outline btn-sm" onclick="openDailyCoordinationModal()">تفاصيل</button>
@@ -1535,7 +1544,6 @@ async function renderAttendance(root) {
         ` : ''}
       </div>
       <div class="gps-box" id="gpsBox" style="justify-content:center"></div>
-      ${(!checkedInToday && !isAbsentToday) ? `<p style="color:var(--warn);font-size:12.5px;margin-top:10px">⚠ يُعتبر الموظف غائبًا إذا لم يسجل الحضور قبل ${formatClockLabel(attendanceWindow.startTime)}</p>` : ''}
       ${isCenterAdmin ? `
       <div class="quick-actions-grid">
         <button class="btn ${coordFlags.director.done ? 'btn-done' : 'btn-outline'}" id="qaDirector" ${coordFlags.director.done ? 'disabled' : ''}>👨‍💼 ${coordFlags.director.done ? 'تم تسجيل تواجد المدير الساعة ' + coordFlags.director.time : 'تسجيل تواجد المدير'}</button>
@@ -1559,18 +1567,12 @@ async function renderAttendance(root) {
   setInterval(() => {
     const c = document.getElementById('clockNow');
     if (c) c.textContent = getEgyptNow().toLocaleTimeString('ar-EG');
-    // إعادة رسم الصفحة تلقائيًا لحظة تجاوز الساعة 10 صباحًا حتى تختفي أزرار الحضور فورًا دون الحاجة لتحديث يدوي
-    if (!isAbsentToday && !checkedInToday && (getEgyptNow().getHours() * 60 + getEgyptNow().getMinutes()) >= attendanceCutoffMinutes && currentPage === 'attendance') {
-      goPage('attendance', true);
-    }
   }, 1000);
-  if (!isAbsentToday) {
-    document.getElementById('checkInBtn').onclick = () => doAttendanceWithModal();
-    if (isFieldRole) {
-      document.getElementById('checkOutBtn').onclick = () => doCheckoutWithModal();
-    } else {
-      document.getElementById('checkOutBtn').onclick = () => doAttendance('checkOut');
-    }
+  document.getElementById('checkInBtn').onclick = () => doAttendanceWithModal();
+  if (isFieldRole) {
+    document.getElementById('checkOutBtn').onclick = () => doCheckoutWithModal();
+  } else {
+    document.getElementById('checkOutBtn').onclick = () => doAttendance('checkOut');
   }
   // ربط أزرار إجراءات المتابعة السريعة (مدير المركز فقط): ضغطة واحدة، تتحول للأخضر، وتعرض وقت التسجيل
   if (isCenterAdmin) {
@@ -1967,22 +1969,30 @@ window.submitAssignmentStatusUpdate = async (assignmentId, newStatus) => {
 
 window.exportTodayAbsenceReport = async () => {
   const now = getEgyptNow();
-  if (now.getHours() < 10) {
-    showToast('يمكن تحميل كشف الغياب بعد الساعة 10 صباحًا فقط', 'err');
+  const cfg = await loadAttendanceWindowConfig();
+  const ws = getAttendanceWindowState(now);
+  if (!ws.isLate) {
+    showToast(`يمكن تحميل كشف الغياب بعد الساعة ${formatClockLabel(cfg.startTime)} فقط`, 'err');
     return;
   }
   const today = getEgyptDateKey(now);
   const users = await api('listUsers', { center: CURRENT_USER.center, status: 'APPROVED' });
   const attendance = await api('listAttendance', { center: CURRENT_USER.center, date: today });
-  const presentIds = new Set(attendance.filter(a => a.type === 'IN').map(a => a.userId));
-  const absentRows = users.filter(u => !presentIds.has(u.id)).map(u => ({
-    fullName: u.fullName || '',
-    role: roleLabel(u.role),
-    center: u.center || '',
-    status: 'غائب',
-    checkInTime: '-',
-    checkOutTime: '-'
-  }));
+  // نعتبر الموظف حاضرًا فقط إذا سجّل حضوره ولم يكن متأخرًا (isLate)؛ التسجيل المتأخر يُحتسب غيابًا
+  const presentIds = new Set(attendance.filter(a => a.type === 'IN' && a.isLate !== true && a.isLate !== 'true').map(a => a.userId));
+  const lateRows = attendance.filter(a => a.type === 'IN' && (a.isLate === true || a.isLate === 'true'));
+  const lateById = new Map(lateRows.map(a => [a.userId, a]));
+  const absentRows = users.filter(u => !presentIds.has(u.id)).map(u => {
+    const lateRec = lateById.get(u.id);
+    return {
+      fullName: u.fullName || '',
+      role: roleLabel(u.role),
+      center: u.center || '',
+      status: lateRec ? 'حاضر متأخر (محتسب غيابًا)' : 'غائب',
+      checkInTime: lateRec ? fmtDate(lateRec.timestamp) : '-',
+      checkOutTime: '-'
+    };
+  });
   if (!absentRows.length) {
     showToast('لا يوجد غياب مسجل لهذا اليوم', 'ok');
     return;
@@ -3634,6 +3644,7 @@ function parseEgyptTimeParts(dateValue) {
   if (!result.year) return null;
   return result;
 }
+// تُستخدم فقط لتحويل لحظة زمنية حقيقية (new Date() الفعلية من جهاز المستخدم) إلى توقيت القاهرة.
 function toEgyptTime(dateValue) {
   const parts = parseEgyptTimeParts(dateValue);
   if (!parts) return null;
@@ -3641,6 +3652,24 @@ function toEgyptTime(dateValue) {
 }
 function getEgyptNow() {
   return toEgyptTime(new Date()) || new Date();
+}
+// القيم القادمة من الخادم (Attendance/Missions/... إلخ) مُخزَّنة بالفعل كأرقام توقيت القاهرة
+// المحلي (حتى وإن انتهت بحرف Z في صيغة ISO) - وأي كائن Date ناتج عن getEgyptNow() يحمل بالفعل
+// قيم القاهرة في حقوله العادية. لذلك عند العرض يجب قراءة هذه القيم مباشرة بدون أي تحويل توقيت
+// إضافي، وإلا سيتكرر إضافة فارق التوقيت مرتين ويظهر الوقت بعد ساعتين من الوقت الحقيقي.
+function egyptParts(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return {
+      year: value.getFullYear(), month: value.getMonth() + 1, day: value.getDate(),
+      hour: value.getHours(), minute: value.getMinutes(), second: value.getSeconds()
+    };
+  }
+  const str = String(value);
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return { year: +m[1], month: +m[2], day: +m[3], hour: +m[4], minute: +m[5], second: +m[6] };
 }
 function getEgyptDateKey(value) {
   const d = value instanceof Date ? value : new Date(value);
@@ -3651,26 +3680,15 @@ function getEgyptDateKey(value) {
 }
 function fmtDate(iso) {
   if (!iso) return '-';
-  const d = iso instanceof Date ? iso : new Date(iso);
-  if (Number.isNaN(d.getTime())) return '-';
-  const egypt = toEgyptTime(d);
-  if (!egypt) return '-';
-  const hour = egypt.getHours();
-  const minute = egypt.getMinutes().toString().padStart(2, '0');
-  const day = egypt.getDate();
-  const month = egypt.getMonth() + 1;
-  const year = egypt.getFullYear();
-  return `${hour}.${minute} ${day}/${month}/${year}`;
+  const p = egyptParts(iso);
+  if (!p) return '-';
+  return `${p.hour}.${p.minute.toString().padStart(2, '0')} ${p.day}/${p.month}/${p.year}`;
 }
 function fmtTime(iso) {
   if (!iso) return '';
-  const d = iso instanceof Date ? iso : new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const egypt = toEgyptTime(d);
-  if (!egypt) return '';
-  const hour = egypt.getHours();
-  const minute = egypt.getMinutes().toString().padStart(2, '0');
-  return `${hour}.${minute}`;
+  const p = egyptParts(iso);
+  if (!p) return '';
+  return `${p.hour}.${p.minute.toString().padStart(2, '0')}`;
 }
 function parseTimeToMinutes(timeStr) {
   if (!timeStr || typeof timeStr !== 'string') return null;
@@ -3689,25 +3707,22 @@ function formatClockLabel(timeStr) {
   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 }
 function getAttendanceWindowState(nowDate) {
-  const config = window.__attendanceWindowConfig || { startTime: '10:00', endTime: '22:00' };
-  const now = nowDate instanceof Date ? nowDate : new Date(nowDate);
-  const egyptNow = toEgyptTime(now);
-  const currentMinutes = egyptNow.getHours() * 60 + egyptNow.getMinutes();
+  // تسجيل الحضور والانصراف مفتوح دائمًا؛ لا يوجد إغلاق بعد أي وقت.
+  // الاستخدام الوحيد للوقت هنا هو تحديد ما إذا كان الوقت الحالي بعد موعد اعتبار الغياب.
+  const config = window.__attendanceWindowConfig || { startTime: '10:00' };
+  const p = egyptParts(nowDate instanceof Date ? nowDate : new Date(nowDate));
+  const currentMinutes = p ? (p.hour * 60 + p.minute) : 0;
   const checkInDeadline = parseTimeToMinutes(config.startTime) ?? 10 * 60;
-  const checkOutEnd = parseTimeToMinutes(config.endTime) ?? 22 * 60;
-  const isBeforeCheckInDeadline = currentMinutes < checkInDeadline;
-  const isDuringWorkWindow = currentMinutes >= checkInDeadline && currentMinutes < checkOutEnd;
-  const isAfterEnd = currentMinutes >= checkOutEnd;
+  const isLate = currentMinutes >= checkInDeadline;
   return {
     startTime: config.startTime,
-    endTime: config.endTime,
     currentMinutes: currentMinutes,
     checkInDeadline: checkInDeadline,
-    checkOutEnd: checkOutEnd,
-    isBeforeCheckInDeadline: isBeforeCheckInDeadline,
-    isDuringWorkWindow: isDuringWorkWindow,
-    isAfterEnd: isAfterEnd,
-    isOpen: !isAfterEnd,
+    isLate: isLate,
+    isBeforeCheckInDeadline: !isLate,
+    isDuringWorkWindow: true,
+    isAfterEnd: false,
+    isOpen: true,
   };
 }
 function getDateKey(value) {
