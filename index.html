@@ -512,14 +512,7 @@ document.getElementById('googleLoginBtn').addEventListener('click', () => {
     return;
   }
   const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithPopup(provider).catch((e) => {
-    if (e.code === 'auth/popup-blocked') {
-      auth.signInWithRedirect(provider);
-    } else {
-      showToast('فشل تسجيل الدخول: ' + e.message, 'err');
-    }
-  });
-});
+  auth.signInWithRedirect(provider);
 
 if (auth) {
   auth.onAuthStateChanged(async (user) => {
