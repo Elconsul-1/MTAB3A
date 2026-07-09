@@ -385,14 +385,28 @@ tbody tr:hover{background:#fafcfd}
   .grid-cards,.summary-grid,.filter-grid{grid-template-columns:1fr}
   .topbar h2{max-width:38vw}
 }
+
+/* ---------- نافذة التحميل العامة (تظهر عند أي إجراء حتى اكتمال التحميل) ---------- */
+#globalLoader{
+  position:fixed;inset:0;z-index:300;background:rgba(7,27,46,.5);
+  display:none;align-items:center;justify-content:center;padding:16px;
+}
+#globalLoader .globalLoaderBox{
+  background:#fff;border-radius:16px;padding:28px 36px;min-width:220px;
+  display:flex;flex-direction:column;align-items:center;gap:14px;
+  box-shadow:0 24px 60px rgba(0,0,0,.35);
+}
+#globalLoaderMsg{font-size:14px;color:var(--navy-900);font-weight:800;text-align:center}
 </style>
 </head>
 <body>
 
-<!-- Global small loader (toast) -->
-<div id="globalLoader" style="display:none;position:fixed;right:18px;bottom:18px;z-index:120;background:#fff;border:1px solid var(--line);box-shadow:0 6px 22px rgba(11,44,71,.12);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px">
-  <div class="spinner" style="width:28px;height:28px;border-width:3px;border-top-color:var(--navy-900)"></div>
-  <div id="globalLoaderMsg" style="font-size:13px;color:var(--navy-900);font-weight:700">جاري المعالجة...</div>
+<!-- نافذة تحميل عامة (Blocking Modal): تظهر عند أي إجراء عبر الخادم حتى اكتمال التحميل -->
+<div id="globalLoader">
+  <div class="globalLoaderBox">
+    <div class="spinner" style="width:38px;height:38px;border-width:4px;border-top-color:var(--navy-900)"></div>
+    <div id="globalLoaderMsg">جاري المعالجة...</div>
+  </div>
 </div>
 
 <!-- ================= شاشة تسجيل الدخول ================= -->
@@ -559,6 +573,26 @@ let currentPage = 'dashboard';
 const PAGE_CACHE = {};
 let deferredInstallPrompt = null;
 
+/* ---------------------------- نافذة التحميل العامة (Blocking) ---------------------------- */
+// تظهر عند أي إجراء يتصل بالخادم (تسجيل حضور/انصراف/حفظ بيانات...) وتبقى ظاهرة
+// حتى ينتهي الإجراء بالكامل (بما في ذلك إعادة تحميل الصفحة إن وُجدت)، حتى لا يظن المستخدم
+// أن الزر لم يعمل بينما العملية ما زالت جارية فعليًا في الخلفية.
+let __globalLoaderDepth = 0;
+function showGlobalLoader(msg) {
+  __globalLoaderDepth++;
+  const loader = document.getElementById('globalLoader');
+  const loaderMsg = document.getElementById('globalLoaderMsg');
+  if (loader) loader.style.display = 'flex';
+  if (loaderMsg) loaderMsg.textContent = msg || 'جاري المعالجة...';
+}
+function hideGlobalLoader(force) {
+  __globalLoaderDepth = force ? 0 : Math.max(0, __globalLoaderDepth - 1);
+  if (__globalLoaderDepth === 0) {
+    const loader = document.getElementById('globalLoader');
+    if (loader) loader.style.display = 'none';
+  }
+}
+
 function registerPwaFeatures() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -663,14 +697,11 @@ async function api(action, params) {
   } catch (e) {
     // ignore if CURRENT_USER not available yet
   }
-  // Show global loader and disable the active button (if any)
+  // إظهار نافذة التحميل العامة المانعة (Blocking) طوال مدة الاتصال بالخادم
   const activeEl = document.activeElement;
   let prevText = null;
+  showGlobalLoader(action === 'uploadPhotoToDrive' ? 'جاري رفع الصورة...' : 'جاري الحفظ...');
   try {
-    const loader = document.getElementById('globalLoader');
-    const loaderMsg = document.getElementById('globalLoaderMsg');
-    if (loader) loader.style.display = 'flex';
-    if (loaderMsg) loaderMsg.textContent = action === 'uploadPhotoToDrive' ? 'جاري رفع الصورة...' : 'جاري الحفظ...';
     if (activeEl && (activeEl.tagName === 'BUTTON' || activeEl.tagName === 'INPUT')) {
       prevText = activeEl.textContent;
       try { activeEl.disabled = true; activeEl.textContent = 'جارٍ الحفظ...'; } catch (e) {}
@@ -690,8 +721,7 @@ async function api(action, params) {
     throw e;
   } finally {
     try {
-      const loader = document.getElementById('globalLoader');
-      if (loader) loader.style.display = 'none';
+      hideGlobalLoader();
       if (activeEl && prevText !== null) { try { activeEl.disabled = false; activeEl.textContent = prevText; } catch (er) {} }
     } catch (er) {}
   }
@@ -1427,8 +1457,6 @@ async function renderAttendance(root) {
   const attendanceLockKey = 'attendanceCheckinFlag_' + today;
   const localCheckedInToday = localStorage.getItem(attendanceLockKey) === '1';
   const checkedInToday = Boolean(status.hasCheckedIn || localCheckedInToday);
-  const attendanceCutoffMinutes = windowState.checkInDeadline;
-  const isAbsentToday = windowState.currentMinutes >= attendanceCutoffMinutes && !checkedInToday;
   let coordToday = [];
 
   // بيانات إجراءات المتابعة السريعة (لمدير المركز فقط) - نجيبها هنا عشان تظهر الأزرار
@@ -1517,19 +1545,10 @@ async function renderAttendance(root) {
   root.innerHTML = `
     <div class="panel" style="text-align:center;padding:34px 20px">
       <div style="font-size:14px;color:var(--ink-600);margin-bottom:6px">${getEgyptNow().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
-      <div style="background:${windowState.isOpen ? '#eef8f0' : '#fff6e5'};border:1px solid ${windowState.isOpen ? 'var(--good)' : 'var(--warn)'};border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13.5px;color:var(--navy-900)">
-        <strong>نافذة الحضور والانصراف:</strong> ${windowState.isOpen ? `مفتوحة الآن من ${formatClockLabel(attendanceWindow.startTime)} إلى ${formatClockLabel(attendanceWindow.endTime)}` : (windowState.isBeforeStart ? `ستبدأ عند ${formatClockLabel(attendanceWindow.startTime)}` : `انتهت عند ${formatClockLabel(attendanceWindow.endTime)}`)}
-      </div>
       <div style="font-size:32px;font-weight:800;margin-bottom:22px" id="clockNow"></div>
       <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
-        ${isAbsentToday ? `
-          <div style="background:#fdeaea;border:1.5px solid var(--bad);border-radius:12px;padding:14px 22px;display:flex;align-items:center;gap:10px;color:var(--bad);font-weight:800;font-size:14.5px">
-            <span style="font-size:20px">🚫</span> تم تسجيلك غائبًا اليوم لعدم تسجيل الحضور قبل ${formatClockLabel(attendanceWindow.startTime)}
-          </div>
-        ` : `
-        <button class="btn btn-primary ${checkedInToday ? 'btn-done' : ''}" id="checkInBtn" ${checkedInToday || windowState.isAfterEnd ? 'disabled' : ''} onclick="doAttendanceWithModal()">✅ ${checkedInToday ? 'تم تسجيل الحضور الساعة ' + fmtTime(status.lastIn && status.lastIn.timestamp) : (!windowState.isAfterEnd ? 'تسجيل حضور' : 'غير متاح الآن')}</button>
-        <button class="btn btn-danger ${status.hasCheckedOut ? 'btn-done' : ''}" id="checkOutBtn" ${(!checkedInToday || status.hasCheckedOut || !windowState.isDuringWorkWindow) ? 'disabled' : ''}>⏹ ${status.hasCheckedOut ? 'تم تسجيل الانصراف الساعة ' + fmtTime(status.lastOut && status.lastOut.timestamp) : (windowState.isDuringWorkWindow ? 'تسجيل انصراف' : 'غير متاح الآن')}</button>
-        `}
+        <button class="btn btn-primary ${checkedInToday ? 'btn-done' : ''}" id="checkInBtn" ${checkedInToday ? 'disabled' : ''} onclick="doAttendanceWithModal()">✅ ${checkedInToday ? 'تم تسجيل الحضور الساعة ' + fmtTime(status.lastIn && status.lastIn.timestamp) : 'تسجيل حضور'}</button>
+        <button class="btn btn-danger ${status.hasCheckedOut ? 'btn-done' : ''}" id="checkOutBtn" ${(!checkedInToday || status.hasCheckedOut) ? 'disabled' : ''}>⏹ ${status.hasCheckedOut ? 'تم تسجيل الانصراف الساعة ' + fmtTime(status.lastOut && status.lastOut.timestamp) : 'تسجيل انصراف'}</button>
         ${isCenterAdmin ? `
           <div style="display:flex;align-items:center;gap:10px">
             <button class="btn btn-outline btn-sm" onclick="openDailyCoordinationModal()">تفاصيل</button>
@@ -1537,7 +1556,6 @@ async function renderAttendance(root) {
         ` : ''}
       </div>
       <div class="gps-box" id="gpsBox" style="justify-content:center"></div>
-      ${(!checkedInToday && !isAbsentToday) ? `<p style="color:var(--warn);font-size:12.5px;margin-top:10px">⚠ يُعتبر الموظف غائبًا إذا لم يسجل الحضور قبل ${formatClockLabel(attendanceWindow.startTime)}</p>` : ''}
       ${isCenterAdmin ? `
       <div class="quick-actions-grid">
         <button class="btn ${coordFlags.director.done ? 'btn-done' : 'btn-outline'}" id="qaDirector" ${coordFlags.director.done ? 'disabled' : ''}>👨‍💼 ${coordFlags.director.done ? 'تم تسجيل تواجد المدير الساعة ' + coordFlags.director.time : 'تسجيل تواجد المدير'}</button>
@@ -1565,18 +1583,12 @@ async function renderAttendance(root) {
   setInterval(() => {
     const c = document.getElementById('clockNow');
     if (c) c.textContent = getEgyptNow().toLocaleTimeString('ar-EG');
-    // إعادة رسم الصفحة تلقائيًا لحظة تجاوز الساعة 10 صباحًا حتى تختفي أزرار الحضور فورًا دون الحاجة لتحديث يدوي
-    if (!isAbsentToday && !checkedInToday && (getEgyptNow().getHours() * 60 + getEgyptNow().getMinutes()) >= attendanceCutoffMinutes && currentPage === 'attendance') {
-      goPage('attendance', true);
-    }
   }, 1000);
-  if (!isAbsentToday) {
-    document.getElementById('checkInBtn').onclick = () => doAttendanceWithModal();
-    if (isFieldRole) {
-      document.getElementById('checkOutBtn').onclick = () => doCheckoutWithModal();
-    } else {
-      document.getElementById('checkOutBtn').onclick = () => doAttendance('checkOut');
-    }
+  document.getElementById('checkInBtn').onclick = () => doAttendanceWithModal();
+  if (isFieldRole) {
+    document.getElementById('checkOutBtn').onclick = () => doCheckoutWithModal();
+  } else {
+    document.getElementById('checkOutBtn').onclick = () => doAttendance('checkOut');
   }
   // ربط أزرار إجراءات المتابعة السريعة (مدير المركز فقط): ضغطة واحدة، تتحول للأخضر، وتعرض وقت التسجيل
   if (isCenterAdmin) {
@@ -1588,6 +1600,7 @@ async function renderAttendance(root) {
         btn.disabled = true;
         const originalText = btn.innerHTML;
         btn.innerHTML = '... جارِ الحفظ';
+        showGlobalLoader('جاري الحفظ...');
         try {
           const value = valueFn();
           await api('updateDailyCoordinationStatus', { center: CURRENT_USER.center, field, value, engineerName: CURRENT_USER.fullName, createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
@@ -1599,6 +1612,8 @@ async function renderAttendance(root) {
           btn.disabled = false;
           btn.innerHTML = originalText;
           showToast('فشل التسجيل، حاول مرة أخرى', 'err');
+        } finally {
+          hideGlobalLoader();
         }
       };
     };
@@ -1616,6 +1631,7 @@ async function renderAttendance(root) {
         qaTarget.disabled = true;
         const originalText = qaTarget.innerHTML;
         qaTarget.innerHTML = '... جارِ الحفظ';
+        showGlobalLoader('جاري الحفظ...');
         try {
           await api('updateDailyCoordinationStatus', { center: CURRENT_USER.center, field: 'targetCount', value: Number(n), createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
           const timeStr = fmtTime(getEgyptNow());
@@ -1626,6 +1642,8 @@ async function renderAttendance(root) {
           qaTarget.disabled = false;
           qaTarget.innerHTML = originalText;
           showToast('فشل الحفظ، حاول مرة أخرى', 'err');
+        } finally {
+          hideGlobalLoader();
         }
       };
     }
@@ -1710,6 +1728,7 @@ window.doCheckoutWithModal = () => {
 
 window.submitCheckoutAndSignOut = async () => {
   const note = document.getElementById('checkoutNote')?.value || '';
+  showGlobalLoader('جاري تسجيل الانصراف...');
   try {
     // سجل الملاحظة كملاحظة شخصية لليوم (سطر في DailyCoordination مع recordType خاص)
     await api('recordDailyCoordination', { date: getEgyptDateKey(getEgyptNow()), center: CURRENT_USER.center, notes: note, recordedBy: CURRENT_USER.id, recordedAt: getEgyptNow().toISOString() });
@@ -1718,7 +1737,8 @@ window.submitCheckoutAndSignOut = async () => {
     console.warn('failed to save checkout note', e);
   }
   closeModal();
-  doAttendance('checkOut');
+  await doAttendance('checkOut');
+  hideGlobalLoader(true);
 };
 
 function execModeChip(mode) {
@@ -1733,7 +1753,7 @@ function taskStatusChip(status) {
   return `<span class="chip ${v[0]}">${v[1]}</span>`;
 }
 
-function doAttendance(action, extra = {}) {
+async function doAttendance(action, extra = {}) {
   const btn = document.getElementById(action === 'checkIn' ? 'checkInBtn' : 'checkOutBtn');
   if (btn) { btn.disabled = true; btn.classList.add('btn-done'); }
   const box = document.getElementById('gpsBox');
@@ -1742,45 +1762,54 @@ function doAttendance(action, extra = {}) {
     const today = getEgyptDateKey(getEgyptNow());
     localStorage.setItem('attendanceCheckinFlag_' + today, '1');
   }
-  navigator.geolocation.getCurrentPosition(async (pos) => {
-    try {
-      const payload = {
-        userId: CURRENT_USER.id,
-        userName: CURRENT_USER.fullName,
-        center: extra.center || CURRENT_USER.center,
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude
-      };
-      if (action === 'checkIn' && extra.workType) payload.workType = extra.workType;
-      await api(action, payload);
-      showToast(action === 'checkIn' ? 'تم تسجيل الحضور بنجاح' : 'تم تسجيل الانصراف بنجاح', 'ok');
-      goPage('attendance', true);
-    } catch (e) {
-      if (action === 'checkIn') {
-        const today = getEgyptDateKey(getEgyptNow());
-        localStorage.removeItem('attendanceCheckinFlag_' + today);
+  showGlobalLoader(action === 'checkIn' ? 'جاري تسجيل الحضور...' : 'جاري تسجيل الانصراف...');
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const payload = {
+          userId: CURRENT_USER.id,
+          userName: CURRENT_USER.fullName,
+          center: extra.center || CURRENT_USER.center,
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude
+        };
+        if (action === 'checkIn' && extra.workType) payload.workType = extra.workType;
+        await api(action, payload);
+        showToast(action === 'checkIn' ? 'تم تسجيل الحضور بنجاح' : 'تم تسجيل الانصراف بنجاح', 'ok');
+        await goPage('attendance', true);
+      } catch (e) {
+        if (action === 'checkIn') {
+          const today = getEgyptDateKey(getEgyptNow());
+          localStorage.removeItem('attendanceCheckinFlag_' + today);
+        }
+        if (btn) { btn.disabled = false; btn.classList.remove('btn-done'); }
+      } finally {
+        hideGlobalLoader(true);
+        resolve();
       }
-      if (btn) { btn.disabled = false; btn.classList.remove('btn-done'); }
-    }
-  }, async () => {
-    // في حال رفض المستخدم صلاحية الموقع، يتم التسجيل بدون إحداثيات
-    try {
-      const payload = {
-        userId: CURRENT_USER.id,
-        userName: CURRENT_USER.fullName,
-        center: extra.center || CURRENT_USER.center
-      };
-      if (action === 'checkIn' && extra.workType) payload.workType = extra.workType;
-      await api(action, payload);
-      showToast('تم التسجيل بدون تحديد الموقع (الصلاحية غير مفعّلة)', 'ok');
-      goPage('attendance', true);
-    } catch (e) {
-      if (action === 'checkIn') {
-        const today = getEgyptDateKey(getEgyptNow());
-        localStorage.removeItem('attendanceCheckinFlag_' + today);
+    }, async () => {
+      // في حال رفض المستخدم صلاحية الموقع، يتم التسجيل بدون إحداثيات
+      try {
+        const payload = {
+          userId: CURRENT_USER.id,
+          userName: CURRENT_USER.fullName,
+          center: extra.center || CURRENT_USER.center
+        };
+        if (action === 'checkIn' && extra.workType) payload.workType = extra.workType;
+        await api(action, payload);
+        showToast('تم التسجيل بدون تحديد الموقع (الصلاحية غير مفعّلة)', 'ok');
+        await goPage('attendance', true);
+      } catch (e) {
+        if (action === 'checkIn') {
+          const today = getEgyptDateKey(getEgyptNow());
+          localStorage.removeItem('attendanceCheckinFlag_' + today);
+        }
+        if (btn) { btn.disabled = false; btn.classList.remove('btn-done'); }
+      } finally {
+        hideGlobalLoader(true);
+        resolve();
       }
-      if (btn) { btn.disabled = false; btn.classList.remove('btn-done'); }
-    }
+    });
   });
 }
 
