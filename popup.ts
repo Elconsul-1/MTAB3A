@@ -11,10 +11,23 @@ type PopupCloseMessage = {
   reason?: string;
 };
 
-function supportsSelfClose(): boolean {
-  if (window.opener && !window.opener.closed) {
+function hasAccessibleOpener(): boolean {
+  try {
+    return !!window.opener;
+  } catch (err) {
     return false;
   }
+}
+
+// NOTE: We deliberately do NOT read window.opener.closed here.
+// Under a Cross-Origin-Opener-Policy of 'same-origin' or
+// 'same-origin-allow-popups', browsers (Chrome in particular) log a
+// "Cross-Origin-Opener-Policy policy would block the window.closed call"
+// warning whenever that property is accessed on an opener that COOP has
+// severed or cross-origin'd — regardless of try/catch, since it's an
+// enforcement-layer warning, not a catchable exception. We simply attempt
+// postMessage and let it no-op silently if there's no reachable opener.
+function supportsSelfClose(): boolean {
   try {
     const openerTest = window.open('', '_self');
     return !!openerTest;
@@ -24,7 +37,7 @@ function supportsSelfClose(): boolean {
 }
 
 export function safeClosePopup(reason?: string): void {
-  if (window.opener && !window.opener.closed) {
+  if (hasAccessibleOpener()) {
     try {
       const message: PopupCloseMessage = { type: 'POPUP_CLOSE_REQUEST', reason };
       window.opener.postMessage(message, '*');
@@ -47,8 +60,12 @@ export function initPopupCloseListener(): void {
   window.addEventListener('message', (event: MessageEvent<PopupCloseMessage>) => {
     const data = event.data;
     if (!data || data.type !== 'POPUP_CLOSE_REQUEST') return;
-    if (canCloseWindow()) {
-      window.close();
+    if (supportsSelfClose()) {
+      try {
+        window.close();
+      } catch (err) {
+        console.warn('popup.ts: listener failed to close self', err);
+      }
     }
   });
 }
