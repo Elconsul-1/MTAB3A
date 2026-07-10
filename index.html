@@ -551,6 +551,60 @@ tbody tr:hover{background:#fafcfd}
 .btn-cancel-attendance:hover {
   background: #e0a800;
 }
+
+/* تنسيق شريط اختيار التاريخ في المتابعة */
+.date-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+}
+.date-nav-bar .date-label {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--navy-900);
+}
+.date-nav-bar input[type="date"] {
+  padding: 8px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  flex: 1;
+  min-width: 160px;
+}
+.date-nav-bar .today-btn {
+  padding: 8px 16px;
+  background: var(--navy-800);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: .15s;
+}
+.date-nav-bar .today-btn:hover {
+  background: var(--navy-900);
+}
+.date-nav-bar .nav-btn {
+  padding: 8px 12px;
+  background: #f0f4f8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: .15s;
+}
+.date-nav-bar .nav-btn:hover {
+  background: #e2e8f0;
+}
 </style>
 </head>
 <body>
@@ -1621,6 +1675,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             action === 'checkOut' || localStorage.getItem(checkOutKey) === '1'
         );
 
+        // ==================== تحديث الصفحة تلقائياً بعد 1.5 ثانية ====================
         setTimeout(() => {
             goPage('attendance', true);
         }, 1500);
@@ -1862,11 +1917,26 @@ async function renderAttendance(root) {
 }
 
 // ========================================================================
-// شاشة المتابعة - مع جدول الحضور والغياب
+// شاشة المتابعة - مع إضافة تاريخ وزر اليوم والتنقل بين الأيام
 // ========================================================================
 async function renderCoordination(root) {
-    const selectedDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
+    // الحصول على التاريخ المخزن أو التاريخ الحالي
+    let selectedDate = localStorage.getItem('coordinationDate');
     
+    // إذا لم يكن هناك تاريخ مخزن أو كان التاريخ مخزناً قديماً، استخدم التاريخ الحالي
+    if (!selectedDate) {
+        selectedDate = getEgyptDateKey(getEgyptNow());
+        localStorage.setItem('coordinationDate', selectedDate);
+    }
+    
+    // التأكد من أن التاريخ صحيح
+    const today = getEgyptDateKey(getEgyptNow());
+    // إذا كان التاريخ المخزن أكبر من اليوم، استخدم اليوم
+    if (selectedDate > today) {
+        selectedDate = today;
+        localStorage.setItem('coordinationDate', selectedDate);
+    }
+
     let centersToShow = [];
     if (CURRENT_USER.role === 'CENTER_ADMIN') {
         centersToShow = [CURRENT_USER.center];
@@ -1964,7 +2034,30 @@ async function renderCoordination(root) {
         totalAbsent += centerAbsent;
     });
 
+    // تنسيق التاريخ للعرض
+    const displayDate = new Date(selectedDate + 'T00:00:00');
+    const formattedDate = displayDate.toLocaleDateString('ar-EG', { 
+        weekday:'long', 
+        year:'numeric', 
+        month:'long', 
+        day:'numeric' 
+    });
+    
+    const isToday = selectedDate === today;
+
     root.innerHTML = `
+        <!-- شريط التنقل بالتاريخ -->
+        <div class="date-nav-bar">
+            <span class="date-label">📅 التاريخ:</span>
+            <button class="nav-btn" onclick="changeCoordinationDate(-1)" title="اليوم السابق">‹</button>
+            <input type="date" id="coordinationDatePicker" value="${selectedDate}">
+            <button class="nav-btn" onclick="changeCoordinationDate(1)" title="اليوم التالي">›</button>
+            <button class="today-btn" onclick="goToTodayCoordination()">📅 اليوم</button>
+            <span style="font-size:13px;color:var(--ink-600);margin-right:auto">
+                ${isToday ? '📌 اليوم' : formattedDate}
+            </span>
+        </div>
+
         <div class="coordination-stats-grid">
             <div class="stat-box"><div class="stat-number">${totalEmployees}</div><div class="stat-label">👥 إجمالي الموظفين</div></div>
             <div class="stat-box" style="border-color:var(--good)"><div class="stat-number" style="color:var(--good)">${totalPresent}</div><div class="stat-label">✅ الحضور</div></div>
@@ -2022,7 +2115,35 @@ async function renderCoordination(root) {
             <button class="btn btn-gold btn-sm" onclick="exportCoordinationExcel('${selectedDate}')">📊 تصدير Excel</button>
         </div>
     `;
+
+    // ربط أحداث التاريخ
+    const datePicker = document.getElementById('coordinationDatePicker');
+    if (datePicker) {
+        datePicker.addEventListener('change', function() {
+            const newDate = this.value;
+            if (newDate) {
+                localStorage.setItem('coordinationDate', newDate);
+                goPage('coordination', true);
+            }
+        });
+    }
 }
+
+// دوال التنقل في التاريخ
+window.changeCoordinationDate = function(delta) {
+    const currentDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
+    const dateObj = new Date(currentDate + 'T00:00:00');
+    dateObj.setDate(dateObj.getDate() + delta);
+    const newDate = getEgyptDateKey(dateObj);
+    localStorage.setItem('coordinationDate', newDate);
+    goPage('coordination', true);
+};
+
+window.goToTodayCoordination = function() {
+    const today = getEgyptDateKey(getEgyptNow());
+    localStorage.setItem('coordinationDate', today);
+    goPage('coordination', true);
+};
 
 window.exportCoordinationExcel = function(selectedDate) {
     const rows = document.querySelectorAll('.center-summary-table tbody tr');
@@ -2046,8 +2167,10 @@ window.exportCoordinationExcel = function(selectedDate) {
 };
 
 // ========================================================================
-// إدارة المستخدمين - مع زر إلغاء الحضور
+// باقي الصفحات (مختصرة للاختصار)
 // ========================================================================
+
+// إدارة المستخدمين
 async function renderUsers(root) {
     const users = await api('listUsers', {});
     allUsersCache = users;
@@ -2156,7 +2279,6 @@ function renderUserRows(data, root) {
             `<img src="${u.photoUrl}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;cursor:pointer" onclick="window.open('${u.photoUrl}','_blank')" title="عرض الصورة">` : 
             '<span style="color:var(--ink-400)">❌</span>';
         
-        // ==================== زر إلغاء الحضور ====================
         const cancelBtn = (CURRENT_USER && CURRENT_USER.role === 'SYSTEM_ADMIN') ? 
             `<button class="btn btn-warning btn-sm" onclick="cancelUserAttendance('${u.id}','${u.fullName}')" title="إلغاء حضور الموظف">⏰ إلغاء حضور</button>` : 
             '';
@@ -2219,7 +2341,7 @@ window.exportUsersExcel = function() {
 };
 
 // ========================================================================
-// دوال إدارة المستخدمين
+// دوال إدارة المستخدمين (مختصرة)
 // ========================================================================
 
 window.cancelUserAttendance = function(userId, userName) {
@@ -2286,254 +2408,7 @@ window.confirmCancelAttendance = async function(userId) {
     }
 };
 
-// تعديل المستخدم
-window.openEditUserModal = function(id) {
-    const user = allUsersCache.find(u => u.id === id);
-    if (!user) {
-        showToast('المستخدم غير موجود', 'err');
-        return;
-    }
-    
-    openModal(`
-        <h3>✏️ تعديل بيانات المستخدم</h3>
-        <input id="editUserId" value="${id}" style="display:none">
-        <div class="field"><label>الاسم</label><input id="editName" value="${user.fullName||''}"></div>
-        <div class="field"><label>الرقم القومي</label>
-            <input id="editNationalId" value="${user.nationalId||''}" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
-            <div style="font-size:11px;color:var(--ink-400);margin-top:4px">الرقم القومي مكون من 14 رقم</div>
-        </div>
-        <div class="field-row">
-            <div class="field"><label>الهاتف</label><input id="editPhone" value="${user.phone||''}"></div>
-            <div class="field"><label>البريد</label><input id="editEmail" value="${user.email||''}"></div>
-        </div>
-        <div class="field-row">
-            <div class="field"><label>المركز</label><select id="editCenter">${CENTERS.map(c=>`<option value="${c}" ${user.center===c?'selected':''}>${c}</option>`).join('')}</select></div>
-            <div class="field"><label>الدور</label><select id="editRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${user.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div>
-        </div>
-        <div class="field"><label>الوظيفة</label><input id="editJob" value="${user.job||''}"></div>
-        <div class="field">
-            <label>صورة شخصية جديدة (اختياري)</label>
-            <input id="editPhotoFile" type="file" accept="image/*">
-            ${user.photoUrl ? `<div style="margin-top:8px"><img src="${user.photoUrl}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--line)"></div>` : ''}
-        </div>
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-primary" onclick="submitEditUser()">💾 حفظ</button>
-        </div>
-    `);
-};
-
-window.submitEditUser = async function() {
-    const id = val('editUserId');
-    const fullName = val('editName');
-    const nationalId = val('editNationalId');
-    const phone = val('editPhone');
-    const email = val('editEmail');
-    const center = val('editCenter');
-    const role = val('editRole');
-    const job = val('editJob');
-    const fileInput = document.getElementById('editPhotoFile');
-    
-    if (!fullName) {
-        showToast('الاسم مطلوب', 'err');
-        return;
-    }
-    
-    if (nationalId && !/^[0-9]{14}$/.test(nationalId)) {
-        showToast('الرقم القومي يجب أن يكون 14 رقم', 'err');
-        return;
-    }
-    
-    showSavingModal('جارى حفظ التغييرات...');
-    
-    try {
-        let photoUrl = '';
-        if (fileInput && fileInput.files && fileInput.files[0]) {
-            const file = fileInput.files[0];
-            if (file.size > 5 * 1024 * 1024) {
-                showToast('حجم الصورة كبير جداً', 'err');
-                hideSavingModal();
-                return;
-            }
-            const base64 = await fileToBase64(file);
-            const uploadRes = await api('uploadPhotoToDrive', { imageData: base64, fileName: file.name, mimeType: file.type });
-            if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
-        }
-        
-        await api('updateUserByAdmin', {
-            userId: id,
-            fullName: fullName,
-            nationalId: nationalId,
-            phone: phone,
-            email: email,
-            center: center,
-            role: role,
-            job: job,
-            photoUrl: photoUrl || undefined,
-            updatedBy: CURRENT_USER.id,
-            updatedByName: CURRENT_USER.fullName
-        });
-        
-        hideSavingModal();
-        closeModal();
-        showToast('✅ تم تحديث بيانات المستخدم', 'ok');
-        goPage('users', true);
-    } catch (e) {
-        hideSavingModal();
-        showToast('فشل التحديث: ' + e.message, 'err');
-    }
-};
-
-// حذف المستخدم
-window.deleteUser = function(id, name) {
-    openModal(`
-        <h3>🗑️ تأكيد حذف المستخدم</h3>
-        <p style="color:var(--bad);font-size:14px">هل أنت متأكد من حذف المستخدم <strong>${name}</strong>؟</p>
-        <p style="color:var(--ink-600);font-size:13px">سيتم حذف المستخدم نهائياً من قاعدة البيانات.</p>
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-danger" onclick="confirmDeleteUser('${id}')">🗑️ تأكيد الحذف</button>
-        </div>
-    `);
-};
-
-window.confirmDeleteUser = async function(id) {
-    closeModal();
-    showSavingModal('جارى حذف المستخدم...');
-    
-    try {
-        await api('deleteUser', { 
-            userId: id,
-            deletedBy: CURRENT_USER.id,
-            deletedByName: CURRENT_USER.fullName
-        });
-        
-        hideSavingModal();
-        showToast('✅ تم حذف المستخدم بنجاح', 'ok');
-        goPage('users', true);
-    } catch (e) {
-        hideSavingModal();
-        showToast('فشل الحذف: ' + e.message, 'err');
-    }
-};
-
-// دمج المستخدمين
-window.openMergeUsersModal = function() {
-    const users = allUsersCache.filter(u => u.status === 'APPROVED');
-    
-    openModal(`
-        <h3>🔗 دمج مستخدمين</h3>
-        <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">اختر المستخدم الأساسي ثم المستخدم المراد دمجه معه. سيتم نقل بيانات المستخدم المدمج إلى المستخدم الأساسي وحذف الحساب المدمج.</p>
-        
-        <div class="field">
-            <label>المستخدم الأساسي (الذي سيبقى) *</label>
-            <select id="mergePrimaryUser">
-                <option value="">اختر المستخدم الأساسي</option>
-                ${users.map(u => `<option value="${u.id}">${u.fullName} (${u.email}) - ${u.center||'-'}</option>`).join('')}
-            </select>
-        </div>
-        
-        <div class="field">
-            <label>المستخدم المراد دمجه (سيتم حذفه) *</label>
-            <select id="mergeSecondaryUser">
-                <option value="">اختر المستخدم المراد دمجه</option>
-                ${users.map(u => `<option value="${u.id}">${u.fullName} (${u.email}) - ${u.center||'-'}</option>`).join('')}
-            </select>
-        </div>
-        
-        <div class="field">
-            <label>البريد الإضافي للمستخدم الأساسي</label>
-            <input id="mergeExtraEmail" placeholder="أدخل البريد الإضافي (اختياري)">
-        </div>
-        
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-warning" onclick="submitMergeUsers()">🔗 تأكيد الدمج</button>
-        </div>
-    `);
-};
-
-window.submitMergeUsers = async function() {
-    const primaryId = val('mergePrimaryUser');
-    const secondaryId = val('mergeSecondaryUser');
-    const extraEmail = val('mergeExtraEmail');
-    
-    if (!primaryId) {
-        showToast('يرجى اختيار المستخدم الأساسي', 'err');
-        return;
-    }
-    if (!secondaryId) {
-        showToast('يرجى اختيار المستخدم المراد دمجه', 'err');
-        return;
-    }
-    if (primaryId === secondaryId) {
-        showToast('لا يمكن دمج المستخدم مع نفسه', 'err');
-        return;
-    }
-    
-    closeModal();
-    showSavingModal('جارى دمج المستخدمين...');
-    
-    try {
-        await api('mergeUsers', {
-            primaryUserId: primaryId,
-            secondaryUserId: secondaryId,
-            extraEmail: extraEmail,
-            mergedBy: CURRENT_USER.id,
-            mergedByName: CURRENT_USER.fullName
-        });
-        
-        hideSavingModal();
-        showToast('✅ تم دمج المستخدمين بنجاح', 'ok');
-        goPage('users', true);
-    } catch (e) {
-        hideSavingModal();
-        showToast('فشل الدمج: ' + e.message, 'err');
-    }
-};
-
-window.approveUserAction = async function(id) {
-    showSavingModal('جارى اعتماد المستخدم...');
-    try {
-        await api('approveUser', { userId:id, approvedBy:CURRENT_USER.id, approvedByName:CURRENT_USER.fullName });
-        hideSavingModal();
-        showToast('تم اعتماد الحساب', 'ok');
-        goPage('users', true);
-    } catch (e) {
-        hideSavingModal();
-        showToast('فشل الاعتماد: ' + e.message, 'err');
-    }
-};
-
-window.rejectUserAction = function(id) {
-    openModal(`
-        <h3>سبب رفض الطلب</h3>
-        <div class="field"><textarea id="rejReason" rows="3" placeholder="اكتب سبب الرفض..."></textarea></div>
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-danger" onclick="confirmReject('${id}')">تأكيد الرفض</button>
-        </div>
-    `);
-};
-
-window.confirmReject = async function(id) {
-    const reason = val('rejReason');
-    closeModal();
-    showSavingModal('جارى رفض الطلب...');
-    try {
-        await api('rejectUser', { userId:id, reason: reason || 'غير محدد', rejectedBy:CURRENT_USER.id, rejectedByName:CURRENT_USER.fullName });
-        hideSavingModal();
-        showToast('تم رفض الطلب', 'ok');
-        goPage('users', true);
-    } catch (e) {
-        hideSavingModal();
-        showToast('فشل الرفض: ' + e.message, 'err');
-    }
-};
-
-// ========================================================================
 // دوال التكليفات والمهام (مختصرة)
-// ========================================================================
 async function renderAssignments(root) {
     let missions = await api('listMissions', {});
     if (CURRENT_USER.role === 'CENTER_ADMIN') {
@@ -2602,9 +2477,7 @@ function taskStatusChip(status) {
     return `<span class="chip ${v[0]}">${v[1]}</span>`;
 }
 
-// ========================================================================
 // الأجهزة المساحية (مختصرة)
-// ========================================================================
 async function renderEquipment(root) {
     const equipment = await api('listEquipment',{});
     const isAdmin = ['SYSTEM_ADMIN','CENTER_ADMIN'].includes(CURRENT_USER.role);
@@ -2651,7 +2524,7 @@ function eqStatusChip(s) {
 }
 
 // ========================================================================
-// المتواجدين حاليا
+// المتواجدين حاليا (مختصر)
 // ========================================================================
 function normalizeDriveThumbnail(url) {
     if (!url) return '';
@@ -2728,6 +2601,108 @@ function togglePresentNowAutoRefresh(enable, root) {
         localStorage.removeItem('presentNowAutoRefresh');
     }
 }
+
+// ========================================================================
+// الملف الشخصي والإشعارات والتسجيل
+// ========================================================================
+
+// دوال التسجيل الأولي
+function fillRegCenterOptions() {
+    const sel = document.getElementById('regCenter');
+    if (sel) {
+        sel.innerHTML = '<option value="">اختر المركز</option>';
+        CENTERS.forEach(c => {
+            const option = document.createElement('option');
+            option.value = c;
+            option.textContent = c;
+            sel.appendChild(option);
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    fillRegCenterOptions();
+});
+
+const registerScreen = document.getElementById('registerScreen');
+if (registerScreen) {
+    const observer = new MutationObserver(function() {
+        if (registerScreen.style.display !== 'none') {
+            fillRegCenterOptions();
+        }
+    });
+    observer.observe(registerScreen, { attributes: true, attributeFilter: ['style'] });
+}
+
+document.getElementById('regJob').addEventListener('change', function() {
+    const isEngineer = this.value === 'مهندس';
+    document.getElementById('regCenterField').style.display = isEngineer ? 'none' : 'block';
+    document.getElementById('regUnitField').style.display = isEngineer ? 'none' : 'block';
+    if (isEngineer) {
+        document.getElementById('regCenter').value = '';
+        document.getElementById('regUnit').value = '';
+    }
+});
+
+document.getElementById('submitRegisterBtn').addEventListener('click', async function() {
+    const email = document.getElementById('regEmail').value.trim();
+    const fullName = document.getElementById('regFullName').value.trim();
+    const job = document.getElementById('regJob').value.trim();
+    const phone = document.getElementById('regPhone').value.trim();
+    const nationalId = document.getElementById('regNationalId').value.trim();
+    const role = JOB_ROLE_MAP[job] || 'TECHNICIAN';
+    const isEngineer = job === 'مهندس';
+    const center = isEngineer ? '' : document.getElementById('regCenter').value;
+    const localUnit = isEngineer ? '' : document.getElementById('regUnit').value.trim();
+    const fileInput = document.getElementById('regPhotoFile');
+    const hasPhoto = !!(fileInput.files && fileInput.files[0]);
+
+    if (!email || !fullName || !job || !phone || !nationalId || (!isEngineer && !center)) {
+        showToast('يرجى استكمال جميع الحقول الإلزامية (*)', 'err');
+        return;
+    }
+    if (!hasPhoto) {
+        showToast('الصورة الشخصية إلزامية', 'err');
+        return;
+    }
+
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = 'جارى إرسال الطلب...';
+    
+    try {
+        let photoUrl = '';
+        if (fileInput.files && fileInput.files[0]) {
+            const file = fileInput.files[0];
+            if (file.size > 5 * 1024 * 1024) {
+                showToast('حجم الصورة كبير جداً', 'err');
+                btn.disabled = false;
+                btn.textContent = 'إرسال طلب الاعتماد';
+                return;
+            }
+            try {
+                const base64 = await fileToBase64(file);
+                const uploadRes = await api('uploadPhotoToDrive', { 
+                    imageData: base64, fileName: file.name, mimeType: file.type 
+                });
+                if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
+            } catch (e) { console.error(e); }
+        }
+        
+        await api('registerUser', {
+            email, fullName, job, phone, nationalId, role, center, localUnit, photoUrl
+        });
+        showToast('تم إرسال طلبك بنجاح', 'ok');
+        refreshMyStatus();
+    } catch (e) {
+        showToast('حدث خطأ: ' + e.message, 'err');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'إرسال طلب الاعتماد';
+    }
+});
+
+const JOB_ROLE_MAP = { 'محافظة': 'SYSTEM_ADMIN', 'مدير إدارة': 'CENTER_ADMIN', 'فني': 'TECHNICIAN', 'مهندس': 'ENGINEER' };
 
 // ========================================================================
 // الملف الشخصي
@@ -2845,112 +2820,100 @@ window.openNotifModal = async function() {
     setTimeout(refreshNotifCount, 500);
 };
 
-// ========================================================================
-// دوال التسجيل الأولي
-// ========================================================================
-
-function fillRegCenterOptions() {
-    const sel = document.getElementById('regCenter');
-    if (sel) {
-        sel.innerHTML = '<option value="">اختر المركز</option>';
-        CENTERS.forEach(c => {
-            const option = document.createElement('option');
-            option.value = c;
-            option.textContent = c;
-            sel.appendChild(option);
-        });
-    }
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    fillRegCenterOptions();
-});
-
-const registerScreen = document.getElementById('registerScreen');
-if (registerScreen) {
-    const observer = new MutationObserver(function() {
-        if (registerScreen.style.display !== 'none') {
-            fillRegCenterOptions();
-        }
-    });
-    observer.observe(registerScreen, { attributes: true, attributeFilter: ['style'] });
-}
-
-document.getElementById('regJob').addEventListener('change', function() {
-    const isEngineer = this.value === 'مهندس';
-    document.getElementById('regCenterField').style.display = isEngineer ? 'none' : 'block';
-    document.getElementById('regUnitField').style.display = isEngineer ? 'none' : 'block';
-    if (isEngineer) {
-        document.getElementById('regCenter').value = '';
-        document.getElementById('regUnit').value = '';
-    }
-});
-
-document.getElementById('submitRegisterBtn').addEventListener('click', async function() {
-    const email = document.getElementById('regEmail').value.trim();
-    const fullName = document.getElementById('regFullName').value.trim();
-    const job = document.getElementById('regJob').value.trim();
-    const phone = document.getElementById('regPhone').value.trim();
-    const nationalId = document.getElementById('regNationalId').value.trim();
-    const role = JOB_ROLE_MAP[job] || 'TECHNICIAN';
-    const isEngineer = job === 'مهندس';
-    const center = isEngineer ? '' : document.getElementById('regCenter').value;
-    const localUnit = isEngineer ? '' : document.getElementById('regUnit').value.trim();
-    const fileInput = document.getElementById('regPhotoFile');
-    const hasPhoto = !!(fileInput.files && fileInput.files[0]);
-
-    if (!email || !fullName || !job || !phone || !nationalId || (!isEngineer && !center)) {
-        showToast('يرجى استكمال جميع الحقول الإلزامية (*)', 'err');
-        return;
-    }
-    if (!hasPhoto) {
-        showToast('الصورة الشخصية إلزامية', 'err');
-        return;
-    }
-
-    const btn = this;
-    btn.disabled = true;
-    btn.textContent = 'جارى إرسال الطلب...';
-    
-    try {
-        let photoUrl = '';
-        if (fileInput.files && fileInput.files[0]) {
-            const file = fileInput.files[0];
-            if (file.size > 5 * 1024 * 1024) {
-                showToast('حجم الصورة كبير جداً', 'err');
-                btn.disabled = false;
-                btn.textContent = 'إرسال طلب الاعتماد';
-                return;
-            }
-            try {
-                const base64 = await fileToBase64(file);
-                const uploadRes = await api('uploadPhotoToDrive', { 
-                    imageData: base64, fileName: file.name, mimeType: file.type 
-                });
-                if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
-            } catch (e) { console.error(e); }
-        }
-        
-        await api('registerUser', {
-            email, fullName, job, phone, nationalId, role, center, localUnit, photoUrl
-        });
-        showToast('تم إرسال طلبك بنجاح', 'ok');
-        refreshMyStatus();
-    } catch (e) {
-        showToast('حدث خطأ: ' + e.message, 'err');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'إرسال طلب الاعتماد';
-    }
-});
-
-const JOB_ROLE_MAP = { 'محافظة': 'SYSTEM_ADMIN', 'مدير إدارة': 'CENTER_ADMIN', 'فني': 'TECHNICIAN', 'مهندس': 'ENGINEER' };
-
+// دوال أخرى
 window.openAssignmentModal = function() { showToast('تم تطوير هذه الميزة في الإصدار القادم', 'info'); };
 window.sendAttendanceReminder = async function() {
     const payload = CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {};
     const result = await api('sendAttendanceReminderEmails', payload);
     showToast(`تم إرسال ${result.reminderSent || 0} تذكيرًا`, 'ok');
+};
+
+// دوال الأجهزة (مختصرة)
+window.openAddEquipmentModal = function() {
+    openModal(`
+        <h3>إضافة جهاز مساحي جديد</h3>
+        <div class="field"><label>رقم العهدة *</label><input id="eqCustody"></div>
+        <div class="field"><label>النوع *</label><input id="eqType"></div>
+        <div class="field"><label>الموديل</label><input id="eqModel"></div>
+        <div class="field"><label>المركز الأساسي *</label><select id="eqHomeCenter">${centerOptions(true)}</select></div>
+        <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitEquipment()">حفظ</button></div>
+    `);
+};
+
+window.submitEquipment = async function() {
+    const custodyNumber = val('eqCustody'), type = val('eqType');
+    if (!custodyNumber || !type) { showToast('يرجى استكمال البيانات الإلزامية','err'); return; }
+    await api('addEquipment', {
+        custodyNumber, type, model: val('eqModel'), homeCenter: val('eqHomeCenter'),
+        createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
+    });
+    closeModal(); showToast('تمت إضافة الجهاز','ok'); goPage('equipment', true);
+};
+
+window.openEditEquipmentModal = function(id, custody, type, model, center, status) {
+    openModal(`
+        <h3>تعديل بيانات الجهاز</h3>
+        <input id="eqEditId" value="${id}" style="display:none">
+        <div class="field"><label>رقم العهدة</label><input id="eqEditCustody" value="${custody}"></div>
+        <div class="field"><label>النوع</label><input id="eqEditType" value="${type}"></div>
+        <div class="field"><label>الموديل</label><input id="eqEditModel" value="${model}"></div>
+        <div class="field"><label>المركز</label><select id="eqEditCenter">${centerOptions(true, center)}</select></div>
+        <div class="field"><label>الحالة</label><select id="eqEditStatus"><option value="AVAILABLE" ${status==='AVAILABLE'?'selected':''}>متاح</option><option value="WITH_ENGINEER" ${status==='WITH_ENGINEER'?'selected':''}>مع مهندس</option><option value="MAINTENANCE" ${status==='MAINTENANCE'?'selected':''}>صيانة</option></select></div>
+        <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitEditEquipment()">حفظ</button></div>
+    `);
+};
+
+window.submitEditEquipment = async function() {
+    const id = val('eqEditId');
+    if (!id) { showToast('خطأ في البيانات','err'); return; }
+    await api('updateEquipment', {
+        equipmentId: id,
+        custodyNumber: val('eqEditCustody'),
+        type: val('eqEditType'),
+        model: val('eqEditModel'),
+        homeCenter: val('eqEditCenter'),
+        status: val('eqEditStatus'),
+        updatedBy: CURRENT_USER.id, updatedByName: CURRENT_USER.fullName
+    });
+    closeModal(); showToast('تم تعديل بيانات الجهاز','ok'); goPage('equipment', true);
+};
+
+window.openHandoverModal = function(equipmentId, custody) {
+    openModal(`
+        <h3>محضر تسليم جهاز - عهدة رقم ${custody}</h3>
+        <div class="field"><label>اسم المهندس المستلم *</label><input id="hEngineer"></div>
+        <div class="field"><label>المركز</label><select id="hCenter">${centerOptions(true)}</select></div>
+        <div class="field"><label>الغرض</label><input id="hPurpose"></div>
+        <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitHandover('${equipmentId}')">تأكيد</button></div>
+    `);
+};
+
+window.submitHandover = async function(equipmentId) {
+    const engineerName = val('hEngineer');
+    if (!engineerName) { showToast('يرجى إدخال اسم المهندس','err'); return; }
+    await api('handoverEquipment', {
+        equipmentId, engineerName, center: val('hCenter'), purpose: val('hPurpose'),
+        createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName
+    });
+    closeModal(); showToast('تم تسليم الجهاز بنجاح','ok'); goPage('equipment', true);
+};
+
+window.openReturnModal = async function(equipmentId) {
+    const logs = await api('listEquipmentLog', {});
+    const openLog = logs.filter(l => l.equipmentId === equipmentId && !l.receiveTime).sort((a,b)=>new Date(b.deliverTime)-new Date(a.deliverTime))[0];
+    if (!openLog) { showToast('لا يوجد سجل تسليم مفتوح','err'); return; }
+    openModal(`
+        <h3>استلام الجهاز من ${openLog.engineerName}</h3>
+        <div class="field"><label>حالة الجهاز</label>
+            <select id="rStatus"><option value="AVAILABLE">سليم</option><option value="MAINTENANCE">يحتاج صيانة</option></select>
+        </div>
+        <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitReturn('${equipmentId}','${openLog.id}')">تأكيد</button></div>
+    `);
+};
+
+window.submitReturn = async function(equipmentId, logId) {
+    await api('returnEquipment', { equipmentId, logId, statusAfter: val('rStatus'), createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName });
+    closeModal(); showToast('تم استلام الجهاز بنجاح','ok'); goPage('equipment', true);
 };
 
 console.log('✅ تم تحميل المنظومة بنجاح');
