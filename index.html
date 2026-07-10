@@ -542,6 +542,15 @@ tbody tr:hover{background:#fafcfd}
   .grid-cards,.summary-grid,.filter-grid{grid-template-columns:1fr}
   .topbar h2{max-width:38vw}
 }
+
+/* تنسيق زر إلغاء الحضور */
+.btn-cancel-attendance {
+  background: #ffc107;
+  color: #212529;
+}
+.btn-cancel-attendance:hover {
+  background: #e0a800;
+}
 </style>
 </head>
 <body>
@@ -916,6 +925,7 @@ function getAttendanceWindowState(nowDate) {
         endTime: config.endTime,
         currentMinutes: currentMinutes,
         checkInDeadline: checkInDeadline,
+        isLate: currentMinutes >= checkInDeadline
     };
 }
 
@@ -1408,7 +1418,7 @@ function updateDashboardClock() {
 }
 
 // ========================================================================
-// الحضور والانصراف
+// الحضور والانصراف - مع عرض حالة "متأخر"
 // ========================================================================
 
 async function hasCheckedInToday(userId) {
@@ -1627,6 +1637,10 @@ async function renderAttendance(root) {
         if (hasCheckOut) localStorage.setItem(checkOutKey, '1');
     }
 
+    // جلب حالة الحضور مع isLate من الـ API
+    const status = await api('todayAttendanceStatus', { userId: CURRENT_USER.id });
+    const isLate = status.isLate || false;
+
     const myAttendance = await api('listAttendance', { userId: CURRENT_USER.id, date: today }) || [];
     const checkInRecord = myAttendance.find(a => a.type === 'IN');
     const checkOutRecord = myAttendance.find(a => a.type === 'OUT');
@@ -1639,14 +1653,6 @@ async function renderAttendance(root) {
 
     const windowConfig = await loadAttendanceWindowConfig();
     const checkInDeadline = parseTimeToMinutes(windowConfig.startTime) ?? 600;
-    let isLate = false;
-    if (checkInTime) {
-        const egyptTime = toEgyptTime(new Date(checkInTime));
-        if (egyptTime) {
-            const minutes = egyptTime.getHours() * 60 + egyptTime.getMinutes();
-            isLate = minutes >= checkInDeadline;
-        }
-    }
 
     let locationLink = '-';
     if (checkInMapsLink) {
@@ -1689,17 +1695,17 @@ async function renderAttendance(root) {
             <div class="panel-head"><h3>سجل الحضور والانصراف اليوم</h3></div>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>النوع</th><th>التاريخ والوقت</th><th>الموقع</th><th>الحالة</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th>النوع</th>
+                            <th>التاريخ والوقت</th>
+                            <th>الموقع</th>
+                            <th>الحالة</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         ${myAttendance.length ? myAttendance.map(a => {
-                            const isLateCheck = a.type === 'IN' ? (() => {
-                                const egyptTime = toEgyptTime(new Date(a.timestamp));
-                                if (egyptTime) {
-                                    const minutes = egyptTime.getHours() * 60 + egyptTime.getMinutes();
-                                    return minutes >= checkInDeadline;
-                                }
-                                return false;
-                            })() : false;
+                            const isLateCheck = a.type === 'IN' ? (a.isLate === true || a.isLate === 'true') : false;
                             let locLink = '-';
                             if (a.mapsLink) {
                                 locLink = `<a href="${a.mapsLink}" target="_blank" class="location-link">📍 عرض</a>`;
@@ -1749,7 +1755,7 @@ async function renderAttendance(root) {
 }
 
 // ========================================================================
-// شاشة المتابعة - مع جدول الحضور والغياب (الغياب أسفل الحضور)
+// شاشة المتابعة
 // ========================================================================
 async function renderCoordination(root) {
     const selectedDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
@@ -1851,7 +1857,6 @@ async function renderCoordination(root) {
     });
 
     root.innerHTML = `
-        <!-- الإحصائيات الإجمالية -->
         <div class="coordination-stats-grid">
             <div class="stat-box"><div class="stat-number">${totalEmployees}</div><div class="stat-label">👥 إجمالي الموظفين</div></div>
             <div class="stat-box" style="border-color:var(--good)"><div class="stat-number" style="color:var(--good)">${totalPresent}</div><div class="stat-label">✅ الحضور</div></div>
@@ -1861,7 +1866,6 @@ async function renderCoordination(root) {
             <div class="stat-box" style="border-color:var(--navy-600)"><div class="stat-number">${Math.round((totalPresent / (totalEmployees || 1)) * 100)}%</div><div class="stat-label">📊 نسبة الحضور</div></div>
         </div>
 
-        <!-- جدول إحصائيات المراكز -->
         <div style="overflow-x:auto;margin-bottom:20px">
             <table class="center-summary-table">
                 <thead><tr><th>المركز</th><th>إجمالي</th><th>✅ حضور في الموعد</th><th>⏰ حضور متأخر</th><th>❌ غياب</th><th>📊 نسبة الحضور</th></tr></thead>
@@ -1881,30 +1885,25 @@ async function renderCoordination(root) {
             </table>
         </div>
 
-        <!-- جدول الحضور (أولاً) -->
-        <div class="panel" style="padding:12px;margin-bottom:16px">
-            <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
-            <div class="attendance-table-wrap">
-                <table>
-                    <thead><tr><th>المركز</th><th>الاسم</th><th>الوقت</th><th>الموقع</th><th>الحالة</th></tr></thead>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div class="panel" style="padding:12px">
+                <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
+                <div class="attendance-table-wrap">
+                    <table><thead><tr><th>المركز</th><th>الاسم</th><th>الوقت</th><th>الموقع</th><th>الحالة</th></tr></thead>
                     <tbody>${centerData.flatMap(c => c.presentList.map(p => `
                         <tr><td>${c.center}</td><td>${p.name}</td><td>${fmtTime(p.time)}</td><td>${p.location}</td>
                         <td>${p.late ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">في الموعد</span>'}</td></tr>
-                    `)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody>
-                </table>
+                    `)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody></table>
+                </div>
             </div>
-        </div>
-
-        <!-- جدول الغياب (أسفل الحضور) -->
-        <div class="panel" style="padding:12px">
-            <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
-            <div class="attendance-table-wrap">
-                <table>
-                    <thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead>
+            <div class="panel" style="padding:12px">
+                <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
+                <div class="attendance-table-wrap">
+                    <table><thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead>
                     <tbody>${centerData.flatMap(c => c.absentList.map(a => `
                         <tr><td>${c.center}</td><td>${a.name}</td><td>${roleLabel(a.role)}</td></tr>
-                    `)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}</tbody>
-                </table>
+                    `)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}</tbody></table>
+                </div>
             </div>
         </div>
 
@@ -1937,24 +1936,18 @@ window.exportCoordinationExcel = function(selectedDate) {
 };
 
 // ========================================================================
-// إدارة المستخدمين
+// إدارة المستخدمين - عرض جميع المستخدمين (بما فيهم المكررين) + زر إلغاء الحضور
 // ========================================================================
 async function renderUsers(root) {
+    // جلب المستخدمين بدون فلتر إزالة المكررين
     const users = await api('listUsers', {});
     allUsersCache = users;
     
-    const uniqueUsers = [];
-    const seenNames = new Set();
-    users.forEach(u => {
-        if (!seenNames.has(u.fullName)) {
-            seenNames.add(u.fullName);
-            uniqueUsers.push(u);
-        }
-    });
-    window.__usersCache = uniqueUsers;
+    // لا نقوم بحذف المكررين - نعرض الكل
+    window.__usersCache = users;
     
-    const pending = uniqueUsers.filter(u=>u.status==='PENDING');
-    const others = uniqueUsers.filter(u=>u.status!=='PENDING');
+    const pending = users.filter(u=>u.status==='PENDING');
+    const others = users.filter(u=>u.status!=='PENDING');
     
     root.innerHTML = `
         <div class="panel">
@@ -2056,6 +2049,10 @@ function renderUserRows(data, root) {
             `<img src="${u.photoUrl}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;cursor:pointer" onclick="window.open('${u.photoUrl}','_blank')" title="عرض الصورة">` : 
             '<span style="color:var(--ink-400)">❌</span>';
         
+        // زر إلغاء الحضور فقط لمدير النظام
+        const cancelBtn = CURRENT_USER.role === 'SYSTEM_ADMIN' ? 
+            `<button class="btn btn-warning btn-sm" onclick="cancelUserAttendance('${u.id}','${u.fullName}')">⏰ إلغاء حضور</button>` : '';
+        
         return `<tr>
             <td>${index + 1}</td>
             <td>${u.fullName}</td>
@@ -2071,11 +2068,13 @@ function renderUserRows(data, root) {
                 <button class="btn btn-outline btn-sm" onclick="openEditUserModal('${u.id}')">✏️</button>
                 <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.fullName}')">🗑️</button>
                 ${u.photoUrl ? `<button class="btn btn-primary btn-sm" onclick="window.open('${u.photoUrl}','_blank')">🖼️</button>` : ''}
+                ${cancelBtn}
             </td>
         </tr>`;
     }).join('') || `<tr><td colspan="11"><div class="empty-state">لا يوجد مستخدمون</div></td></tr>`;
 }
 
+// دالة تصدير Excel للمستخدمين
 window.exportUsersExcel = function() {
     const users = allUsersCache || [];
     const centerFilter = document.getElementById('userFilterCenter')?.value || 'ALL';
@@ -2090,20 +2089,11 @@ window.exportUsersExcel = function() {
         filteredUsers = filteredUsers.filter(u => u.role === roleFilter);
     }
     
-    const uniqueFiltered = [];
-    const seen = new Set();
-    filteredUsers.forEach(u => {
-        if (!seen.has(u.fullName)) {
-            seen.add(u.fullName);
-            uniqueFiltered.push(u);
-        }
-    });
-    
     let csv = '\uFEFF';
     csv += 'تقرير المستخدمين\n';
     csv += 'الاسم,الوظيفة,الدور,المركز,الهاتف,البريد,الرقم القومي,الحالة,تاريخ التسجيل\n';
     
-    uniqueFiltered.forEach(u => {
+    filteredUsers.forEach(u => {
         const statusMap = { 'APPROVED': 'معتمد', 'SUSPENDED': 'موقوف', 'PENDING': 'معلق', 'REJECTED': 'مرفوض' };
         csv += `"${u.fullName || ''}","${u.job || ''}","${roleLabel(u.role)}","${u.center || ''}","${u.phone || ''}","${u.email || ''}","${u.nationalId || ''}","${statusMap[u.status] || u.status || ''}","${fmtDate(u.createdAt) || ''}"\n`;
     });
@@ -2118,9 +2108,50 @@ window.exportUsersExcel = function() {
 };
 
 // ========================================================================
-// دوال إدارة المستخدمين
+// دوال إدارة المستخدمين - تعديل، حذف، دمج، إلغاء حضور
 // ========================================================================
 
+// دالة إلغاء حضور الموظف (للمدير فقط)
+window.cancelUserAttendance = function(userId, userName) {
+    const today = getEgyptDateKey(getEgyptNow());
+    
+    openModal(`
+        <h3>⏰ إلغاء حضور الموظف</h3>
+        <p style="color:var(--warn);font-size:14px">هل أنت متأكد من إلغاء حضور <strong>${userName}</strong>؟</p>
+        <div class="field">
+            <label>التاريخ</label>
+            <input id="cancelDate" type="date" value="${today}">
+        </div>
+        <p style="color:var(--ink-600);font-size:13px">سيتم حذف سجل الحضور لهذا اليوم ويمكن للموظف تسجيل الحضور مرة أخرى.</p>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-warning" onclick="confirmCancelAttendance('${userId}')">⏰ تأكيد الإلغاء</button>
+        </div>
+    `);
+};
+
+window.confirmCancelAttendance = async function(userId) {
+    const date = document.getElementById('cancelDate')?.value || getEgyptDateKey(getEgyptNow());
+    
+    closeModal();
+    showSavingModal('جارى إلغاء الحضور...');
+    
+    try {
+        const result = await api('cancelAttendance', { 
+            userId: userId,
+            date: date
+        });
+        
+        hideSavingModal();
+        showToast('✅ ' + (result.message || 'تم إلغاء الحضور بنجاح'), 'ok');
+        goPage('users', true);
+    } catch (e) {
+        hideSavingModal();
+        showToast('❌ فشل الإلغاء: ' + e.message, 'err');
+    }
+};
+
+// تعديل المستخدم
 window.openEditUserModal = function(id) {
     const user = allUsersCache.find(u => u.id === id);
     if (!user) {
@@ -2218,6 +2249,7 @@ window.submitEditUser = async function() {
     }
 };
 
+// حذف المستخدم
 window.deleteUser = function(id, name) {
     openModal(`
         <h3>🗑️ تأكيد حذف المستخدم</h3>
@@ -2250,6 +2282,7 @@ window.confirmDeleteUser = async function(id) {
     }
 };
 
+// دمج المستخدمين
 window.openMergeUsersModal = function() {
     const users = allUsersCache.filter(u => u.status === 'APPROVED');
     
@@ -2324,6 +2357,7 @@ window.submitMergeUsers = async function() {
     }
 };
 
+// دوال الموافقة والرفض
 window.approveUserAction = async function(id) {
     showSavingModal('جارى اعتماد المستخدم...');
     try {
@@ -2367,6 +2401,7 @@ window.confirmReject = async function(id) {
 // باقي الصفحات (مختصرة)
 // ========================================================================
 
+// التكليفات والمهام
 async function renderAssignments(root) {
     let missions = await api('listMissions', {});
     if (CURRENT_USER.role === 'CENTER_ADMIN') {
