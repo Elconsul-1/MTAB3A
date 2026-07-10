@@ -595,7 +595,12 @@ tbody tr:hover{background:#fafcfd}
         <option value="مهندس">مهندس</option>
       </select>
     </div>
-    <div class="field" id="regCenterField"><label>المركز *</label><select id="regCenter"></select></div>
+    <div class="field" id="regCenterField">
+      <label>المركز *</label>
+      <select id="regCenter">
+        <option value="">اختر المركز</option>
+      </select>
+    </div>
     <div class="field" id="regUnitField"><label>المجلس القروي</label><input id="regUnit" placeholder="اختياري"></div>
     <div class="field">
       <label>صورة شخصية *</label>
@@ -607,7 +612,7 @@ tbody tr:hover{background:#fafcfd}
   </div>
 </div>
 
-<!-- ================= نموذج استكمال البيانات للمستخدمين المعتمدين (رقم قومي + صورة) ================= -->
+<!-- ================= نموذج استكمال البيانات للمستخدمين المعتمدين ================= -->
 <div id="completeProfileScreen" style="display:none;min-height:100vh;background:var(--paper);padding:30px 16px;display:flex;justify-content:center;align-items:center">
   <div class="reg-card">
     <h2>📋 استكمال بيانات الحساب</h2>
@@ -995,17 +1000,13 @@ async function refreshMyStatus() {
         }
         CURRENT_USER = existing;
         
-        // التحقق من وجود رقم قومي وصورة للمستخدم المعتمد
         if (existing.status === 'APPROVED') {
             const needsNationalId = !existing.nationalId || existing.nationalId === '';
             const needsPhoto = !existing.photoUrl || existing.photoUrl === '';
             
             if (needsNationalId || needsPhoto) {
-                // عرض شاشة استكمال البيانات
                 document.getElementById('completeProfileScreen').style.display = 'flex';
                 document.getElementById('compFullName').value = existing.fullName || '';
-                
-                // رسالة توضيحية حسب البيانات الناقصة
                 let msg = '⚠️ يرجى استكمال البيانات التالية لإكمال ملفك الشخصي:\n';
                 if (needsNationalId) msg += '• الرقم القومي (مطلوب)\n';
                 if (needsPhoto) msg += '• الصورة الشخصية (مطلوبة)\n';
@@ -1025,14 +1026,12 @@ async function refreshMyStatus() {
     } catch (e) {}
 }
 
-// استكمال بيانات المستخدم (الرقم القومي + الصورة)
 document.getElementById('submitCompleteBtn').addEventListener('click', async function() {
     const nationalId = document.getElementById('compNationalId').value.trim();
     const phone = document.getElementById('compPhone').value.trim();
     const fileInput = document.getElementById('compPhotoFile');
     const hasPhoto = !!(fileInput.files && fileInput.files[0]);
     
-    // التحقق من الرقم القومي إذا كان مطلوباً
     const needsNationalId = !CURRENT_USER.nationalId || CURRENT_USER.nationalId === '';
     if (needsNationalId && (!nationalId || nationalId.length < 14)) {
         showToast('الرجاء إدخال الرقم القومي كاملاً (14 رقم)', 'err');
@@ -1043,7 +1042,6 @@ document.getElementById('submitCompleteBtn').addEventListener('click', async fun
         return;
     }
     
-    // التحقق من الصورة إذا كانت مطلوبة
     const needsPhoto = !CURRENT_USER.photoUrl || CURRENT_USER.photoUrl === '';
     if (needsPhoto && !hasPhoto) {
         showToast('الرجاء اختيار صورة شخصية', 'err');
@@ -1056,7 +1054,6 @@ document.getElementById('submitCompleteBtn').addEventListener('click', async fun
     
     try {
         let photoUrl = CURRENT_USER.photoUrl || '';
-        
         if (hasPhoto) {
             const file = fileInput.files[0];
             if (file.size > 5 * 1024 * 1024) {
@@ -1346,7 +1343,7 @@ async function goPage(key, skipHistory, useCache = true) {
 }
 
 /* =====================================================================
-   الصفحات - تعريف جميع الدوال
+   الصفحات
    ===================================================================== */
 
 // الصفحة الرئيسية
@@ -1729,7 +1726,6 @@ async function renderAttendance(root) {
 
     updateAttendanceUI(hasCheckIn, hasCheckOut);
 
-    // إعادة ربط الأزرار
     const checkInBtn = document.getElementById('checkInBtn');
     const checkOutBtn = document.getElementById('checkOutBtn');
     if (checkInBtn) {
@@ -1753,7 +1749,7 @@ async function renderAttendance(root) {
 }
 
 // ========================================================================
-// شاشة المتابعة - مع جدول الحضور والغياب
+// شاشة المتابعة - مع جدول الحضور والغياب (الغياب أسفل الحضور)
 // ========================================================================
 async function renderCoordination(root) {
     const selectedDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
@@ -1855,6 +1851,7 @@ async function renderCoordination(root) {
     });
 
     root.innerHTML = `
+        <!-- الإحصائيات الإجمالية -->
         <div class="coordination-stats-grid">
             <div class="stat-box"><div class="stat-number">${totalEmployees}</div><div class="stat-label">👥 إجمالي الموظفين</div></div>
             <div class="stat-box" style="border-color:var(--good)"><div class="stat-number" style="color:var(--good)">${totalPresent}</div><div class="stat-label">✅ الحضور</div></div>
@@ -1864,6 +1861,7 @@ async function renderCoordination(root) {
             <div class="stat-box" style="border-color:var(--navy-600)"><div class="stat-number">${Math.round((totalPresent / (totalEmployees || 1)) * 100)}%</div><div class="stat-label">📊 نسبة الحضور</div></div>
         </div>
 
+        <!-- جدول إحصائيات المراكز -->
         <div style="overflow-x:auto;margin-bottom:20px">
             <table class="center-summary-table">
                 <thead><tr><th>المركز</th><th>إجمالي</th><th>✅ حضور في الموعد</th><th>⏰ حضور متأخر</th><th>❌ غياب</th><th>📊 نسبة الحضور</th></tr></thead>
@@ -1883,28 +1881,30 @@ async function renderCoordination(root) {
             </table>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-            <!-- جدول الحضور -->
-            <div class="panel" style="padding:12px">
-                <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
-                <div class="attendance-table-wrap">
-                    <table><thead><tr><th>المركز</th><th>الاسم</th><th>الوقت</th><th>الموقع</th><th>الحالة</th></tr></thead>
+        <!-- جدول الحضور (أولاً) -->
+        <div class="panel" style="padding:12px;margin-bottom:16px">
+            <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
+            <div class="attendance-table-wrap">
+                <table>
+                    <thead><tr><th>المركز</th><th>الاسم</th><th>الوقت</th><th>الموقع</th><th>الحالة</th></tr></thead>
                     <tbody>${centerData.flatMap(c => c.presentList.map(p => `
                         <tr><td>${c.center}</td><td>${p.name}</td><td>${fmtTime(p.time)}</td><td>${p.location}</td>
                         <td>${p.late ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">في الموعد</span>'}</td></tr>
-                    `)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody></table>
-                </div>
+                    `)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody>
+                </table>
             </div>
-            
-            <!-- جدول الغياب -->
-            <div class="panel" style="padding:12px">
-                <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
-                <div class="attendance-table-wrap">
-                    <table><thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead>
+        </div>
+
+        <!-- جدول الغياب (أسفل الحضور) -->
+        <div class="panel" style="padding:12px">
+            <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
+            <div class="attendance-table-wrap">
+                <table>
+                    <thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead>
                     <tbody>${centerData.flatMap(c => c.absentList.map(a => `
                         <tr><td>${c.center}</td><td>${a.name}</td><td>${roleLabel(a.role)}</td></tr>
-                    `)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}</tbody></table>
-                </div>
+                    `)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}</tbody>
+                </table>
             </div>
         </div>
 
@@ -1937,13 +1937,12 @@ window.exportCoordinationExcel = function(selectedDate) {
 };
 
 // ========================================================================
-// إدارة المستخدمين - مع فلتر وترتيب
+// إدارة المستخدمين
 // ========================================================================
 async function renderUsers(root) {
     const users = await api('listUsers', {});
     allUsersCache = users;
     
-    // حذف الأسماء المكررة
     const uniqueUsers = [];
     const seenNames = new Set();
     users.forEach(u => {
@@ -2005,7 +2004,6 @@ async function renderUsers(root) {
     
     applyUserFilters(others, root);
     
-    // ربط الفلاتر بالتغيير
     ['userFilterCenter', 'userFilterRole', 'userSortOrder'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -2021,17 +2019,13 @@ function applyUserFilters(allUsers, root) {
     
     let filteredUsers = allUsers.filter(u => u.status === 'APPROVED' || u.status === 'SUSPENDED');
     
-    // فلتر المركز
     if (centerFilter !== 'ALL') {
         filteredUsers = filteredUsers.filter(u => u.center === centerFilter);
     }
-    
-    // فلتر الدور
     if (roleFilter !== 'ALL') {
         filteredUsers = filteredUsers.filter(u => u.role === roleFilter);
     }
     
-    // ترتيب المستخدمين
     switch(sortOrder) {
         case 'name_asc':
             filteredUsers.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
@@ -2082,7 +2076,6 @@ function renderUserRows(data, root) {
     }).join('') || `<tr><td colspan="11"><div class="empty-state">لا يوجد مستخدمون</div></td></tr>`;
 }
 
-// تصدير Excel للمستخدمين
 window.exportUsersExcel = function() {
     const users = allUsersCache || [];
     const centerFilter = document.getElementById('userFilterCenter')?.value || 'ALL';
@@ -2097,7 +2090,6 @@ window.exportUsersExcel = function() {
         filteredUsers = filteredUsers.filter(u => u.role === roleFilter);
     }
     
-    // حذف المكررين
     const uniqueFiltered = [];
     const seen = new Set();
     filteredUsers.forEach(u => {
@@ -2226,7 +2218,6 @@ window.submitEditUser = async function() {
     }
 };
 
-// حذف المستخدم
 window.deleteUser = function(id, name) {
     openModal(`
         <h3>🗑️ تأكيد حذف المستخدم</h3>
@@ -2259,9 +2250,6 @@ window.confirmDeleteUser = async function(id) {
     }
 };
 
-// ========================================================================
-// دمج المستخدمين
-// ========================================================================
 window.openMergeUsersModal = function() {
     const users = allUsersCache.filter(u => u.status === 'APPROVED');
     
@@ -2336,7 +2324,6 @@ window.submitMergeUsers = async function() {
     }
 };
 
-// دوال الموافقة والرفض
 window.approveUserAction = async function(id) {
     showSavingModal('جارى اعتماد المستخدم...');
     try {
@@ -2380,7 +2367,6 @@ window.confirmReject = async function(id) {
 // باقي الصفحات (مختصرة)
 // ========================================================================
 
-// التكليفات والمهام
 async function renderAssignments(root) {
     let missions = await api('listMissions', {});
     if (CURRENT_USER.role === 'CENTER_ADMIN') {
@@ -2443,12 +2429,6 @@ async function renderAssignments(root) {
     await activate('general');
 }
 
-function execModeChip(mode) {
-    const map = { FIELD:['open','ميداني'], OFFICE:['maintenance','مكتبي'], OTHER:['pending','أخرى'] };
-    const v = map[mode] || ['maintenance', mode || '-'];
-    return `<span class="chip ${v[0]}">${v[1]}</span>`;
-}
-
 function taskStatusChip(status) {
     const map = { DONE:['approved','منفذة'], PENDING:['pending','قيد التنفيذ'] };
     const v = map[status] || ['pending', status || '-'];
@@ -2456,7 +2436,7 @@ function taskStatusChip(status) {
 }
 
 // ========================================================================
-// الأجهزة المساحية (مختصرة)
+// الأجهزة المساحية
 // ========================================================================
 async function renderEquipment(root) {
     const equipment = await api('listEquipment',{});
@@ -2670,7 +2650,7 @@ function togglePresentNowAutoRefresh(enable, root) {
 }
 
 // ========================================================================
-// الملف الشخصي - مع إمكانية تحديث الصورة والرقم القومي
+// الملف الشخصي
 // ========================================================================
 function openProfileModal() {
     openModal(`
@@ -2786,8 +2766,51 @@ window.openNotifModal = async function() {
 };
 
 // ========================================================================
-// دوال التسجيل الأولي
+// دوال التسجيل الأولي - تعبئة قائمة المراكز
 // ========================================================================
+
+// تعبئة قائمة المراكز في نموذج التسجيل
+function fillRegCenterOptions() {
+    const sel = document.getElementById('regCenter');
+    if (sel) {
+        sel.innerHTML = '<option value="">اختر المركز</option>';
+        CENTERS.forEach(c => {
+            const option = document.createElement('option');
+            option.value = c;
+            option.textContent = c;
+            sel.appendChild(option);
+        });
+    }
+}
+
+// استدعاء الدالة عند تحميل الصفحة
+document.addEventListener('DOMContentLoaded', function() {
+    fillRegCenterOptions();
+});
+
+// أيضًا عند ظهور شاشة التسجيل
+const registerScreen = document.getElementById('registerScreen');
+if (registerScreen) {
+    const observer = new MutationObserver(function() {
+        if (registerScreen.style.display !== 'none') {
+            fillRegCenterOptions();
+        }
+    });
+    observer.observe(registerScreen, { attributes: true, attributeFilter: ['style'] });
+}
+
+// ربط تغيير الوظيفة بإظهار/إخفاء حقل المركز
+document.getElementById('regJob').addEventListener('change', function() {
+    const isEngineer = this.value === 'مهندس';
+    document.getElementById('regCenterField').style.display = isEngineer ? 'none' : 'block';
+    document.getElementById('regUnitField').style.display = isEngineer ? 'none' : 'block';
+    if (isEngineer) {
+        document.getElementById('regCenter').value = '';
+        document.getElementById('regUnit').value = '';
+    }
+});
+
+// دوال التسجيل
 document.getElementById('submitRegisterBtn').addEventListener('click', async function() {
     const email = document.getElementById('regEmail').value.trim();
     const fullName = document.getElementById('regFullName').value.trim();
