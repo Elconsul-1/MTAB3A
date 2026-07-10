@@ -483,6 +483,65 @@ tbody tr:hover{background:#fafcfd}
   border: 2px dashed var(--line);
 }
 
+/* ---------- شريط التنقل بالتاريخ ---------- */
+.date-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+}
+.date-nav-bar .date-label {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--navy-900);
+}
+.date-nav-bar input[type="date"] {
+  padding: 8px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  flex: 1;
+  min-width: 160px;
+}
+.date-nav-bar .today-btn {
+  padding: 8px 16px;
+  background: var(--navy-800);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: .15s;
+}
+.date-nav-bar .today-btn:hover {
+  background: var(--navy-900);
+}
+.date-nav-bar .nav-btn {
+  padding: 8px 12px;
+  background: #f0f4f8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: .15s;
+}
+.date-nav-bar .nav-btn:hover {
+  background: #e2e8f0;
+}
+.date-nav-bar .date-display {
+  font-size: 13px;
+  color: var(--ink-600);
+  margin-right: auto;
+}
+
 @media (max-width:900px){
   .sidebar{position:fixed;right:0;top:0;z-index:60;transform:translateX(100%);box-shadow:none;width:min(250px,82vw)}
   .sidebar.open{transform:translateX(0);box-shadow:-20px 0 40px rgba(0,0,0,.3)}
@@ -541,69 +600,6 @@ tbody tr:hover{background:#fafcfd}
 @media (max-width:400px){
   .grid-cards,.summary-grid,.filter-grid{grid-template-columns:1fr}
   .topbar h2{max-width:38vw}
-}
-
-/* تنسيق زر إلغاء الحضور */
-.btn-cancel-attendance {
-  background: #ffc107;
-  color: #212529;
-}
-.btn-cancel-attendance:hover {
-  background: #e0a800;
-}
-
-/* تنسيق شريط اختيار التاريخ في المتابعة */
-.date-nav-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  background: var(--card);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  border: 1px solid var(--line);
-}
-.date-nav-bar .date-label {
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--navy-900);
-}
-.date-nav-bar input[type="date"] {
-  padding: 8px 12px;
-  border: 1.5px solid var(--line);
-  border-radius: 8px;
-  font-size: 13px;
-  background: #fff;
-  flex: 1;
-  min-width: 160px;
-}
-.date-nav-bar .today-btn {
-  padding: 8px 16px;
-  background: var(--navy-800);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: .15s;
-}
-.date-nav-bar .today-btn:hover {
-  background: var(--navy-900);
-}
-.date-nav-bar .nav-btn {
-  padding: 8px 12px;
-  background: #f0f4f8;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 16px;
-  cursor: pointer;
-  transition: .15s;
-}
-.date-nav-bar .nav-btn:hover {
-  background: #e2e8f0;
 }
 </style>
 </head>
@@ -1524,6 +1520,7 @@ async function todayAttendanceStatus(p) {
 // ========================================================================
 
 async function doAttendanceEnhanced(action, extra = {}) {
+    // منع الضغط المتكرر
     if (attendanceLock.processing) {
         showToast('جاري معالجة طلب سابق...', 'err');
         return;
@@ -1533,6 +1530,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
     const checkInKey = 'attendance_checkin_' + CURRENT_USER.id + '_' + today;
     const checkOutKey = 'attendance_checkout_' + CURRENT_USER.id + '_' + today;
 
+    // ==================== التحقق المسبق ====================
     if (action === 'checkIn') {
         if (localStorage.getItem(checkInKey) === '1') {
             showToast('تم تسجيل حضورك اليوم بالفعل', 'ok');
@@ -1543,6 +1541,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             localStorage.setItem(checkInKey, '1');
             showToast('تم تسجيل حضورك اليوم بالفعل', 'ok');
             updateAttendanceUI(true, false);
+            setTimeout(() => goPage('attendance', true), 500);
             return;
         }
     }
@@ -1562,6 +1561,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             localStorage.setItem(checkOutKey, '1');
             showToast('تم تسجيل انصرافك اليوم بالفعل', 'ok');
             updateAttendanceUI(true, true);
+            setTimeout(() => goPage('attendance', true), 500);
             return;
         }
         
@@ -1591,12 +1591,13 @@ async function doAttendanceEnhanced(action, extra = {}) {
         return;
     }
 
-    // استكمال تسجيل الحضور (بدون نافذة)
+    // ==================== تغيير الزرار فوراً ====================
     attendanceLock.processing = true;
     const btn = document.getElementById(action === 'checkIn' ? 'checkInBtn' : 'checkOutBtn');
     const originalText = btn ? btn.textContent : '';
     const originalClass = btn ? btn.className : '';
 
+    // تغيير الزرار فوراً إلى حالة "جاري الحفظ"
     if (btn) {
         btn.disabled = true;
         btn.textContent = '⏳ جاري الحفظ...';
@@ -1604,11 +1605,14 @@ async function doAttendanceEnhanced(action, extra = {}) {
         btn.style.background = action === 'checkIn' ? '#184b73' : '#c23a3a';
         btn.style.color = '#fff';
         btn.style.opacity = '0.7';
+        btn.style.transition = 'all 0.2s ease';
     }
 
+    // إظهار رسالة الحفظ
     showSavingModal(action === 'checkIn' ? 'جارى تسجيل الحضور...' : 'جارى تسجيل الانصراف...');
 
     try {
+        // الحصول على الموقع
         let position = null;
         try {
             position = await new Promise((resolve, reject) => {
@@ -1639,12 +1643,15 @@ async function doAttendanceEnhanced(action, extra = {}) {
         if (extra.casesCount) payload.casesCount = extra.casesCount;
         if (extra.notes) payload.checkoutNotes = extra.notes;
 
+        // ==================== استدعاء API ====================
         await api(action === 'checkIn' ? 'checkIn' : 'checkOut', payload);
 
+        // ==================== تحديث الحالة محلياً ====================
         if (action === 'checkIn') {
             localStorage.setItem(checkInKey, '1');
             localStorage.setItem('attendance_checkin_time_' + CURRENT_USER.id + '_' + today, new Date().toISOString());
             
+            // ==================== تغيير الزرار للأخضر مباشرة ====================
             if (btn) {
                 btn.disabled = true;
                 btn.textContent = '✅ تم تسجيل الحضور اليوم';
@@ -1655,8 +1662,11 @@ async function doAttendanceEnhanced(action, extra = {}) {
                 btn.classList.add('attendance-done');
             }
             showToast(isLate ? '✅ تم تسجيل الحضور (متأخر)' : '✅ تم تسجيل الحضور في الموعد', isLate ? 'warn' : 'ok');
+            
         } else {
             localStorage.setItem(checkOutKey, '1');
+            
+            // ==================== تغيير الزرار للأحمر مباشرة ====================
             if (btn) {
                 btn.disabled = true;
                 btn.textContent = '✅ تم تسجيل الانصراف اليوم';
@@ -1669,20 +1679,26 @@ async function doAttendanceEnhanced(action, extra = {}) {
             showToast('✅ تم تسجيل الانصراف بنجاح', 'ok');
         }
 
+        // إخفاء رسالة الحفظ
         hideSavingModal();
+
+        // ==================== تحديث واجهة الأزرار ====================
         updateAttendanceUI(
             action === 'checkIn' || localStorage.getItem(checkInKey) === '1',
             action === 'checkOut' || localStorage.getItem(checkOutKey) === '1'
         );
 
-        // ==================== تحديث الصفحة تلقائياً بعد 1.5 ثانية ====================
+        // ==================== تحديث الصفحة تلقائياً بعد 1 ثانية ====================
         setTimeout(() => {
             goPage('attendance', true);
-        }, 1500);
+        }, 1000);
 
     } catch (error) {
+        // ==================== في حالة الخطأ ====================
         hideSavingModal();
         showToast('❌ فشل التسجيل: ' + (error.message || 'خطأ غير معروف'), 'err');
+        
+        // استعادة الزرار لحالته السابقة في حالة الخطأ
         if (btn) {
             btn.disabled = false;
             btn.textContent = originalText;
@@ -1697,28 +1713,9 @@ async function doAttendanceEnhanced(action, extra = {}) {
     }
 }
 
-window.submitCheckoutWithDetails = function() {
-    const tasks = document.getElementById('checkoutTasks')?.value?.trim() || '';
-    const casesCount = parseInt(document.getElementById('checkoutCasesCount')?.value || '0');
-    const notes = document.getElementById('checkoutNotes')?.value?.trim() || '';
-    
-    if (!tasks) {
-        showToast('يرجى كتابة ما تم تنفيذه خلال اليوم', 'err');
-        return;
-    }
-    
-    closeModal();
-    
-    const extra = {
-        center: window.__pendingCheckout?.center || CURRENT_USER.center,
-        tasks: tasks,
-        casesCount: casesCount,
-        notes: notes
-    };
-    
-    doAttendanceEnhanced('checkOut', extra);
-    window.__pendingCheckout = null;
-};
+// ========================================================================
+// دالة updateAttendanceUI - نسخة مُصلحة
+// ========================================================================
 
 function updateAttendanceUI(hasCheckIn, hasCheckOut) {
     const checkInBtn = document.getElementById('checkInBtn');
@@ -1772,6 +1769,33 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
         }
     }
 }
+
+// ========================================================================
+// دالة submitCheckoutWithDetails - نسخة مُصلحة
+// ========================================================================
+
+window.submitCheckoutWithDetails = function() {
+    const tasks = document.getElementById('checkoutTasks')?.value?.trim() || '';
+    const casesCount = parseInt(document.getElementById('checkoutCasesCount')?.value || '0');
+    const notes = document.getElementById('checkoutNotes')?.value?.trim() || '';
+    
+    if (!tasks) {
+        showToast('يرجى كتابة ما تم تنفيذه خلال اليوم', 'err');
+        return;
+    }
+    
+    closeModal();
+    
+    const extra = {
+        center: window.__pendingCheckout?.center || CURRENT_USER.center,
+        tasks: tasks,
+        casesCount: casesCount,
+        notes: notes
+    };
+    
+    doAttendanceEnhanced('checkOut', extra);
+    window.__pendingCheckout = null;
+};
 
 // ========================================================================
 // شاشة الحضور والانصراف
@@ -1896,19 +1920,21 @@ async function renderAttendance(root) {
 
     const checkInBtn = document.getElementById('checkInBtn');
     const checkOutBtn = document.getElementById('checkOutBtn');
+    
     if (checkInBtn) {
-        const newBtn = checkInBtn.cloneNode(true);
-        checkInBtn.parentNode.replaceChild(newBtn, checkInBtn);
-        newBtn.addEventListener('click', function() {
+        const newCheckInBtn = checkInBtn.cloneNode(true);
+        checkInBtn.parentNode.replaceChild(newCheckInBtn, checkInBtn);
+        newCheckInBtn.addEventListener('click', function() {
             if (!this.disabled && !attendanceLock.processing) {
                 doAttendanceEnhanced('checkIn');
             }
         });
     }
+    
     if (checkOutBtn) {
-        const newBtn = checkOutBtn.cloneNode(true);
-        checkOutBtn.parentNode.replaceChild(newBtn, checkOutBtn);
-        newBtn.addEventListener('click', function() {
+        const newCheckOutBtn = checkOutBtn.cloneNode(true);
+        checkOutBtn.parentNode.replaceChild(newCheckOutBtn, checkOutBtn);
+        newCheckOutBtn.addEventListener('click', function() {
             if (!this.disabled && !attendanceLock.processing) {
                 doAttendanceEnhanced('checkOut');
             }
@@ -1923,15 +1949,12 @@ async function renderCoordination(root) {
     // الحصول على التاريخ المخزن أو التاريخ الحالي
     let selectedDate = localStorage.getItem('coordinationDate');
     
-    // إذا لم يكن هناك تاريخ مخزن أو كان التاريخ مخزناً قديماً، استخدم التاريخ الحالي
     if (!selectedDate) {
         selectedDate = getEgyptDateKey(getEgyptNow());
         localStorage.setItem('coordinationDate', selectedDate);
     }
     
-    // التأكد من أن التاريخ صحيح
     const today = getEgyptDateKey(getEgyptNow());
-    // إذا كان التاريخ المخزن أكبر من اليوم، استخدم اليوم
     if (selectedDate > today) {
         selectedDate = today;
         localStorage.setItem('coordinationDate', selectedDate);
@@ -1946,6 +1969,7 @@ async function renderCoordination(root) {
         centersToShow = [CURRENT_USER.center];
     }
 
+    // جلب البيانات مع التاريخ المحدد
     const [users, attendance] = await Promise.all([
         api('listUsers', {}),
         api('listAttendance', { date: selectedDate })
@@ -2053,7 +2077,7 @@ async function renderCoordination(root) {
             <input type="date" id="coordinationDatePicker" value="${selectedDate}">
             <button class="nav-btn" onclick="changeCoordinationDate(1)" title="اليوم التالي">›</button>
             <button class="today-btn" onclick="goToTodayCoordination()">📅 اليوم</button>
-            <span style="font-size:13px;color:var(--ink-600);margin-right:auto">
+            <span class="date-display">
                 ${isToday ? '📌 اليوم' : formattedDate}
             </span>
         </div>
@@ -2145,6 +2169,9 @@ window.goToTodayCoordination = function() {
     goPage('coordination', true);
 };
 
+// ========================================================================
+// تصدير Excel للمتابعة
+// ========================================================================
 window.exportCoordinationExcel = function(selectedDate) {
     const rows = document.querySelectorAll('.center-summary-table tbody tr');
     let csv = '\uFEFF';
@@ -2167,10 +2194,8 @@ window.exportCoordinationExcel = function(selectedDate) {
 };
 
 // ========================================================================
-// باقي الصفحات (مختصرة للاختصار)
-// ========================================================================
-
 // إدارة المستخدمين
+// ========================================================================
 async function renderUsers(root) {
     const users = await api('listUsers', {});
     allUsersCache = users;
@@ -2341,7 +2366,7 @@ window.exportUsersExcel = function() {
 };
 
 // ========================================================================
-// دوال إدارة المستخدمين (مختصرة)
+// دوال إدارة المستخدمين
 // ========================================================================
 
 window.cancelUserAttendance = function(userId, userName) {
@@ -2408,7 +2433,254 @@ window.confirmCancelAttendance = async function(userId) {
     }
 };
 
+// تعديل المستخدم
+window.openEditUserModal = function(id) {
+    const user = allUsersCache.find(u => u.id === id);
+    if (!user) {
+        showToast('المستخدم غير موجود', 'err');
+        return;
+    }
+    
+    openModal(`
+        <h3>✏️ تعديل بيانات المستخدم</h3>
+        <input id="editUserId" value="${id}" style="display:none">
+        <div class="field"><label>الاسم</label><input id="editName" value="${user.fullName||''}"></div>
+        <div class="field"><label>الرقم القومي</label>
+            <input id="editNationalId" value="${user.nationalId||''}" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+            <div style="font-size:11px;color:var(--ink-400);margin-top:4px">الرقم القومي مكون من 14 رقم</div>
+        </div>
+        <div class="field-row">
+            <div class="field"><label>الهاتف</label><input id="editPhone" value="${user.phone||''}"></div>
+            <div class="field"><label>البريد</label><input id="editEmail" value="${user.email||''}"></div>
+        </div>
+        <div class="field-row">
+            <div class="field"><label>المركز</label><select id="editCenter">${CENTERS.map(c=>`<option value="${c}" ${user.center===c?'selected':''}>${c}</option>`).join('')}</select></div>
+            <div class="field"><label>الدور</label><select id="editRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${user.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div>
+        </div>
+        <div class="field"><label>الوظيفة</label><input id="editJob" value="${user.job||''}"></div>
+        <div class="field">
+            <label>صورة شخصية جديدة (اختياري)</label>
+            <input id="editPhotoFile" type="file" accept="image/*">
+            ${user.photoUrl ? `<div style="margin-top:8px"><img src="${user.photoUrl}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--line)"></div>` : ''}
+        </div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-primary" onclick="submitEditUser()">💾 حفظ</button>
+        </div>
+    `);
+};
+
+window.submitEditUser = async function() {
+    const id = val('editUserId');
+    const fullName = val('editName');
+    const nationalId = val('editNationalId');
+    const phone = val('editPhone');
+    const email = val('editEmail');
+    const center = val('editCenter');
+    const role = val('editRole');
+    const job = val('editJob');
+    const fileInput = document.getElementById('editPhotoFile');
+    
+    if (!fullName) {
+        showToast('الاسم مطلوب', 'err');
+        return;
+    }
+    
+    if (nationalId && !/^[0-9]{14}$/.test(nationalId)) {
+        showToast('الرقم القومي يجب أن يكون 14 رقم', 'err');
+        return;
+    }
+    
+    showSavingModal('جارى حفظ التغييرات...');
+    
+    try {
+        let photoUrl = '';
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+            const file = fileInput.files[0];
+            if (file.size > 5 * 1024 * 1024) {
+                showToast('حجم الصورة كبير جداً', 'err');
+                hideSavingModal();
+                return;
+            }
+            const base64 = await fileToBase64(file);
+            const uploadRes = await api('uploadPhotoToDrive', { imageData: base64, fileName: file.name, mimeType: file.type });
+            if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
+        }
+        
+        await api('updateUserByAdmin', {
+            userId: id,
+            fullName: fullName,
+            nationalId: nationalId,
+            phone: phone,
+            email: email,
+            center: center,
+            role: role,
+            job: job,
+            photoUrl: photoUrl || undefined,
+            updatedBy: CURRENT_USER.id,
+            updatedByName: CURRENT_USER.fullName
+        });
+        
+        hideSavingModal();
+        closeModal();
+        showToast('✅ تم تحديث بيانات المستخدم', 'ok');
+        goPage('users', true);
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل التحديث: ' + e.message, 'err');
+    }
+};
+
+// حذف المستخدم
+window.deleteUser = function(id, name) {
+    openModal(`
+        <h3>🗑️ تأكيد حذف المستخدم</h3>
+        <p style="color:var(--bad);font-size:14px">هل أنت متأكد من حذف المستخدم <strong>${name}</strong>؟</p>
+        <p style="color:var(--ink-600);font-size:13px">سيتم حذف المستخدم نهائياً من قاعدة البيانات.</p>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-danger" onclick="confirmDeleteUser('${id}')">🗑️ تأكيد الحذف</button>
+        </div>
+    `);
+};
+
+window.confirmDeleteUser = async function(id) {
+    closeModal();
+    showSavingModal('جارى حذف المستخدم...');
+    
+    try {
+        await api('deleteUser', { 
+            userId: id,
+            deletedBy: CURRENT_USER.id,
+            deletedByName: CURRENT_USER.fullName
+        });
+        
+        hideSavingModal();
+        showToast('✅ تم حذف المستخدم بنجاح', 'ok');
+        goPage('users', true);
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل الحذف: ' + e.message, 'err');
+    }
+};
+
+// دمج المستخدمين
+window.openMergeUsersModal = function() {
+    const users = allUsersCache.filter(u => u.status === 'APPROVED');
+    
+    openModal(`
+        <h3>🔗 دمج مستخدمين</h3>
+        <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">اختر المستخدم الأساسي ثم المستخدم المراد دمجه معه. سيتم نقل بيانات المستخدم المدمج إلى المستخدم الأساسي وحذف الحساب المدمج.</p>
+        
+        <div class="field">
+            <label>المستخدم الأساسي (الذي سيبقى) *</label>
+            <select id="mergePrimaryUser">
+                <option value="">اختر المستخدم الأساسي</option>
+                ${users.map(u => `<option value="${u.id}">${u.fullName} (${u.email}) - ${u.center||'-'}</option>`).join('')}
+            </select>
+        </div>
+        
+        <div class="field">
+            <label>المستخدم المراد دمجه (سيتم حذفه) *</label>
+            <select id="mergeSecondaryUser">
+                <option value="">اختر المستخدم المراد دمجه</option>
+                ${users.map(u => `<option value="${u.id}">${u.fullName} (${u.email}) - ${u.center||'-'}</option>`).join('')}
+            </select>
+        </div>
+        
+        <div class="field">
+            <label>البريد الإضافي للمستخدم الأساسي</label>
+            <input id="mergeExtraEmail" placeholder="أدخل البريد الإضافي (اختياري)">
+        </div>
+        
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-warning" onclick="submitMergeUsers()">🔗 تأكيد الدمج</button>
+        </div>
+    `);
+};
+
+window.submitMergeUsers = async function() {
+    const primaryId = val('mergePrimaryUser');
+    const secondaryId = val('mergeSecondaryUser');
+    const extraEmail = val('mergeExtraEmail');
+    
+    if (!primaryId) {
+        showToast('يرجى اختيار المستخدم الأساسي', 'err');
+        return;
+    }
+    if (!secondaryId) {
+        showToast('يرجى اختيار المستخدم المراد دمجه', 'err');
+        return;
+    }
+    if (primaryId === secondaryId) {
+        showToast('لا يمكن دمج المستخدم مع نفسه', 'err');
+        return;
+    }
+    
+    closeModal();
+    showSavingModal('جارى دمج المستخدمين...');
+    
+    try {
+        await api('mergeUsers', {
+            primaryUserId: primaryId,
+            secondaryUserId: secondaryId,
+            extraEmail: extraEmail,
+            mergedBy: CURRENT_USER.id,
+            mergedByName: CURRENT_USER.fullName
+        });
+        
+        hideSavingModal();
+        showToast('✅ تم دمج المستخدمين بنجاح', 'ok');
+        goPage('users', true);
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل الدمج: ' + e.message, 'err');
+    }
+};
+
+window.approveUserAction = async function(id) {
+    showSavingModal('جارى اعتماد المستخدم...');
+    try {
+        await api('approveUser', { userId:id, approvedBy:CURRENT_USER.id, approvedByName:CURRENT_USER.fullName });
+        hideSavingModal();
+        showToast('تم اعتماد الحساب', 'ok');
+        goPage('users', true);
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل الاعتماد: ' + e.message, 'err');
+    }
+};
+
+window.rejectUserAction = function(id) {
+    openModal(`
+        <h3>سبب رفض الطلب</h3>
+        <div class="field"><textarea id="rejReason" rows="3" placeholder="اكتب سبب الرفض..."></textarea></div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-danger" onclick="confirmReject('${id}')">تأكيد الرفض</button>
+        </div>
+    `);
+};
+
+window.confirmReject = async function(id) {
+    const reason = val('rejReason');
+    closeModal();
+    showSavingModal('جارى رفض الطلب...');
+    try {
+        await api('rejectUser', { userId:id, reason: reason || 'غير محدد', rejectedBy:CURRENT_USER.id, rejectedByName:CURRENT_USER.fullName });
+        hideSavingModal();
+        showToast('تم رفض الطلب', 'ok');
+        goPage('users', true);
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل الرفض: ' + e.message, 'err');
+    }
+};
+
+// ========================================================================
 // دوال التكليفات والمهام (مختصرة)
+// ========================================================================
 async function renderAssignments(root) {
     let missions = await api('listMissions', {});
     if (CURRENT_USER.role === 'CENTER_ADMIN') {
@@ -2477,7 +2749,9 @@ function taskStatusChip(status) {
     return `<span class="chip ${v[0]}">${v[1]}</span>`;
 }
 
+// ========================================================================
 // الأجهزة المساحية (مختصرة)
+// ========================================================================
 async function renderEquipment(root) {
     const equipment = await api('listEquipment',{});
     const isAdmin = ['SYSTEM_ADMIN','CENTER_ADMIN'].includes(CURRENT_USER.role);
@@ -2603,110 +2877,9 @@ function togglePresentNowAutoRefresh(enable, root) {
 }
 
 // ========================================================================
-// الملف الشخصي والإشعارات والتسجيل
+// الملف الشخصي والإشعارات
 // ========================================================================
 
-// دوال التسجيل الأولي
-function fillRegCenterOptions() {
-    const sel = document.getElementById('regCenter');
-    if (sel) {
-        sel.innerHTML = '<option value="">اختر المركز</option>';
-        CENTERS.forEach(c => {
-            const option = document.createElement('option');
-            option.value = c;
-            option.textContent = c;
-            sel.appendChild(option);
-        });
-    }
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    fillRegCenterOptions();
-});
-
-const registerScreen = document.getElementById('registerScreen');
-if (registerScreen) {
-    const observer = new MutationObserver(function() {
-        if (registerScreen.style.display !== 'none') {
-            fillRegCenterOptions();
-        }
-    });
-    observer.observe(registerScreen, { attributes: true, attributeFilter: ['style'] });
-}
-
-document.getElementById('regJob').addEventListener('change', function() {
-    const isEngineer = this.value === 'مهندس';
-    document.getElementById('regCenterField').style.display = isEngineer ? 'none' : 'block';
-    document.getElementById('regUnitField').style.display = isEngineer ? 'none' : 'block';
-    if (isEngineer) {
-        document.getElementById('regCenter').value = '';
-        document.getElementById('regUnit').value = '';
-    }
-});
-
-document.getElementById('submitRegisterBtn').addEventListener('click', async function() {
-    const email = document.getElementById('regEmail').value.trim();
-    const fullName = document.getElementById('regFullName').value.trim();
-    const job = document.getElementById('regJob').value.trim();
-    const phone = document.getElementById('regPhone').value.trim();
-    const nationalId = document.getElementById('regNationalId').value.trim();
-    const role = JOB_ROLE_MAP[job] || 'TECHNICIAN';
-    const isEngineer = job === 'مهندس';
-    const center = isEngineer ? '' : document.getElementById('regCenter').value;
-    const localUnit = isEngineer ? '' : document.getElementById('regUnit').value.trim();
-    const fileInput = document.getElementById('regPhotoFile');
-    const hasPhoto = !!(fileInput.files && fileInput.files[0]);
-
-    if (!email || !fullName || !job || !phone || !nationalId || (!isEngineer && !center)) {
-        showToast('يرجى استكمال جميع الحقول الإلزامية (*)', 'err');
-        return;
-    }
-    if (!hasPhoto) {
-        showToast('الصورة الشخصية إلزامية', 'err');
-        return;
-    }
-
-    const btn = this;
-    btn.disabled = true;
-    btn.textContent = 'جارى إرسال الطلب...';
-    
-    try {
-        let photoUrl = '';
-        if (fileInput.files && fileInput.files[0]) {
-            const file = fileInput.files[0];
-            if (file.size > 5 * 1024 * 1024) {
-                showToast('حجم الصورة كبير جداً', 'err');
-                btn.disabled = false;
-                btn.textContent = 'إرسال طلب الاعتماد';
-                return;
-            }
-            try {
-                const base64 = await fileToBase64(file);
-                const uploadRes = await api('uploadPhotoToDrive', { 
-                    imageData: base64, fileName: file.name, mimeType: file.type 
-                });
-                if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
-            } catch (e) { console.error(e); }
-        }
-        
-        await api('registerUser', {
-            email, fullName, job, phone, nationalId, role, center, localUnit, photoUrl
-        });
-        showToast('تم إرسال طلبك بنجاح', 'ok');
-        refreshMyStatus();
-    } catch (e) {
-        showToast('حدث خطأ: ' + e.message, 'err');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'إرسال طلب الاعتماد';
-    }
-});
-
-const JOB_ROLE_MAP = { 'محافظة': 'SYSTEM_ADMIN', 'مدير إدارة': 'CENTER_ADMIN', 'فني': 'TECHNICIAN', 'مهندس': 'ENGINEER' };
-
-// ========================================================================
-// الملف الشخصي
-// ========================================================================
 function openProfileModal() {
     openModal(`
         <h3>تعديل الملف الشخصي</h3>
@@ -2820,6 +2993,107 @@ window.openNotifModal = async function() {
     setTimeout(refreshNotifCount, 500);
 };
 
+// ========================================================================
+// دوال التسجيل الأولي
+// ========================================================================
+
+function fillRegCenterOptions() {
+    const sel = document.getElementById('regCenter');
+    if (sel) {
+        sel.innerHTML = '<option value="">اختر المركز</option>';
+        CENTERS.forEach(c => {
+            const option = document.createElement('option');
+            option.value = c;
+            option.textContent = c;
+            sel.appendChild(option);
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    fillRegCenterOptions();
+});
+
+const registerScreen = document.getElementById('registerScreen');
+if (registerScreen) {
+    const observer = new MutationObserver(function() {
+        if (registerScreen.style.display !== 'none') {
+            fillRegCenterOptions();
+        }
+    });
+    observer.observe(registerScreen, { attributes: true, attributeFilter: ['style'] });
+}
+
+document.getElementById('regJob').addEventListener('change', function() {
+    const isEngineer = this.value === 'مهندس';
+    document.getElementById('regCenterField').style.display = isEngineer ? 'none' : 'block';
+    document.getElementById('regUnitField').style.display = isEngineer ? 'none' : 'block';
+    if (isEngineer) {
+        document.getElementById('regCenter').value = '';
+        document.getElementById('regUnit').value = '';
+    }
+});
+
+document.getElementById('submitRegisterBtn').addEventListener('click', async function() {
+    const email = document.getElementById('regEmail').value.trim();
+    const fullName = document.getElementById('regFullName').value.trim();
+    const job = document.getElementById('regJob').value.trim();
+    const phone = document.getElementById('regPhone').value.trim();
+    const nationalId = document.getElementById('regNationalId').value.trim();
+    const role = JOB_ROLE_MAP[job] || 'TECHNICIAN';
+    const isEngineer = job === 'مهندس';
+    const center = isEngineer ? '' : document.getElementById('regCenter').value;
+    const localUnit = isEngineer ? '' : document.getElementById('regUnit').value.trim();
+    const fileInput = document.getElementById('regPhotoFile');
+    const hasPhoto = !!(fileInput.files && fileInput.files[0]);
+
+    if (!email || !fullName || !job || !phone || !nationalId || (!isEngineer && !center)) {
+        showToast('يرجى استكمال جميع الحقول الإلزامية (*)', 'err');
+        return;
+    }
+    if (!hasPhoto) {
+        showToast('الصورة الشخصية إلزامية', 'err');
+        return;
+    }
+
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = 'جارى إرسال الطلب...';
+    
+    try {
+        let photoUrl = '';
+        if (fileInput.files && fileInput.files[0]) {
+            const file = fileInput.files[0];
+            if (file.size > 5 * 1024 * 1024) {
+                showToast('حجم الصورة كبير جداً', 'err');
+                btn.disabled = false;
+                btn.textContent = 'إرسال طلب الاعتماد';
+                return;
+            }
+            try {
+                const base64 = await fileToBase64(file);
+                const uploadRes = await api('uploadPhotoToDrive', { 
+                    imageData: base64, fileName: file.name, mimeType: file.type 
+                });
+                if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
+            } catch (e) { console.error(e); }
+        }
+        
+        await api('registerUser', {
+            email, fullName, job, phone, nationalId, role, center, localUnit, photoUrl
+        });
+        showToast('تم إرسال طلبك بنجاح', 'ok');
+        refreshMyStatus();
+    } catch (e) {
+        showToast('حدث خطأ: ' + e.message, 'err');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'إرسال طلب الاعتماد';
+    }
+});
+
+const JOB_ROLE_MAP = { 'محافظة': 'SYSTEM_ADMIN', 'مدير إدارة': 'CENTER_ADMIN', 'فني': 'TECHNICIAN', 'مهندس': 'ENGINEER' };
+
 // دوال أخرى
 window.openAssignmentModal = function() { showToast('تم تطوير هذه الميزة في الإصدار القادم', 'info'); };
 window.sendAttendanceReminder = async function() {
@@ -2828,7 +3102,7 @@ window.sendAttendanceReminder = async function() {
     showToast(`تم إرسال ${result.reminderSent || 0} تذكيرًا`, 'ok');
 };
 
-// دوال الأجهزة (مختصرة)
+// دوال الأجهزة المختصرة
 window.openAddEquipmentModal = function() {
     openModal(`
         <h3>إضافة جهاز مساحي جديد</h3>
