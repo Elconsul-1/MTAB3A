@@ -1195,7 +1195,12 @@ function launchApp() {
     goPage(currentPage, true);
     refreshNotifCount();
     setInterval(refreshNotifCount, 60000);
-    api('recordLogin', { userId: CURRENT_USER.id, userName: CURRENT_USER.fullName, email: CURRENT_USER.email }).catch(() => {});
+    // استخدام try/catch لتجنب خطأ recordLogin
+    try {
+        api('recordLogin', { userId: CURRENT_USER.id, userName: CURRENT_USER.fullName, email: CURRENT_USER.email }).catch(() => {});
+    } catch(e) {
+        console.warn('recordLogin not available, continuing...');
+    }
 }
 
 function registerPwaFeatures() {
@@ -1418,7 +1423,7 @@ function updateDashboardClock() {
 }
 
 // ========================================================================
-// الحضور والانصراف - مع عرض حالة "متأخر"
+// الحضور والانصراف
 // ========================================================================
 
 async function hasCheckedInToday(userId) {
@@ -1755,7 +1760,7 @@ async function renderAttendance(root) {
 }
 
 // ========================================================================
-// شاشة المتابعة
+// شاشة المتابعة - مع جدول الحضور والغياب
 // ========================================================================
 async function renderCoordination(root) {
     const selectedDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
@@ -1765,6 +1770,9 @@ async function renderCoordination(root) {
         centersToShow = [CURRENT_USER.center];
     } else if (CURRENT_USER.role === 'SYSTEM_ADMIN') {
         centersToShow = CENTERS.filter(c => c !== 'مجمع الذكاء');
+    } else {
+        // للمهندسين والفنيين: عرض مركزهم فقط
+        centersToShow = [CURRENT_USER.center];
     }
 
     const [users, attendance] = await Promise.all([
@@ -1857,6 +1865,7 @@ async function renderCoordination(root) {
     });
 
     root.innerHTML = `
+        <!-- الإحصائيات الإجمالية -->
         <div class="coordination-stats-grid">
             <div class="stat-box"><div class="stat-number">${totalEmployees}</div><div class="stat-label">👥 إجمالي الموظفين</div></div>
             <div class="stat-box" style="border-color:var(--good)"><div class="stat-number" style="color:var(--good)">${totalPresent}</div><div class="stat-label">✅ الحضور</div></div>
@@ -1866,6 +1875,7 @@ async function renderCoordination(root) {
             <div class="stat-box" style="border-color:var(--navy-600)"><div class="stat-number">${Math.round((totalPresent / (totalEmployees || 1)) * 100)}%</div><div class="stat-label">📊 نسبة الحضور</div></div>
         </div>
 
+        <!-- جدول إحصائيات المراكز -->
         <div style="overflow-x:auto;margin-bottom:20px">
             <table class="center-summary-table">
                 <thead><tr><th>المركز</th><th>إجمالي</th><th>✅ حضور في الموعد</th><th>⏰ حضور متأخر</th><th>❌ غياب</th><th>📊 نسبة الحضور</th></tr></thead>
@@ -1885,25 +1895,30 @@ async function renderCoordination(root) {
             </table>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-            <div class="panel" style="padding:12px">
-                <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
-                <div class="attendance-table-wrap">
-                    <table><thead><tr><th>المركز</th><th>الاسم</th><th>الوقت</th><th>الموقع</th><th>الحالة</th></tr></thead>
+        <!-- جدول الحضور -->
+        <div class="panel" style="padding:12px;margin-bottom:16px">
+            <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
+            <div class="attendance-table-wrap">
+                <table>
+                    <thead><tr><th>المركز</th><th>الاسم</th><th>الوقت</th><th>الموقع</th><th>الحالة</th></tr></thead>
                     <tbody>${centerData.flatMap(c => c.presentList.map(p => `
                         <tr><td>${c.center}</td><td>${p.name}</td><td>${fmtTime(p.time)}</td><td>${p.location}</td>
                         <td>${p.late ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">في الموعد</span>'}</td></tr>
-                    `)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody></table>
-                </div>
+                    `)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody>
+                </table>
             </div>
-            <div class="panel" style="padding:12px">
-                <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
-                <div class="attendance-table-wrap">
-                    <table><thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead>
+        </div>
+
+        <!-- جدول الغياب (أسفل الحضور) -->
+        <div class="panel" style="padding:12px">
+            <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
+            <div class="attendance-table-wrap">
+                <table>
+                    <thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead>
                     <tbody>${centerData.flatMap(c => c.absentList.map(a => `
                         <tr><td>${c.center}</td><td>${a.name}</td><td>${roleLabel(a.role)}</td></tr>
-                    `)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}</tbody></table>
-                </div>
+                    `)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}</tbody>
+                </table>
             </div>
         </div>
 
@@ -1936,14 +1951,12 @@ window.exportCoordinationExcel = function(selectedDate) {
 };
 
 // ========================================================================
-// إدارة المستخدمين - عرض جميع المستخدمين (بما فيهم المكررين) + زر إلغاء الحضور
+// إدارة المستخدمين
 // ========================================================================
 async function renderUsers(root) {
-    // جلب المستخدمين بدون فلتر إزالة المكررين
     const users = await api('listUsers', {});
     allUsersCache = users;
     
-    // لا نقوم بحذف المكررين - نعرض الكل
     window.__usersCache = users;
     
     const pending = users.filter(u=>u.status==='PENDING');
@@ -2049,7 +2062,6 @@ function renderUserRows(data, root) {
             `<img src="${u.photoUrl}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;cursor:pointer" onclick="window.open('${u.photoUrl}','_blank')" title="عرض الصورة">` : 
             '<span style="color:var(--ink-400)">❌</span>';
         
-        // زر إلغاء الحضور فقط لمدير النظام
         const cancelBtn = CURRENT_USER.role === 'SYSTEM_ADMIN' ? 
             `<button class="btn btn-warning btn-sm" onclick="cancelUserAttendance('${u.id}','${u.fullName}')">⏰ إلغاء حضور</button>` : '';
         
@@ -2074,7 +2086,7 @@ function renderUserRows(data, root) {
     }).join('') || `<tr><td colspan="11"><div class="empty-state">لا يوجد مستخدمون</div></td></tr>`;
 }
 
-// دالة تصدير Excel للمستخدمين
+// تصدير Excel للمستخدمين
 window.exportUsersExcel = function() {
     const users = allUsersCache || [];
     const centerFilter = document.getElementById('userFilterCenter')?.value || 'ALL';
@@ -2108,10 +2120,10 @@ window.exportUsersExcel = function() {
 };
 
 // ========================================================================
-// دوال إدارة المستخدمين - تعديل، حذف، دمج، إلغاء حضور
+// دوال إدارة المستخدمين
 // ========================================================================
 
-// دالة إلغاء حضور الموظف (للمدير فقط)
+// إلغاء حضور الموظف (للمدير فقط)
 window.cancelUserAttendance = function(userId, userName) {
     const today = getEgyptDateKey(getEgyptNow());
     
@@ -2357,7 +2369,6 @@ window.submitMergeUsers = async function() {
     }
 };
 
-// دوال الموافقة والرفض
 window.approveUserAction = async function(id) {
     showSavingModal('جارى اعتماد المستخدم...');
     try {
@@ -2801,10 +2812,9 @@ window.openNotifModal = async function() {
 };
 
 // ========================================================================
-// دوال التسجيل الأولي - تعبئة قائمة المراكز
+// دوال التسجيل الأولي
 // ========================================================================
 
-// تعبئة قائمة المراكز في نموذج التسجيل
 function fillRegCenterOptions() {
     const sel = document.getElementById('regCenter');
     if (sel) {
@@ -2818,12 +2828,10 @@ function fillRegCenterOptions() {
     }
 }
 
-// استدعاء الدالة عند تحميل الصفحة
 document.addEventListener('DOMContentLoaded', function() {
     fillRegCenterOptions();
 });
 
-// أيضًا عند ظهور شاشة التسجيل
 const registerScreen = document.getElementById('registerScreen');
 if (registerScreen) {
     const observer = new MutationObserver(function() {
@@ -2834,7 +2842,6 @@ if (registerScreen) {
     observer.observe(registerScreen, { attributes: true, attributeFilter: ['style'] });
 }
 
-// ربط تغيير الوظيفة بإظهار/إخفاء حقل المركز
 document.getElementById('regJob').addEventListener('change', function() {
     const isEngineer = this.value === 'مهندس';
     document.getElementById('regCenterField').style.display = isEngineer ? 'none' : 'block';
@@ -2845,7 +2852,6 @@ document.getElementById('regJob').addEventListener('change', function() {
     }
 });
 
-// دوال التسجيل
 document.getElementById('submitRegisterBtn').addEventListener('click', async function() {
     const email = document.getElementById('regEmail').value.trim();
     const fullName = document.getElementById('regFullName').value.trim();
@@ -2904,10 +2910,8 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async fun
     }
 });
 
-// خريطة الأدوار
 const JOB_ROLE_MAP = { 'محافظة': 'SYSTEM_ADMIN', 'مدير إدارة': 'CENTER_ADMIN', 'فني': 'TECHNICIAN', 'مهندس': 'ENGINEER' };
 
-// دوال أخرى
 window.openAssignmentModal = function() { showToast('تم تطوير هذه الميزة في الإصدار القادم', 'info'); };
 window.sendAttendanceReminder = async function() {
     const payload = CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {};
