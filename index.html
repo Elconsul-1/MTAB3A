@@ -914,18 +914,26 @@ async function loadAttendanceWindowConfig(force = false) {
     }
 }
 
+// ==================== دالة getAttendanceWindowState المُصلحة ====================
 function getAttendanceWindowState(nowDate) {
     const config = window.__attendanceWindowConfig || { startTime: '10:00', endTime: '22:00' };
     const now = nowDate instanceof Date ? nowDate : new Date(nowDate);
     const egyptNow = toEgyptTime(now);
+    if (!egyptNow) {
+        return { isLate: false, currentMinutes: 0, checkInDeadline: 600 };
+    }
     const currentMinutes = egyptNow.getHours() * 60 + egyptNow.getMinutes();
-    const checkInDeadline = parseTimeToMinutes(config.startTime) ?? 10 * 60;
+    const checkInDeadline = parseTimeToMinutes(config.startTime) ?? 600; // 10:00 صباحاً
+    
+    // أي وقت بعد 10:00 صباحاً يعتبر تأخير
+    const isLate = currentMinutes >= checkInDeadline;
+    
     return {
         startTime: config.startTime,
         endTime: config.endTime,
         currentMinutes: currentMinutes,
         checkInDeadline: checkInDeadline,
-        isLate: currentMinutes >= checkInDeadline
+        isLate: isLate
     };
 }
 
@@ -1422,7 +1430,7 @@ function updateDashboardClock() {
 }
 
 // ========================================================================
-// الحضور والانصراف - النسخة المُحدثة
+// الحضور والانصراف - النسخة المُحدثة مع إصلاح التأخير
 // ========================================================================
 
 async function hasCheckedInToday(userId) {
@@ -1533,13 +1541,18 @@ async function doAttendanceEnhanced(action, extra = {}) {
             console.warn('Geolocation not available:', geoError);
         }
 
+        // ==================== حساب حالة التأخير بشكل صحيح ====================
+        const windowState = getAttendanceWindowState(new Date());
+        const isLate = windowState.isLate && action === 'checkIn';
+
         const payload = {
             userId: CURRENT_USER.id,
             userName: CURRENT_USER.fullName,
             center: extra.center || CURRENT_USER.center,
             lat: position ? position.coords.latitude : null,
             lng: position ? position.coords.longitude : null,
-            workType: extra.workType || 'FIELD'
+            workType: extra.workType || 'FIELD',
+            isLate: isLate  // إرسال حالة التأخير إلى السيرفر
         };
 
         await api(action === 'checkIn' ? 'checkIn' : 'checkOut', payload);
@@ -1547,6 +1560,8 @@ async function doAttendanceEnhanced(action, extra = {}) {
         if (action === 'checkIn') {
             localStorage.setItem(checkInKey, '1');
             localStorage.setItem('attendance_checkin_time_' + CURRENT_USER.id + '_' + today, new Date().toISOString());
+            
+            // ==================== تغيير الزرار للأخضر بشكل دائم ====================
             if (btn) {
                 btn.disabled = true;
                 btn.textContent = '✅ تم تسجيل الحضور اليوم';
@@ -1554,8 +1569,10 @@ async function doAttendanceEnhanced(action, extra = {}) {
                 btn.style.background = '#1f8a55';
                 btn.style.color = '#fff';
                 btn.style.opacity = '1';
+                // إضافة class لتثبيت اللون
+                btn.classList.add('attendance-done');
             }
-            showToast('✅ تم تسجيل الحضور بنجاح', 'ok');
+            showToast(isLate ? '✅ تم تسجيل الحضور (متأخر)' : '✅ تم تسجيل الحضور في الموعد', isLate ? 'warn' : 'ok');
         } else {
             localStorage.setItem(checkOutKey, '1');
             if (btn) {
@@ -1565,6 +1582,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
                 btn.style.background = '#c23a3a';
                 btn.style.color = '#fff';
                 btn.style.opacity = '1';
+                btn.classList.add('attendance-done');
             }
             showToast('✅ تم تسجيل الانصراف بنجاح', 'ok');
         }
@@ -1575,6 +1593,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             action === 'checkOut' || localStorage.getItem(checkOutKey) === '1'
         );
 
+        // تحديث شاشة الحضور لإظهار حالة التأخير
         setTimeout(() => {
             goPage('attendance', true);
         }, 1500);
@@ -1589,6 +1608,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             btn.style.background = '';
             btn.style.color = '';
             btn.style.opacity = '1';
+            btn.classList.remove('attendance-done');
         }
     } finally {
         attendanceLock.processing = false;
@@ -1607,6 +1627,7 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
             checkInBtn.style.background = '#1f8a55';
             checkInBtn.style.color = '#fff';
             checkInBtn.style.opacity = '1';
+            checkInBtn.classList.add('attendance-done');
         } else {
             checkInBtn.disabled = false;
             checkInBtn.textContent = '✅ تسجيل حضور';
@@ -1614,6 +1635,7 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
             checkInBtn.style.background = '';
             checkInBtn.style.color = '';
             checkInBtn.style.opacity = '1';
+            checkInBtn.classList.remove('attendance-done');
         }
     }
 
@@ -1625,6 +1647,7 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
             checkOutBtn.style.background = '#c23a3a';
             checkOutBtn.style.color = '#fff';
             checkOutBtn.style.opacity = '1';
+            checkOutBtn.classList.add('attendance-done');
         } else if (hasCheckIn) {
             checkOutBtn.disabled = false;
             checkOutBtn.textContent = '⏹ تسجيل انصراف';
@@ -1632,6 +1655,7 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
             checkOutBtn.style.background = '';
             checkOutBtn.style.color = '';
             checkOutBtn.style.opacity = '1';
+            checkOutBtn.classList.remove('attendance-done');
         } else {
             checkOutBtn.disabled = true;
             checkOutBtn.textContent = '⏹ انصراف (يجب الحضور أولاً)';
@@ -1639,6 +1663,7 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
             checkOutBtn.style.background = '#e9ecef';
             checkOutBtn.style.color = '#6c757d';
             checkOutBtn.style.opacity = '0.65';
+            checkOutBtn.classList.remove('attendance-done');
         }
     }
 }
@@ -1648,7 +1673,6 @@ async function renderAttendance(root) {
     const checkInKey = 'attendance_checkin_' + CURRENT_USER.id + '_' + today;
     const checkOutKey = 'attendance_checkout_' + CURRENT_USER.id + '_' + today;
 
-    // ==================== الإصلاح: التحقق من السيرفر أولاً ====================
     // جلب حالة الحضور من السيرفر (المصدر الأساسي)
     const status = await todayAttendanceStatus({ userId: CURRENT_USER.id });
     
@@ -1791,7 +1815,7 @@ async function renderAttendance(root) {
 }
 
 // ========================================================================
-// شاشة المتابعة - مع جدول الحضور والغياب
+// شاشة المتابعة - مع جدول الحضور والغياب (الغياب أسفل الحضور)
 // ========================================================================
 async function renderCoordination(root) {
     const selectedDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
@@ -1895,6 +1919,7 @@ async function renderCoordination(root) {
     });
 
     root.innerHTML = `
+        <!-- الإحصائيات الإجمالية -->
         <div class="coordination-stats-grid">
             <div class="stat-box"><div class="stat-number">${totalEmployees}</div><div class="stat-label">👥 إجمالي الموظفين</div></div>
             <div class="stat-box" style="border-color:var(--good)"><div class="stat-number" style="color:var(--good)">${totalPresent}</div><div class="stat-label">✅ الحضور</div></div>
@@ -1904,6 +1929,7 @@ async function renderCoordination(root) {
             <div class="stat-box" style="border-color:var(--navy-600)"><div class="stat-number">${Math.round((totalPresent / (totalEmployees || 1)) * 100)}%</div><div class="stat-label">📊 نسبة الحضور</div></div>
         </div>
 
+        <!-- جدول إحصائيات المراكز -->
         <div style="overflow-x:auto;margin-bottom:20px">
             <table class="center-summary-table">
                 <thead><tr><th>المركز</th><th>إجمالي</th><th>✅ حضور في الموعد</th><th>⏰ حضور متأخر</th><th>❌ غياب</th><th>📊 نسبة الحضور</th></tr></thead>
@@ -1923,25 +1949,30 @@ async function renderCoordination(root) {
             </table>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-            <div class="panel" style="padding:12px">
-                <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
-                <div class="attendance-table-wrap">
-                    <table><thead><tr><th>المركز</th><th>الاسم</th><th>الوقت</th><th>الموقع</th><th>الحالة</th></tr></thead>
+        <!-- جدول الحضور -->
+        <div class="panel" style="padding:12px;margin-bottom:16px">
+            <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
+            <div class="attendance-table-wrap">
+                <table>
+                    <thead><tr><th>المركز</th><th>الاسم</th><th>الوقت</th><th>الموقع</th><th>الحالة</th></tr></thead>
                     <tbody>${centerData.flatMap(c => c.presentList.map(p => `
                         <tr><td>${c.center}</td><td>${p.name}</td><td>${fmtTime(p.time)}</td><td>${p.location}</td>
                         <td>${p.late ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">في الموعد</span>'}</td></tr>
-                    `)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody></table>
-                </div>
+                    `)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody>
+                </table>
             </div>
-            <div class="panel" style="padding:12px">
-                <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
-                <div class="attendance-table-wrap">
-                    <table><thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead>
+        </div>
+
+        <!-- جدول الغياب (أسفل الحضور) -->
+        <div class="panel" style="padding:12px">
+            <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
+            <div class="attendance-table-wrap">
+                <table>
+                    <thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead>
                     <tbody>${centerData.flatMap(c => c.absentList.map(a => `
                         <tr><td>${c.center}</td><td>${a.name}</td><td>${roleLabel(a.role)}</td></tr>
-                    `)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}</tbody></table>
-                </div>
+                    `)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}</tbody>
+                </table>
             </div>
         </div>
 
@@ -2142,10 +2173,9 @@ window.exportUsersExcel = function() {
 };
 
 // ========================================================================
-// دوال إدارة المستخدمين - مع إصلاح إلغاء الحضور
+// دوال إدارة المستخدمين
 // ========================================================================
 
-// دالة إلغاء حضور الموظف (للمدير فقط)
 window.cancelUserAttendance = function(userId, userName) {
     const today = getEgyptDateKey(getEgyptNow());
     
@@ -2176,8 +2206,7 @@ window.confirmCancelAttendance = async function(userId) {
             date: date
         });
         
-        // ==================== إصلاح المشكلة: تحديث Local Storage ====================
-        // 1) مسح حالة الحضور والانصراف للمستخدم من Local Storage
+        // مسح حالة الحضور والانصراف للمستخدم من Local Storage
         const checkInKey = 'attendance_checkin_' + userId + '_' + date;
         const checkOutKey = 'attendance_checkout_' + userId + '_' + date;
         const checkInTimeKey = 'attendance_checkin_time_' + userId + '_' + date;
@@ -2188,21 +2217,14 @@ window.confirmCancelAttendance = async function(userId) {
         localStorage.removeItem(checkInTimeKey);
         localStorage.removeItem(locationKey);
         
-        // 2) إذا كان المستخدم هو المستخدم الحالي، قم بتحديث واجهته
         if (CURRENT_USER && CURRENT_USER.id === userId) {
-            // تحديث حالة الأزرار في شاشة الحضور
             updateAttendanceUI(false, false);
-            
-            // حذف كاش الصفحة الحالية لإعادة تحميلها من السيرفر
             delete PAGE_CACHE['attendance'];
-            
-            // إعادة تحميل شاشة الحضور إذا كانت مفتوحة حالياً
             if (currentPage === 'attendance') {
                 goPage('attendance', true, false);
             }
         }
         
-        // 3) إذا كان المستخدم هو المستخدم الحالي، قم بتحديث الـ UI العام
         if (CURRENT_USER && CURRENT_USER.id === userId) {
             CURRENT_USER.hasCheckedIn = false;
             CURRENT_USER.hasCheckedOut = false;
@@ -2211,7 +2233,6 @@ window.confirmCancelAttendance = async function(userId) {
         hideSavingModal();
         showToast('✅ ' + (result.message || 'تم إلغاء الحضور بنجاح'), 'ok');
         
-        // 4) إعادة تحميل صفحة المستخدمين لتحديث الجدول
         goPage('users', true);
         
     } catch (e) {
@@ -2469,7 +2490,6 @@ window.confirmReject = async function(id) {
 // باقي الصفحات (مختصرة للاختصار)
 // ========================================================================
 
-// التكليفات والمهام
 async function renderAssignments(root) {
     let missions = await api('listMissions', {});
     if (CURRENT_USER.role === 'CENTER_ADMIN') {
