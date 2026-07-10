@@ -675,7 +675,7 @@ tbody tr:hover{background:#fafcfd}
 </div>
 
 <!-- ================= التطبيق الرئيسي ================= -->
-<div id="app">
+<div id="app" style="display:none">
 <div class="shell">
   <div class="overlay-bg" id="overlayBg" onclick="toggleSidebar(false)"></div>
   <aside class="sidebar" id="sidebar">
@@ -1362,7 +1362,7 @@ async function goPage(key, skipHistory, useCache = true) {
 }
 
 /* =====================================================================
-   الصفحات
+   الصفحات الرئيسية
    ===================================================================== */
 
 // الصفحة الرئيسية
@@ -1427,7 +1427,7 @@ function updateDashboardClock() {
 }
 
 // ========================================================================
-// الحضور والانصراف - مع نافذة إدخال ما تم تنفيذه بعد الانصراف
+// دوال الحضور والانصراف الأساسية
 // ========================================================================
 
 async function hasCheckedInToday(userId) {
@@ -1533,7 +1533,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
             </div>
         `);
         
-        // حفظ مرجع للدالة لاستخدامها بعد إدخال البيانات
         window.__pendingCheckout = { userId: CURRENT_USER.id, center: extra.center || CURRENT_USER.center };
         return;
     }
@@ -1582,7 +1581,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
             isLate: isLate
         };
 
-        // إضافة بيانات المهام المنفذة إذا كانت موجودة
         if (extra.tasks) payload.tasks = extra.tasks;
         if (extra.casesCount) payload.casesCount = extra.casesCount;
         if (extra.notes) payload.checkoutNotes = extra.notes;
@@ -1644,10 +1642,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
     }
 }
 
-// ========================================================================
-// دالة تأكيد الانصراف مع تفاصيل المهام المنفذة
-// ========================================================================
-
 window.submitCheckoutWithDetails = function() {
     const tasks = document.getElementById('checkoutTasks')?.value?.trim() || '';
     const casesCount = parseInt(document.getElementById('checkoutCasesCount')?.value || '0');
@@ -1660,7 +1654,6 @@ window.submitCheckoutWithDetails = function() {
     
     closeModal();
     
-    // استدعاء دالة الانصراف مع البيانات الإضافية
     const extra = {
         center: window.__pendingCheckout?.center || CURRENT_USER.center,
         tasks: tasks,
@@ -1668,10 +1661,7 @@ window.submitCheckoutWithDetails = function() {
         notes: notes
     };
     
-    // استدعاء doAttendanceEnhanced مع البيانات
     doAttendanceEnhanced('checkOut', extra);
-    
-    // تنظيف المتغير المؤقت
     window.__pendingCheckout = null;
 };
 
@@ -1728,6 +1718,9 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
     }
 }
 
+// ========================================================================
+// شاشة الحضور والانصراف
+// ========================================================================
 async function renderAttendance(root) {
     const today = getEgyptDateKey(getEgyptNow());
     const checkInKey = 'attendance_checkin_' + CURRENT_USER.id + '_' + today;
@@ -1824,7 +1817,6 @@ async function renderAttendance(root) {
                             } else if (a.lat && a.lng) {
                                 locLink = `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" class="location-link">📍 عرض</a>`;
                             }
-                            // عرض ملخص المهام المنفذة (إذا وجدت)
                             const tasksSummary = a.tasks ? `<div style="font-size:11px;color:var(--ink-600);max-width:200px;white-space:normal;word-wrap:break-word">${a.tasks.substring(0, 100)}${a.tasks.length > 100 ? '...' : ''}</div>` : '-';
                             return `<tr>
                                 <td><span class="chip ${a.type === 'IN' ? 'approved' : 'rejected'}">${a.type === 'IN' ? '✅ حضور' : (a.autoCheckout === 'true' || a.autoCheckout === true ? '⏹ انصراف تلقائي' : '⏹ انصراف')}</span></td>
@@ -2540,10 +2532,323 @@ window.confirmReject = async function(id) {
 };
 
 // ========================================================================
-// باقي الصفحات (مختصرة للاختصار)
+// دوال التكليفات والمهام (مختصرة)
+// ========================================================================
+async function renderAssignments(root) {
+    let missions = await api('listMissions', {});
+    if (CURRENT_USER.role === 'CENTER_ADMIN') {
+        missions = missions.filter(m => m.center === CURRENT_USER.center);
+    } else if (CURRENT_USER.role === 'ENGINEER' || CURRENT_USER.role === 'TECHNICIAN') {
+        missions = missions.filter(m => m.engineerName === CURRENT_USER.fullName || m.assignedTo === CURRENT_USER.fullName);
+    }
+    
+    const generalMissions = missions.filter(m => m.source === 'GENERAL');
+    const centerMissions = missions.filter(m => m.source === 'CENTER');
+    
+    let tasks = await api('listTasks', {});
+    if (CURRENT_USER.role === 'CENTER_ADMIN') {
+        tasks = tasks.filter(t => t.center === CURRENT_USER.center);
+    } else if (CURRENT_USER.role === 'ENGINEER' || CURRENT_USER.role === 'TECHNICIAN') {
+        tasks = tasks.filter(t => t.engineerName === CURRENT_USER.fullName);
+    }
+
+    root.innerHTML = `
+        <div class="panel"><div class="panel-head"><h3>التكليفات والمهام</h3></div></div>
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="general">تكليفات الإدارة (${generalMissions.length})</button>
+            <button class="tab-btn" data-tab="center">تكليفات المركز (${centerMissions.length})</button>
+            <button class="tab-btn" data-tab="tasks">المهام (${tasks.length})</button>
+        </div>
+        <div id="asgTabGeneral"></div>
+        <div id="asgTabCenter" style="display:none"></div>
+        <div id="asgTabTasks" style="display:none"></div>
+    `;
+    
+    const generalPane = document.getElementById('asgTabGeneral');
+    const centerPane = document.getElementById('asgTabCenter');
+    const tasksPane = document.getElementById('asgTabTasks');
+    const tabBtns = root.querySelectorAll('.tab-btn');
+
+    async function activate(tab) {
+        tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        generalPane.style.display = tab === 'general' ? 'block' : 'none';
+        centerPane.style.display = tab === 'center' ? 'block' : 'none';
+        tasksPane.style.display = tab === 'tasks' ? 'block' : 'none';
+        
+        if (tab === 'general') {
+            generalPane.innerHTML = `<div class="panel"><div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>البداية</th><th>الحالة</th></tr></thead><tbody>
+                ${generalMissions.map(m => `<tr><td>${m.engineerName||'-'}</td><td>${m.center||'-'}</td><td>${m.workType||'-'}</td><td>${m.village||'-'}</td><td>${fmtDate(m.startTime)}</td><td>${m.status||'-'}</td></tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">لا توجد تكليفات</div></td></tr>'}
+            </tbody></table></div></div>`;
+        }
+        if (tab === 'center') {
+            centerPane.innerHTML = `<div class="panel"><div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>البداية</th><th>الحالة</th></tr></thead><tbody>
+                ${centerMissions.map(m => `<tr><td>${m.engineerName||'-'}</td><td>${m.center||'-'}</td><td>${m.workType||'-'}</td><td>${m.village||'-'}</td><td>${fmtDate(m.startTime)}</td><td>${m.status||'-'}</td></tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">لا توجد تكليفات</div></td></tr>'}
+            </tbody></table></div></div>`;
+        }
+        if (tab === 'tasks') {
+            tasksPane.innerHTML = `<div class="panel"><div class="table-wrap"><table><thead><tr><th>المهندس</th><th>نوع المهمة</th><th>الموقع</th><th>الحالات</th><th>التوقيت</th><th>الحالة</th></tr></thead><tbody>
+                ${tasks.map(t => `<tr><td>${t.engineerName}</td><td>${t.taskType}</td><td>${t.location||'-'}</td><td>${t.casesCount}</td><td>${fmtDate(t.startTime)}</td><td>${taskStatusChip(t.status)}</td></tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">لا توجد مهام</div></td></tr>'}
+            </tbody></table></div></div>`;
+        }
+    }
+
+    tabBtns.forEach(b => b.onclick = () => activate(b.dataset.tab));
+    await activate('general');
+}
+
+function taskStatusChip(status) {
+    const map = { DONE:['approved','منفذة'], PENDING:['pending','قيد التنفيذ'] };
+    const v = map[status] || ['pending', status || '-'];
+    return `<span class="chip ${v[0]}">${v[1]}</span>`;
+}
+
+// ========================================================================
+// الأجهزة المساحية (مختصرة)
+// ========================================================================
+async function renderEquipment(root) {
+    const equipment = await api('listEquipment',{});
+    const isAdmin = ['SYSTEM_ADMIN','CENTER_ADMIN'].includes(CURRENT_USER.role);
+    
+    let filteredEquipment = equipment;
+    if (CURRENT_USER.role === 'CENTER_ADMIN') {
+        filteredEquipment = equipment.filter(e => e.homeCenter === CURRENT_USER.center || e.currentCenter === CURRENT_USER.center);
+    }
+    
+    root.innerHTML = `
+        <div class="panel">
+            <div class="panel-head"><h3>الأجهزة المساحية</h3>${isAdmin?`<button class="btn btn-gold btn-sm" onclick="openAddEquipmentModal()">+ إضافة جهاز</button>`:''}</div>
+            <div class="filter-grid">
+                <div class="field"><label>بحث</label><input id="eqSearchInput" placeholder="رقم العهدة أو النوع"></div>
+                <div class="field"><label>الحالة</label><select id="eqFilterStatus"><option value="">الكل</option><option value="AVAILABLE">متاح</option><option value="WITH_ENGINEER">مع مهندس</option><option value="MAINTENANCE">صيانة</option></select></div>
+            </div>
+            <div class="table-wrap"><table><thead><tr><th>رقم العهدة</th><th>النوع</th><th>الموديل</th><th>المركز</th><th>الحالة</th><th>إجراء</th></tr></thead>
+            <tbody id="eqTableBody"></tbody></table></div>
+        </div>`;
+    
+    const applyFilters = () => {
+        const search = (document.getElementById('eqSearchInput')?.value || '').trim().toLowerCase();
+        const status = (document.getElementById('eqFilterStatus')?.value || '').trim();
+        const filtered = filteredEquipment.filter(e => {
+            const hay = `${e.custodyNumber||''} ${e.type||''} ${e.model||''}`.toLowerCase();
+            return (!search || hay.includes(search)) && (!status || e.status === status);
+        });
+        document.getElementById('eqTableBody').innerHTML = filtered.map(e=>`<tr><td>${e.custodyNumber||'-'}</td><td>${e.type||'-'}</td><td>${e.model||'-'}</td><td>${e.homeCenter||'-'}</td><td>${eqStatusChip(e.status)}</td>
+            <td>${isAdmin?`<button class="btn btn-outline btn-sm" onclick="openEditEquipmentModal('${e.id}','${e.custodyNumber||''}','${e.type||''}','${e.model||''}','${e.homeCenter||''}','${e.status||'AVAILABLE'}')">تعديل</button>`:''}
+            ${e.status==='AVAILABLE'?`<button class="btn btn-outline btn-sm" onclick="openHandoverModal('${e.id}','${e.custodyNumber}')">تسليم</button>`:''}
+            ${e.status==='WITH_ENGINEER'?`<button class="btn btn-outline btn-sm" onclick="openReturnModal('${e.id}')">استلام</button>`:''}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty-state">لا توجد أجهزة</div></td></tr>`;
+    };
+    ['eqSearchInput','eqFilterStatus'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.oninput = applyFilters; el.onchange = applyFilters; }
+    });
+    applyFilters();
+}
+
+function eqStatusChip(s) {
+    const map = { AVAILABLE:['available','متاح'], WITH_ENGINEER:['withengineer','مع مهندس'], MAINTENANCE:['maintenance','صيانة'], OUT_OF_SERVICE:['outofservice','خارج الخدمة'] };
+    const v = map[s] || ['maintenance', s];
+    return `<span class="chip ${v[0]}">${v[1]}</span>`;
+}
+
+// ========================================================================
+// المتواجدين حاليا
+// ========================================================================
+function normalizeDriveThumbnail(url) {
+    if (!url) return '';
+    try {
+        if (url.indexOf('thumbnail?id=') !== -1) return url;
+        var m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/) || url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        if (m && m[1]) return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1000';
+    } catch (e) {}
+    return url;
+}
+
+window.PRESENT_NOW_INTERVAL_ID = null;
+
+async function renderPresentNow(root) {
+    const today = getEgyptDateKey(getEgyptNow());
+    const rows = await api('listAttendance', { date: today });
+    const lastByUser = {};
+    (rows || []).forEach(r => {
+        if (!r || !r.userId) return;
+        const ts = r.timestamp || r.createdAt || r.time || '';
+        const tval = ts ? new Date(ts).getTime() : 0;
+        const cur = lastByUser[r.userId];
+        const curVal = cur ? (new Date(cur.timestamp || cur.createdAt || cur.time).getTime() || 0) : 0;
+        if (!cur || tval >= curVal) lastByUser[r.userId] = r;
+    });
+    const present = Object.values(lastByUser).filter(r => String(r.type || '').toUpperCase() === 'IN');
+    present.sort((a,b) => (a.userName || '').localeCompare(b.userName || ''));
+    root.innerHTML = `
+        <div class="panel">
+            <div class="panel-head"><h3>المتواجدين حاليا</h3>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button class="btn btn-outline btn-sm" id="presentNowRefreshBtn">⟳ تحديث</button>
+                    <label style="font-size:13px;display:flex;align-items:center;gap:6px">
+                        <input type="checkbox" id="presentNowAutoRefreshToggle"> تحديث تلقائي
+                    </label>
+                </div>
+            </div>
+            <div class="table-wrap"><table><thead><tr><th>صورة</th><th>الاسم</th><th>المركز</th><th>الهاتف</th><th>الوقت</th><th>الموقع</th></tr></thead>
+            <tbody>${present.map(p => {
+                let photo = normalizeDriveThumbnail(p.userPhoto || p.photo || '');
+                const initials = (p.userName||p.userId||'-').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
+                const imgHtml = photo ? `<img src="${photo}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials;
+                let locLink = '-';
+                if (p.mapsLink) locLink = `<a href="${p.mapsLink}" target="_blank" class="location-link">📍 عرض</a>`;
+                else if (p.lat && p.lng) locLink = `<a href="https://www.google.com/maps?q=${p.lat},${p.lng}" target="_blank" class="location-link">📍 عرض</a>`;
+                return `<tr>
+                    <td><div class="small-avatar">${imgHtml}</div></td>
+                    <td>${p.userName||p.userId||'-'}</td>
+                    <td>${p.center||'-'}</td>
+                    <td>${p.userPhone||p.phone||'-'}</td>
+                    <td>${fmtTime(p.timestamp||p.createdAt||p.time)}</td>
+                    <td>${locLink}</td>
+                </tr>`;
+            }).join('') || `<tr><td colspan="6"><div class="empty-state">لا يوجد أحد متواجد الآن</div></td></tr>`}</tbody></table></div>
+        </div>`;
+
+    document.getElementById('presentNowRefreshBtn').onclick = () => renderPresentNow(root);
+    const toggle = document.getElementById('presentNowAutoRefreshToggle');
+    const saved = localStorage.getItem('presentNowAutoRefresh') === '1';
+    toggle.checked = saved;
+    toggle.onchange = function() { togglePresentNowAutoRefresh(this.checked, root); };
+    if (saved) togglePresentNowAutoRefresh(true, root);
+}
+
+function togglePresentNowAutoRefresh(enable, root) {
+    if (window.PRESENT_NOW_INTERVAL_ID) {
+        clearInterval(window.PRESENT_NOW_INTERVAL_ID);
+        window.PRESENT_NOW_INTERVAL_ID = null;
+    }
+    if (enable) {
+        window.PRESENT_NOW_INTERVAL_ID = setInterval(() => renderPresentNow(root), 30000);
+        localStorage.setItem('presentNowAutoRefresh', '1');
+    } else {
+        localStorage.removeItem('presentNowAutoRefresh');
+    }
+}
+
+// ========================================================================
+// الملف الشخصي
+// ========================================================================
+function openProfileModal() {
+    openModal(`
+        <h3>تعديل الملف الشخصي</h3>
+        <div class="field"><label>الاسم</label><input id="profileName" value="${CURRENT_USER.fullName || ''}"></div>
+        <div class="field"><label>الرقم القومي</label>
+            <input id="profileNationalId" value="${CURRENT_USER.nationalId || ''}" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+            <div style="font-size:11px;color:var(--ink-400);margin-top:4px">الرقم القومي مكون من 14 رقم</div>
+        </div>
+        <div class="field"><label>الهاتف</label><input id="profilePhone" value="${CURRENT_USER.phone || ''}"></div>
+        <div class="field">
+            <label>الصورة الشخصية</label>
+            <input id="profilePhotoFile" type="file" accept="image/*">
+            ${CURRENT_USER.photoUrl ? `<div style="margin-top:8px"><img src="${CURRENT_USER.photoUrl}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--line);cursor:pointer" onclick="window.open('${CURRENT_USER.photoUrl}','_blank')" title="عرض الصورة"></div>` : '<div style="color:var(--ink-400);font-size:12px;margin-top:4px">لا توجد صورة شخصية</div>'}
+        </div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-primary" onclick="saveProfile()">💾 حفظ</button>
+        </div>
+    `);
+}
+
+window.saveProfile = async function() {
+    let photoUrl = CURRENT_USER.photoUrl || '';
+    const fullName = val('profileName');
+    const nationalId = val('profileNationalId');
+    const phone = val('profilePhone');
+    
+    if (!fullName) {
+        showToast('الاسم مطلوب', 'err');
+        return;
+    }
+    
+    if (nationalId && !/^[0-9]{14}$/.test(nationalId)) {
+        showToast('الرقم القومي يجب أن يكون 14 رقم', 'err');
+        return;
+    }
+    
+    const fileInput = document.getElementById('profilePhotoFile');
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+        const file = fileInput.files[0];
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('حجم الصورة كبير جدًا (الحد الأقصى 5 ميجابايت)', 'err');
+            return;
+        }
+        const base64 = await fileToBase64(file);
+        try {
+            const dataUrl = 'data:' + file.type + ';base64,' + base64;
+            CURRENT_USER.photoUrl = dataUrl;
+            updateUserAvatar(); updateTopbarAvatar();
+            photoUrl = dataUrl;
+        } catch (e) {}
+        try {
+            const uploadRes = await api('uploadPhotoToDrive', { imageData: base64, fileName: file.name, mimeType: file.type });
+            if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
+        } catch (e) {}
+    }
+    
+    showSavingModal('جارى حفظ الملف الشخصي...');
+    
+    try {
+        await api('updateMyProfile', {
+            userId: CURRENT_USER.id,
+            fullName: fullName,
+            nationalId: nationalId,
+            phone: phone,
+            photoUrl: photoUrl
+        });
+        
+        CURRENT_USER.fullName = fullName;
+        CURRENT_USER.nationalId = nationalId;
+        CURRENT_USER.phone = phone;
+        if (photoUrl) CURRENT_USER.photoUrl = photoUrl;
+        
+        hideSavingModal();
+        showToast('✅ تم حفظ الملف الشخصي', 'ok');
+        closeModal();
+        updateUserAvatar();
+        updateTopbarAvatar();
+        document.getElementById('sideName').textContent = CURRENT_USER.fullName;
+        document.getElementById('topbarUserInfo').innerHTML = `<b>${CURRENT_USER.fullName}</b><br>${CURRENT_USER.email || ''}`;
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل الحفظ: ' + e.message, 'err');
+    }
+};
+
+async function renderProfile(root) {
+    root.innerHTML = `<div class="panel"><div class="panel-head"><h3>الملف الشخصي</h3></div></div>`;
+}
+
+// ========================================================================
+// الإشعارات
+// ========================================================================
+async function refreshNotifCount() {
+    if (!CURRENT_USER) return;
+    const list = await api('listNotifications', { userId: CURRENT_USER.id });
+    const unread = list.filter(n => !n.isRead || n.isRead === 'false').length;
+    const badge = document.getElementById('notifBadge');
+    badge.style.display = unread ? 'flex' : 'none';
+    badge.textContent = unread;
+}
+
+window.openNotifModal = async function() {
+    const list = await api('listNotifications', { userId: CURRENT_USER.id });
+    openModal(`
+        <h3>الإشعارات</h3>
+        <div>${list.map(n=>`<div class="notif-item"><div class="notif-dot"></div><div class="notif-txt"><p>${n.message}</p><span>${fmtDate(n.createdAt)}</span></div></div>`).join('') || `<div class="empty-state">لا توجد إشعارات</div>`}</div>
+        <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إغلاق</button></div>
+    `);
+    list.forEach(n => { if (!n.isRead || n.isRead === 'false') api('markNotificationRead', { notificationId: n.id }); });
+    setTimeout(refreshNotifCount, 500);
+};
+
+// ========================================================================
+// دوال التسجيل الأولي
 // ========================================================================
 
-// دوال التسجيل الأولي
 function fillRegCenterOptions() {
     const sel = document.getElementById('regCenter');
     if (sel) {
