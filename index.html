@@ -196,6 +196,10 @@ a{color:inherit}
 .btn-outline{background:transparent;border:1.5px solid var(--line);color:var(--ink-900)}
 .btn-outline:hover{border-color:var(--navy-600)}
 .btn-danger{background:#fdeaea;color:var(--bad)}
+.btn-success{background:var(--good);color:#fff}
+.btn-success:hover{background:#156d44}
+.btn-warning{background:#ffc107;color:#212529}
+.btn-warning:hover{background:#e0a800}
 .btn-done{background:var(--good)!important;color:#fff!important;opacity:1!important;cursor:default!important;filter:none!important;box-shadow:none!important}
 .btn-done-checkin{background:#1f8a55!important;color:#fff!important;opacity:1!important;cursor:default!important;filter:none!important;box-shadow:none!important}
 .btn-done-checkout{background:#c23a3a!important;color:#fff!important;opacity:1!important;cursor:default!important;filter:none!important;box-shadow:none!important}
@@ -231,7 +235,8 @@ a{color:inherit}
 .user-mini-txt{font-size:12.5px;line-height:1.5;overflow:hidden}
 .user-mini-txt b{display:block;color:#fff;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .user-mini-txt span{color:rgba(255,255,255,.55)}
-.logout-link{margin-top:10px;font-size:12px;color:var(--gold-100);display:flex;align-items:center;gap:6px}
+.logout-link{margin-top:10px;font-size:12px;color:var(--gold-100);display:flex;align-items:center;gap:6px;cursor:pointer}
+.logout-link:hover{color:#fff}
 .topbar-user{display:flex;align-items:center;gap:12px}
 .small-avatar{width:40px;height:40px;border-radius:50%;background:var(--navy-700);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;overflow:hidden;flex-shrink:0}
 .small-avatar img{width:100%;height:100%;object-fit:cover}
@@ -267,7 +272,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px}
 thead th{text-align:right;padding:10px 12px;color:var(--ink-600);font-size:12px;font-weight:700;border-bottom:2px solid var(--line);white-space:nowrap;position:sticky;top:0;background:#f8fafc;z-index:2}
 tbody td{padding:11px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
 tbody tr:hover{background:#fafcfd}
-.table-wrap{overflow-x:auto;max-height:400px;overflow-y:auto}
+.table-wrap{overflow-x:auto;max-height:500px;overflow-y:auto}
 .table-wrap thead th{position:sticky;top:0;background:#f8fafc;z-index:2}
 .empty-state{text-align:center;padding:40px 20px;color:var(--ink-400)}
 .empty-state .ic{font-size:34px;margin-bottom:10px}
@@ -277,7 +282,7 @@ tbody tr:hover{background:#fafcfd}
   z-index:100;padding:16px;
 }
 .modal-overlay.show{display:flex}
-.modal-box{background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;padding:26px}
+.modal-box{background:#fff;border-radius:16px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:26px}
 .modal-box h3{margin:0 0 18px;font-size:17px}
 .modal-close-row{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
 
@@ -428,6 +433,30 @@ tbody tr:hover{background:#fafcfd}
   margin: 10px 0;
 }
 
+/* ---------- رسالة استكمال البيانات ---------- */
+.missing-data-banner {
+  background: #fff3cd;
+  border: 2px solid var(--warn);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.missing-data-banner .banner-text {
+  font-size: 14px;
+  color: #856404;
+}
+.missing-data-banner .banner-text strong {
+  font-weight: 800;
+}
+.missing-data-banner .btn {
+  flex-shrink: 0;
+}
+
 @media (max-width:900px){
   .sidebar{position:fixed;right:0;top:0;z-index:60;transform:translateX(100%);box-shadow:none;width:min(250px,82vw)}
   .sidebar.open{transform:translateX(0);box-shadow:-20px 0 40px rgba(0,0,0,.3)}
@@ -552,6 +581,24 @@ tbody tr:hover{background:#fafcfd}
   </div>
 </div>
 
+<!-- ================= نموذج استكمال الرقم القومي للمستخدمين المعتمدين ================= -->
+<div id="completeProfileScreen" style="display:none;min-height:100vh;background:var(--paper);padding:30px 16px;display:flex;justify-content:center;align-items:center">
+  <div class="reg-card">
+    <h2>📋 استكمال بيانات الحساب</h2>
+    <p style="color:var(--warn);font-weight:700;margin-bottom:16px">⚠️ لم يتم تسجيل الرقم القومي في بياناتك، يرجى استكمال البيانات التالية:</p>
+    <div class="field"><label>الاسم رباعي</label><input id="compFullName" disabled value=""></div>
+    <div class="field"><label>الرقم القومي *</label>
+      <input id="compNationalId" placeholder="أدخل الرقم القومي (14 رقم)" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+      <div style="font-size:11px;color:var(--ink-400);margin-top:4px">الرقم القومي مكون من 14 رقم</div>
+    </div>
+    <div class="field"><label>رقم الهاتف</label><input id="compPhone" placeholder="أدخل رقم الهاتف"></div>
+    <button class="btn btn-primary btn-block" id="submitCompleteBtn">حفظ البيانات</button>
+    <div style="margin-top:12px;text-align:center">
+      <button class="btn btn-outline btn-sm" onclick="doLogout()">تسجيل الخروج</button>
+    </div>
+  </div>
+</div>
+
 <!-- ================= شاشات الحالة ================= -->
 <div id="pendingScreen" class="status-screen" style="display:none">
   <div class="status-card">
@@ -665,12 +712,12 @@ const PAGE_CACHE = {};
 let deferredInstallPrompt = null;
 let isProcessing = false;
 let attendanceLock = { checkIn: false, checkOut: false, processing: false };
+let allUsersCache = [];
 
 /* =====================================================================
-   دوال مساعدة عامة - تعريف كامل
+   دوال مساعدة عامة
    ===================================================================== */
 
-// دالة للحصول على الوقت بتوقيت مصر
 function toEgyptTime(dateValue) {
     const d = dateValue instanceof Date ? dateValue : new Date(dateValue);
     if (Number.isNaN(d.getTime())) return null;
@@ -681,12 +728,10 @@ function toEgyptTime(dateValue) {
     }
 }
 
-// دالة للحصول على الوقت الحالي بتوقيت مصر
 function getEgyptNow() {
     return toEgyptTime(new Date()) || new Date();
 }
 
-// دالة للحصول على مفتاح التاريخ (YYYY-MM-DD)
 function getEgyptDateKey(value) {
     const d = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(d.getTime())) return '';
@@ -695,7 +740,6 @@ function getEgyptDateKey(value) {
     return `${egypt.getFullYear().toString().padStart(4,'0')}-${(egypt.getMonth()+1).toString().padStart(2,'0')}-${egypt.getDate().toString().padStart(2,'0')}`;
 }
 
-// دالة لتنسيق التاريخ والوقت
 function fmtDate(iso) {
     if (!iso) return '-';
     const d = iso instanceof Date ? iso : new Date(iso);
@@ -710,7 +754,6 @@ function fmtDate(iso) {
     return `${hour}.${minute} ${day}/${month}/${year}`;
 }
 
-// دالة لتنسيق الوقت فقط
 function fmtTime(iso) {
     if (!iso) return '';
     const d = iso instanceof Date ? iso : new Date(iso);
@@ -722,7 +765,6 @@ function fmtTime(iso) {
     return `${hour}.${minute}`;
 }
 
-// دالة لتحويل وقت نصي إلى دقائق
 function parseTimeToMinutes(timeStr) {
     if (!timeStr || typeof timeStr !== 'string') return null;
     const parts = timeStr.split(':');
@@ -733,7 +775,6 @@ function parseTimeToMinutes(timeStr) {
     return hours * 60 + minutes;
 }
 
-// دالة للتحقق من التاريخ
 function getDateKey(value) {
     if (!value) return '';
     if (typeof value === 'string') return value.slice(0,10);
@@ -741,14 +782,12 @@ function getDateKey(value) {
     return '';
 }
 
-// دالة لقراءة قيمة من عنصر
 function val(id) { 
     const el = document.getElementById(id);
     if (!el) return '';
     return el.value?.trim ? el.value.trim() : el.value || '';
 }
 
-// دالة عرض مربع الحفظ
 function showSavingModal(message = 'جارى الحفظ...') {
     const overlay = document.getElementById('savingOverlay');
     const title = document.getElementById('savingTitle');
@@ -769,7 +808,6 @@ function hideSavingModal() {
     isProcessing = false;
 }
 
-// دالة عرض الإشعارات
 function showToast(msg, type) {
     hideSavingModal();
     const wrap = document.getElementById('toastWrap');
@@ -780,7 +818,6 @@ function showToast(msg, type) {
     setTimeout(() => el.remove(), 4000);
 }
 
-// دوال المودال
 function openModal(html) { 
     document.getElementById('modalBox').innerHTML = html; 
     document.getElementById('modalOverlay').classList.add('show'); 
@@ -792,13 +829,11 @@ document.getElementById('modalOverlay').addEventListener('click', (e) => {
     if (e.target.id === 'modalOverlay') closeModal(); 
 });
 
-// دوال الـ Sidebar
 function toggleSidebar(open) {
     document.getElementById('sidebar').classList.toggle('open', open);
     document.getElementById('overlayBg').classList.toggle('show', open);
 }
 
-// دالة تحويل الملف إلى Base64
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -814,7 +849,6 @@ function fileToBase64(file) {
     });
 }
 
-// دالة تحميل إعدادات نافذة الحضور
 async function loadAttendanceWindowConfig(force = false) {
     if (!force && window.__attendanceWindowConfig) return window.__attendanceWindowConfig;
     try {
@@ -840,7 +874,6 @@ function getAttendanceWindowState(nowDate) {
     };
 }
 
-// دالة عرض اسم الدور
 function roleLabel(r) {
     return { 
         SYSTEM_ADMIN:'مدير النظام', 
@@ -921,6 +954,15 @@ async function refreshMyStatus() {
             return;
         }
         CURRENT_USER = existing;
+        
+        // التحقق من وجود رقم قومي للمستخدم المعتمد
+        if (existing.status === 'APPROVED' && (!existing.nationalId || existing.nationalId === '')) {
+            // عرض شاشة استكمال البيانات
+            document.getElementById('completeProfileScreen').style.display = 'flex';
+            document.getElementById('compFullName').value = existing.fullName || '';
+            return;
+        }
+        
         if (existing.status === 'PENDING') {
             document.getElementById('pendingScreen').style.display = 'flex';
         } else if (existing.status === 'REJECTED') {
@@ -932,8 +974,50 @@ async function refreshMyStatus() {
     } catch (e) {}
 }
 
+// استكمال بيانات المستخدم (الرقم القومي)
+document.getElementById('submitCompleteBtn').addEventListener('click', async function() {
+    const nationalId = document.getElementById('compNationalId').value.trim();
+    const phone = document.getElementById('compPhone').value.trim();
+    
+    if (!nationalId || nationalId.length < 14) {
+        showToast('الرجاء إدخال الرقم القومي كاملاً (14 رقم)', 'err');
+        return;
+    }
+    
+    if (!/^[0-9]{14}$/.test(nationalId)) {
+        showToast('الرقم القومي يجب أن يتكون من 14 رقم فقط', 'err');
+        return;
+    }
+    
+    this.disabled = true;
+    this.textContent = 'جارى الحفظ...';
+    showSavingModal('جارى حفظ البيانات...');
+    
+    try {
+        await api('updateMyProfile', {
+            userId: CURRENT_USER.id,
+            nationalId: nationalId,
+            phone: phone || CURRENT_USER.phone || ''
+        });
+        
+        CURRENT_USER.nationalId = nationalId;
+        CURRENT_USER.phone = phone || CURRENT_USER.phone || '';
+        
+        hideSavingModal();
+        showToast('✅ تم حفظ البيانات بنجاح', 'ok');
+        document.getElementById('completeProfileScreen').style.display = 'none';
+        launchApp();
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل الحفظ: ' + e.message, 'err');
+    } finally {
+        this.disabled = false;
+        this.textContent = 'حفظ البيانات';
+    }
+});
+
 function hideAllScreens() {
-    ['loginScreen','registerScreen','pendingScreen','rejectedScreen'].forEach(id => {
+    ['loginScreen','registerScreen','pendingScreen','rejectedScreen','completeProfileScreen'].forEach(id => {
         document.getElementById(id).style.display = 'none';
     });
     document.getElementById('app').style.display = 'none';
@@ -1177,7 +1261,7 @@ async function goPage(key, skipHistory, useCache = true) {
 }
 
 /* =====================================================================
-   الصفحات - تعريف جميع الدوال
+   الصفحات
    ===================================================================== */
 
 // الصفحة الرئيسية
@@ -1584,10 +1668,8 @@ async function renderAttendance(root) {
 }
 
 // ========================================================================
-// باقي الصفحات (مختصرة للاختصار)
-// ========================================================================
-
 // شاشة المتابعة
+// ========================================================================
 async function renderCoordination(root) {
     const selectedDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
     
@@ -1767,10 +1849,13 @@ window.exportCoordinationExcel = function(selectedDate) {
 };
 
 // ========================================================================
-// إدارة المستخدمين مع تصدير Excel
+// إدارة المستخدمين - مع فلتر يعمل على الجدول والتصدير
 // ========================================================================
 async function renderUsers(root) {
     const users = await api('listUsers', {});
+    allUsersCache = users;
+    
+    // حذف الأسماء المكررة
     const uniqueUsers = [];
     const seenNames = new Set();
     users.forEach(u => {
@@ -1787,14 +1872,14 @@ async function renderUsers(root) {
     root.innerHTML = `
         <div class="panel">
             <div class="panel-head"><h3>طلبات بانتظار الاعتماد (${pending.length})</h3></div>
-            <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الدور</th><th>المركز</th><th>الهاتف</th><th>البريد</th><th>إجراء</th></tr></thead>
-            <tbody>${pending.map(u=>`<tr><td>${u.fullName}</td><td>${u.job}</td><td>${roleLabel(u.role)}</td><td>${u.center||'-'}</td><td>${u.phone}</td><td>${u.email}</td>
-            <td style="display:flex;gap:6px"><button class="btn btn-primary btn-sm" onclick="approveUserAction('${u.id}')">قبول</button><button class="btn btn-danger btn-sm" onclick="rejectUserAction('${u.id}')">رفض</button></td></tr>`).join('') || `<tr><td colspan="7"><div class="empty-state">لا توجد طلبات معلّقة</div></td></tr>`}</tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الدور</th><th>المركز</th><th>الهاتف</th><th>البريد</th><th>الرقم القومي</th><th>إجراء</th></tr></thead>
+            <tbody>${pending.map(u=>`<tr><td>${u.fullName}</td><td>${u.job}</td><td>${roleLabel(u.role)}</td><td>${u.center||'-'}</td><td>${u.phone||'-'}</td><td>${u.email}</td><td>${u.nationalId||'-'}</td>
+            <td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" onclick="approveUserAction('${u.id}')">قبول</button><button class="btn btn-danger btn-sm" onclick="rejectUserAction('${u.id}')">رفض</button></td></tr>`).join('') || `<tr><td colspan="8"><div class="empty-state">لا توجد طلبات معلّقة</div></td></tr>`}</tbody></table></div>
         </div>
         
         <div class="panel">
             <div class="panel-head">
-                <h3>جميع المستخدمين</h3>
+                <h3>جميع المستخدمين (${others.length})</h3>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
                     <select id="userExportFilter" style="padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
                         <option value="ALL">الكل</option>
@@ -1802,24 +1887,62 @@ async function renderUsers(root) {
                         ${CENTERS.filter(c => c !== 'مجمع الذكاء').map(c => `<option value="${c}">مركز ${c}</option>`).join('')}
                     </select>
                     <button class="btn btn-gold btn-sm" onclick="exportUsersExcel()">📊 تصدير Excel</button>
+                    <button class="btn btn-warning btn-sm" onclick="openMergeUsersModal()">🔗 دمج مستخدمين</button>
                 </div>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الدور</th><th>المركز</th><th>الهاتف</th><th>البريد</th><th>الحالة</th><th>إجراء</th></tr></thead>
+            <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الدور</th><th>المركز</th><th>الهاتف</th><th>البريد</th><th>الرقم القومي</th><th>الحالة</th><th>إجراء</th></tr></thead>
             <tbody id="userTableBody"></tbody></table></div>
         </div>`;
     
-    renderUserRows(others, root);
+    // تطبيق الفلتر عند التحميل
+    applyUserFilter(others, root);
+    
+    // ربط الفلتر بالتغيير
+    const filterSelect = document.getElementById('userExportFilter');
+    if (filterSelect) {
+        filterSelect.onchange = function() {
+            applyUserFilter(others, root);
+        };
+    }
+}
+
+function applyUserFilter(allUsers, root) {
+    const filter = document.getElementById('userExportFilter')?.value || 'ALL';
+    let filteredUsers = allUsers;
+    
+    if (filter === 'ENGINEER') {
+        filteredUsers = allUsers.filter(u => u.role === 'ENGINEER');
+    } else if (filter !== 'ALL') {
+        filteredUsers = allUsers.filter(u => u.center === filter);
+    }
+    
+    renderUserRows(filteredUsers, root);
 }
 
 function renderUserRows(data, root) {
     const body = root.querySelector('#userTableBody');
     if (!body) return;
-    body.innerHTML = data.map(u=>`<tr><td>${u.fullName}</td><td>${u.job||'-'}</td><td>${roleLabel(u.role)}</td><td>${u.center||'-'}</td><td>${u.phone||'-'}</td><td>${u.email||'-'}</td><td><span class="chip ${u.status==='APPROVED'?'approved':'pending'}">${u.status==='APPROVED'?'معتمد':'معلق'}</span></td><td><button class="btn btn-outline btn-sm" onclick="openEditUserModal('${u.id}')">تعديل</button></td></tr>`).join('') || `<tr><td colspan="8"><div class="empty-state">لا يوجد مستخدمون بعد</div></td></tr>`;
+    
+    body.innerHTML = data.map(u=>`<tr>
+        <td>${u.fullName}</td>
+        <td>${u.job||'-'}</td>
+        <td>${roleLabel(u.role)}</td>
+        <td>${u.center||'-'}</td>
+        <td>${u.phone||'-'}</td>
+        <td>${u.email||'-'}</td>
+        <td>${u.nationalId||'-'}</td>
+        <td><span class="chip ${u.status==='APPROVED'?'approved':'pending'}">${u.status==='APPROVED'?'معتمد':'معلق'}</span></td>
+        <td style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="openEditUserModal('${u.id}')">✏️ تعديل</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.fullName}')">🗑️ حذف</button>
+        </td>
+    </tr>`).join('') || `<tr><td colspan="9"><div class="empty-state">لا يوجد مستخدمون</div></td></tr>`;
 }
 
+// تصدير Excel للمستخدمين - بناءً على الفلتر الحالي
 window.exportUsersExcel = function() {
     const filter = document.getElementById('userExportFilter')?.value || 'ALL';
-    const users = window.__usersCache || [];
+    const users = allUsersCache || [];
     
     let filteredUsers = users;
     if (filter === 'ENGINEER') {
@@ -1828,6 +1951,7 @@ window.exportUsersExcel = function() {
         filteredUsers = users.filter(u => u.center === filter);
     }
     
+    // حذف المكررين
     const uniqueFiltered = [];
     const seen = new Set();
     filteredUsers.forEach(u => {
@@ -1839,11 +1963,11 @@ window.exportUsersExcel = function() {
     
     let csv = '\uFEFF';
     csv += 'تقرير المستخدمين\n';
-    csv += 'الاسم,الوظيفة,الدور,المركز,الهاتف,البريد,الحالة\n';
+    csv += 'الاسم,الوظيفة,الدور,المركز,الهاتف,البريد,الرقم القومي,الحالة\n';
     
     uniqueFiltered.forEach(u => {
         const statusMap = { 'APPROVED': 'معتمد', 'PENDING': 'معلق', 'REJECTED': 'مرفوض', 'SUSPENDED': 'موقوف' };
-        csv += `"${u.fullName || ''}","${u.job || ''}","${roleLabel(u.role)}","${u.center || ''}","${u.phone || ''}","${u.email || ''}","${statusMap[u.status] || u.status || ''}"\n`;
+        csv += `"${u.fullName || ''}","${u.job || ''}","${roleLabel(u.role)}","${u.center || ''}","${u.phone || ''}","${u.email || ''}","${u.nationalId || ''}","${statusMap[u.status] || u.status || ''}"\n`;
     });
     
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -1855,53 +1979,245 @@ window.exportUsersExcel = function() {
     showToast('تم تصدير الملف بنجاح', 'ok');
 };
 
-// دوال إدارة المستخدمين
-window.approveUserAction = async (id) => {
-    await api('approveUser', { userId:id, approvedBy:CURRENT_USER.id, approvedByName:CURRENT_USER.fullName });
-    showToast('تم اعتماد الحساب','ok'); goPage('users', true);
-};
+// ========================================================================
+// دوال إدارة المستخدمين - تعديل، حذف، دمج
+// ========================================================================
 
-window.openEditUserModal = (id) => {
-    const user = (window.__usersCache || []).find(u => u.id === id);
-    if (!user) return;
+// تعديل المستخدم - مع إظهار الرقم القومي
+window.openEditUserModal = function(id) {
+    const user = allUsersCache.find(u => u.id === id);
+    if (!user) {
+        showToast('المستخدم غير موجود', 'err');
+        return;
+    }
+    
     openModal(`
-        <h3>تعديل بيانات المستخدم</h3>
-        <div class="field"><label>الاسم</label><input id="euName" value="${user.fullName||''}"></div>
-        <div class="field"><label>الهاتف</label><input id="euPhone" value="${user.phone||''}"></div>
-        <div class="field"><label>المركز</label><select id="euCenter">${CENTERS.map(c=>`<option value="${c}" ${user.center===c?'selected':''}>${c}</option>`).join('')}</select></div>
-        <div class="field"><label>الدور</label><select id="euRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${user.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div>
-        <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitEditUser('${id}')">حفظ</button></div>
+        <h3>✏️ تعديل بيانات المستخدم</h3>
+        <input id="editUserId" value="${id}" style="display:none">
+        <div class="field"><label>الاسم</label><input id="editName" value="${user.fullName||''}"></div>
+        <div class="field"><label>الرقم القومي</label>
+            <input id="editNationalId" value="${user.nationalId||''}" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+            <div style="font-size:11px;color:var(--ink-400);margin-top:4px">الرقم القومي مكون من 14 رقم</div>
+        </div>
+        <div class="field-row">
+            <div class="field"><label>الهاتف</label><input id="editPhone" value="${user.phone||''}"></div>
+            <div class="field"><label>البريد</label><input id="editEmail" value="${user.email||''}"></div>
+        </div>
+        <div class="field-row">
+            <div class="field"><label>المركز</label><select id="editCenter">${CENTERS.map(c=>`<option value="${c}" ${user.center===c?'selected':''}>${c}</option>`).join('')}</select></div>
+            <div class="field"><label>الدور</label><select id="editRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${user.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div>
+        </div>
+        <div class="field"><label>الوظيفة</label><input id="editJob" value="${user.job||''}"></div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-primary" onclick="submitEditUser()">💾 حفظ</button>
+        </div>
     `);
 };
 
-window.submitEditUser = async (id) => {
-    await api('updateUserByAdmin', {
-        userId:id,
-        fullName: val('euName'),
-        phone: val('euPhone'),
-        center: val('euCenter'),
-        role: val('euRole'),
-        updatedBy: CURRENT_USER.id, updatedByName: CURRENT_USER.fullName
-    });
-    closeModal(); showToast('تم تحديث بيانات المستخدم','ok'); goPage('users', true);
+window.submitEditUser = async function() {
+    const id = val('editUserId');
+    const fullName = val('editName');
+    const nationalId = val('editNationalId');
+    const phone = val('editPhone');
+    const email = val('editEmail');
+    const center = val('editCenter');
+    const role = val('editRole');
+    const job = val('editJob');
+    
+    if (!fullName) {
+        showToast('الاسم مطلوب', 'err');
+        return;
+    }
+    
+    if (nationalId && !/^[0-9]{14}$/.test(nationalId)) {
+        showToast('الرقم القومي يجب أن يكون 14 رقم', 'err');
+        return;
+    }
+    
+    showSavingModal('جارى حفظ التغييرات...');
+    
+    try {
+        await api('updateUserByAdmin', {
+            userId: id,
+            fullName: fullName,
+            nationalId: nationalId,
+            phone: phone,
+            email: email,
+            center: center,
+            role: role,
+            job: job,
+            updatedBy: CURRENT_USER.id,
+            updatedByName: CURRENT_USER.fullName
+        });
+        
+        hideSavingModal();
+        closeModal();
+        showToast('✅ تم تحديث بيانات المستخدم', 'ok');
+        goPage('users', true);
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل التحديث: ' + e.message, 'err');
+    }
 };
 
-window.rejectUserAction = (id) => {
+// حذف المستخدم
+window.deleteUser = function(id, name) {
+    openModal(`
+        <h3>🗑️ تأكيد حذف المستخدم</h3>
+        <p style="color:var(--bad);font-size:14px">هل أنت متأكد من حذف المستخدم <strong>${name}</strong>؟</p>
+        <p style="color:var(--ink-600);font-size:13px">سيتم حذف المستخدم نهائياً من قاعدة البيانات.</p>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-danger" onclick="confirmDeleteUser('${id}')">🗑️ تأكيد الحذف</button>
+        </div>
+    `);
+};
+
+window.confirmDeleteUser = async function(id) {
+    closeModal();
+    showSavingModal('جارى حذف المستخدم...');
+    
+    try {
+        await api('deleteUser', { 
+            userId: id,
+            deletedBy: CURRENT_USER.id,
+            deletedByName: CURRENT_USER.fullName
+        });
+        
+        hideSavingModal();
+        showToast('✅ تم حذف المستخدم بنجاح', 'ok');
+        goPage('users', true);
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل الحذف: ' + e.message, 'err');
+    }
+};
+
+// ========================================================================
+// دمج المستخدمين
+// ========================================================================
+window.openMergeUsersModal = function() {
+    const users = allUsersCache.filter(u => u.status === 'APPROVED');
+    
+    openModal(`
+        <h3>🔗 دمج مستخدمين</h3>
+        <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">اختر المستخدم الأساسي ثم المستخدم المراد دمجه معه. سيتم نقل بيانات المستخدم المدمج إلى المستخدم الأساسي وحذف الحساب المدمج.</p>
+        
+        <div class="field">
+            <label>المستخدم الأساسي (الذي سيبقى) *</label>
+            <select id="mergePrimaryUser">
+                <option value="">اختر المستخدم الأساسي</option>
+                ${users.map(u => `<option value="${u.id}">${u.fullName} (${u.email}) - ${u.center||'-'}</option>`).join('')}
+            </select>
+        </div>
+        
+        <div class="field">
+            <label>المستخدم المراد دمجه (سيتم حذفه) *</label>
+            <select id="mergeSecondaryUser">
+                <option value="">اختر المستخدم المراد دمجه</option>
+                ${users.map(u => `<option value="${u.id}">${u.fullName} (${u.email}) - ${u.center||'-'}</option>`).join('')}
+            </select>
+        </div>
+        
+        <div class="field">
+            <label>البريد الإضافي للمستخدم الأساسي</label>
+            <input id="mergeExtraEmail" placeholder="أدخل البريد الإضافي (اختياري)">
+        </div>
+        
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-warning" onclick="submitMergeUsers()">🔗 تأكيد الدمج</button>
+        </div>
+    `);
+};
+
+window.submitMergeUsers = async function() {
+    const primaryId = val('mergePrimaryUser');
+    const secondaryId = val('mergeSecondaryUser');
+    const extraEmail = val('mergeExtraEmail');
+    
+    if (!primaryId) {
+        showToast('يرجى اختيار المستخدم الأساسي', 'err');
+        return;
+    }
+    
+    if (!secondaryId) {
+        showToast('يرجى اختيار المستخدم المراد دمجه', 'err');
+        return;
+    }
+    
+    if (primaryId === secondaryId) {
+        showToast('لا يمكن دمج المستخدم مع نفسه', 'err');
+        return;
+    }
+    
+    closeModal();
+    showSavingModal('جارى دمج المستخدمين...');
+    
+    try {
+        await api('mergeUsers', {
+            primaryUserId: primaryId,
+            secondaryUserId: secondaryId,
+            extraEmail: extraEmail,
+            mergedBy: CURRENT_USER.id,
+            mergedByName: CURRENT_USER.fullName
+        });
+        
+        hideSavingModal();
+        showToast('✅ تم دمج المستخدمين بنجاح', 'ok');
+        goPage('users', true);
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل الدمج: ' + e.message, 'err');
+    }
+};
+
+// دوال الموافقة والرفض
+window.approveUserAction = async function(id) {
+    showSavingModal('جارى اعتماد المستخدم...');
+    try {
+        await api('approveUser', { userId:id, approvedBy:CURRENT_USER.id, approvedByName:CURRENT_USER.fullName });
+        hideSavingModal();
+        showToast('تم اعتماد الحساب', 'ok');
+        goPage('users', true);
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل الاعتماد: ' + e.message, 'err');
+    }
+};
+
+window.rejectUserAction = function(id) {
     openModal(`
         <h3>سبب رفض الطلب</h3>
-        <div class="field"><textarea id="rejReason" rows="3"></textarea></div>
-        <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-danger" onclick="confirmReject('${id}')">تأكيد الرفض</button></div>
+        <div class="field"><textarea id="rejReason" rows="3" placeholder="اكتب سبب الرفض..."></textarea></div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-danger" onclick="confirmReject('${id}')">تأكيد الرفض</button>
+        </div>
     `);
 };
 
-window.confirmReject = async (id) => {
-    await api('rejectUser', { userId:id, reason: val('rejReason'), rejectedBy:CURRENT_USER.id, rejectedByName:CURRENT_USER.fullName });
-    closeModal(); showToast('تم رفض الطلب','ok'); goPage('users', true);
+window.confirmReject = async function(id) {
+    const reason = val('rejReason');
+    closeModal();
+    showSavingModal('جارى رفض الطلب...');
+    try {
+        await api('rejectUser', { userId:id, reason: reason || 'غير محدد', rejectedBy:CURRENT_USER.id, rejectedByName:CURRENT_USER.fullName });
+        hideSavingModal();
+        showToast('تم رفض الطلب', 'ok');
+        goPage('users', true);
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل الرفض: ' + e.message, 'err');
+    }
 };
 
 // ========================================================================
-// التكليفات والمهام
+// باقي الصفحات (مختصرة)
 // ========================================================================
+
+// التكليفات والمهام
 async function renderAssignments(root) {
     let missions = await api('listMissions', {});
     if (CURRENT_USER.role === 'CENTER_ADMIN') {
@@ -1977,7 +2293,7 @@ function taskStatusChip(status) {
 }
 
 // ========================================================================
-// الأجهزة المساحية
+// الأجهزة المساحية (مختصرة)
 // ========================================================================
 async function renderEquipment(root) {
     const equipment = await api('listEquipment',{});
@@ -2197,6 +2513,10 @@ function openProfileModal() {
     openModal(`
         <h3>تعديل الملف الشخصي</h3>
         <div class="field"><label>الاسم</label><input id="profileName" value="${CURRENT_USER.fullName || ''}"></div>
+        <div class="field"><label>الرقم القومي</label>
+            <input id="profileNationalId" value="${CURRENT_USER.nationalId || ''}" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+            <div style="font-size:11px;color:var(--ink-400);margin-top:4px">الرقم القومي مكون من 14 رقم</div>
+        </div>
         <div class="field"><label>الهاتف</label><input id="profilePhone" value="${CURRENT_USER.phone || ''}"></div>
         <div class="field"><label>صورة شخصية</label><input id="profilePhotoFile" type="file" accept="image/*"></div>
         <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="saveProfile()">حفظ</button></div>
@@ -2205,6 +2525,20 @@ function openProfileModal() {
 
 window.saveProfile = async function() {
     let photoUrl = CURRENT_USER.photoUrl || '';
+    const fullName = val('profileName');
+    const nationalId = val('profileNationalId');
+    const phone = val('profilePhone');
+    
+    if (!fullName) {
+        showToast('الاسم مطلوب', 'err');
+        return;
+    }
+    
+    if (nationalId && !/^[0-9]{14}$/.test(nationalId)) {
+        showToast('الرقم القومي يجب أن يكون 14 رقم', 'err');
+        return;
+    }
+    
     const fileInput = document.getElementById('profilePhotoFile');
     if (fileInput && fileInput.files && fileInput.files[0]) {
         const file = fileInput.files[0];
@@ -2224,15 +2558,34 @@ window.saveProfile = async function() {
             if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
         } catch (e) {}
     }
-    await api('updateMyProfile', {
-        userId: CURRENT_USER.id,
-        fullName: val('profileName'),
-        phone: val('profilePhone'),
-        photoUrl
-    });
-    showToast('تم حفظ الملف الشخصي','ok');
-    closeModal();
-    await refreshMyStatus();
+    
+    showSavingModal('جارى حفظ الملف الشخصي...');
+    
+    try {
+        await api('updateMyProfile', {
+            userId: CURRENT_USER.id,
+            fullName: fullName,
+            nationalId: nationalId,
+            phone: phone,
+            photoUrl: photoUrl
+        });
+        
+        CURRENT_USER.fullName = fullName;
+        CURRENT_USER.nationalId = nationalId;
+        CURRENT_USER.phone = phone;
+        if (photoUrl) CURRENT_USER.photoUrl = photoUrl;
+        
+        hideSavingModal();
+        showToast('✅ تم حفظ الملف الشخصي', 'ok');
+        closeModal();
+        updateUserAvatar();
+        updateTopbarAvatar();
+        document.getElementById('sideName').textContent = CURRENT_USER.fullName;
+        document.getElementById('topbarUserInfo').innerHTML = `<b>${CURRENT_USER.fullName}</b><br>${CURRENT_USER.email || ''}`;
+    } catch (e) {
+        hideSavingModal();
+        showToast('فشل الحفظ: ' + e.message, 'err');
+    }
 };
 
 async function renderProfile(root) {
@@ -2317,6 +2670,9 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async fun
         btn.textContent = 'إرسال طلب الاعتماد';
     }
 });
+
+// خريطة الأدوار
+const JOB_ROLE_MAP = { 'محافظة': 'SYSTEM_ADMIN', 'مدير إدارة': 'CENTER_ADMIN', 'فني': 'TECHNICIAN', 'مهندس': 'ENGINEER' };
 
 // دوال أخرى
 window.openAssignmentModal = function() { showToast('تم تطوير هذه الميزة في الإصدار القادم', 'info'); };
