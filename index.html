@@ -167,7 +167,7 @@ a{color:inherit}
 .status-card h2{margin:0 0 10px;font-size:20px}
 .status-card p{color:var(--ink-600);line-height:1.9;font-size:14.5px;margin:0 0 6px}
 
-/* ---------- نموذج التسجيل ---------- */
+/* ---------- نموذج التسجيل الأولي ---------- */
 #registerScreen{min-height:100vh;background:var(--paper);padding:30px 16px;display:flex;justify-content:center}
 .reg-card{width:100%;max-width:640px;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:32px}
 .reg-card h2{margin:0 0 4px;font-size:21px}
@@ -457,6 +457,32 @@ tbody tr:hover{background:#fafcfd}
   flex-shrink: 0;
 }
 
+/* ---------- معاينة الصورة ---------- */
+.photo-preview {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--line);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.photo-preview:hover {
+  transform: scale(1.05);
+}
+.photo-preview-placeholder {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: #e9ecef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: var(--ink-400);
+  border: 2px dashed var(--line);
+}
+
 @media (max-width:900px){
   .sidebar{position:fixed;right:0;top:0;z-index:60;transform:translateX(100%);box-shadow:none;width:min(250px,82vw)}
   .sidebar.open{transform:translateX(0);box-shadow:-20px 0 40px rgba(0,0,0,.3)}
@@ -548,7 +574,7 @@ tbody tr:hover{background:#fafcfd}
   </div>
 </div>
 
-<!-- ================= نموذج استكمال بيانات التسجيل ================= -->
+<!-- ================= نموذج استكمال بيانات التسجيل الأولي ================= -->
 <div id="registerScreen" style="display:none">
   <div class="reg-card">
     <h2>استكمال بيانات الحساب</h2>
@@ -581,17 +607,31 @@ tbody tr:hover{background:#fafcfd}
   </div>
 </div>
 
-<!-- ================= نموذج استكمال الرقم القومي للمستخدمين المعتمدين ================= -->
+<!-- ================= نموذج استكمال البيانات للمستخدمين المعتمدين (رقم قومي + صورة) ================= -->
 <div id="completeProfileScreen" style="display:none;min-height:100vh;background:var(--paper);padding:30px 16px;display:flex;justify-content:center;align-items:center">
   <div class="reg-card">
     <h2>📋 استكمال بيانات الحساب</h2>
-    <p style="color:var(--warn);font-weight:700;margin-bottom:16px">⚠️ لم يتم تسجيل الرقم القومي في بياناتك، يرجى استكمال البيانات التالية:</p>
-    <div class="field"><label>الاسم رباعي</label><input id="compFullName" disabled value=""></div>
-    <div class="field"><label>الرقم القومي *</label>
+    <p style="color:var(--warn);font-weight:700;margin-bottom:16px">
+      ⚠️ يرجى استكمال البيانات التالية لإكمال ملفك الشخصي:
+    </p>
+    <div class="field">
+      <label>الاسم رباعي</label>
+      <input id="compFullName" disabled>
+    </div>
+    <div class="field">
+      <label>الرقم القومي *</label>
       <input id="compNationalId" placeholder="أدخل الرقم القومي (14 رقم)" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
       <div style="font-size:11px;color:var(--ink-400);margin-top:4px">الرقم القومي مكون من 14 رقم</div>
     </div>
-    <div class="field"><label>رقم الهاتف</label><input id="compPhone" placeholder="أدخل رقم الهاتف"></div>
+    <div class="field">
+      <label>رقم الهاتف</label>
+      <input id="compPhone" placeholder="أدخل رقم الهاتف">
+    </div>
+    <div class="field">
+      <label>صورة شخصية *</label>
+      <input id="compPhotoFile" type="file" accept="image/*">
+      <div style="font-size:11px;color:var(--ink-400);margin-top:4px">اختر صورة شخصية واضحة</div>
+    </div>
     <button class="btn btn-primary btn-block" id="submitCompleteBtn">حفظ البيانات</button>
     <div style="margin-top:12px;text-align:center">
       <button class="btn btn-outline btn-sm" onclick="doLogout()">تسجيل الخروج</button>
@@ -955,12 +995,23 @@ async function refreshMyStatus() {
         }
         CURRENT_USER = existing;
         
-        // التحقق من وجود رقم قومي للمستخدم المعتمد
-        if (existing.status === 'APPROVED' && (!existing.nationalId || existing.nationalId === '')) {
-            // عرض شاشة استكمال البيانات
-            document.getElementById('completeProfileScreen').style.display = 'flex';
-            document.getElementById('compFullName').value = existing.fullName || '';
-            return;
+        // التحقق من وجود رقم قومي وصورة للمستخدم المعتمد
+        if (existing.status === 'APPROVED') {
+            const needsNationalId = !existing.nationalId || existing.nationalId === '';
+            const needsPhoto = !existing.photoUrl || existing.photoUrl === '';
+            
+            if (needsNationalId || needsPhoto) {
+                // عرض شاشة استكمال البيانات
+                document.getElementById('completeProfileScreen').style.display = 'flex';
+                document.getElementById('compFullName').value = existing.fullName || '';
+                
+                // رسالة توضيحية حسب البيانات الناقصة
+                let msg = '⚠️ يرجى استكمال البيانات التالية لإكمال ملفك الشخصي:\n';
+                if (needsNationalId) msg += '• الرقم القومي (مطلوب)\n';
+                if (needsPhoto) msg += '• الصورة الشخصية (مطلوبة)\n';
+                document.querySelector('#completeProfileScreen .reg-card p').textContent = msg;
+                return;
+            }
         }
         
         if (existing.status === 'PENDING') {
@@ -974,18 +1025,28 @@ async function refreshMyStatus() {
     } catch (e) {}
 }
 
-// استكمال بيانات المستخدم (الرقم القومي)
+// استكمال بيانات المستخدم (الرقم القومي + الصورة)
 document.getElementById('submitCompleteBtn').addEventListener('click', async function() {
     const nationalId = document.getElementById('compNationalId').value.trim();
     const phone = document.getElementById('compPhone').value.trim();
+    const fileInput = document.getElementById('compPhotoFile');
+    const hasPhoto = !!(fileInput.files && fileInput.files[0]);
     
-    if (!nationalId || nationalId.length < 14) {
+    // التحقق من الرقم القومي إذا كان مطلوباً
+    const needsNationalId = !CURRENT_USER.nationalId || CURRENT_USER.nationalId === '';
+    if (needsNationalId && (!nationalId || nationalId.length < 14)) {
         showToast('الرجاء إدخال الرقم القومي كاملاً (14 رقم)', 'err');
         return;
     }
-    
-    if (!/^[0-9]{14}$/.test(nationalId)) {
+    if (nationalId && !/^[0-9]{14}$/.test(nationalId)) {
         showToast('الرقم القومي يجب أن يتكون من 14 رقم فقط', 'err');
+        return;
+    }
+    
+    // التحقق من الصورة إذا كانت مطلوبة
+    const needsPhoto = !CURRENT_USER.photoUrl || CURRENT_USER.photoUrl === '';
+    if (needsPhoto && !hasPhoto) {
+        showToast('الرجاء اختيار صورة شخصية', 'err');
         return;
     }
     
@@ -994,14 +1055,38 @@ document.getElementById('submitCompleteBtn').addEventListener('click', async fun
     showSavingModal('جارى حفظ البيانات...');
     
     try {
+        let photoUrl = CURRENT_USER.photoUrl || '';
+        
+        if (hasPhoto) {
+            const file = fileInput.files[0];
+            if (file.size > 5 * 1024 * 1024) {
+                showToast('حجم الصورة كبير جداً (الحد الأقصى 5 ميجابايت)', 'err');
+                this.disabled = false;
+                this.textContent = 'حفظ البيانات';
+                hideSavingModal();
+                return;
+            }
+            const base64 = await fileToBase64(file);
+            const uploadRes = await api('uploadPhotoToDrive', { 
+                imageData: base64, 
+                fileName: file.name, 
+                mimeType: file.type 
+            });
+            if (uploadRes && uploadRes.url) {
+                photoUrl = uploadRes.url;
+            }
+        }
+        
         await api('updateMyProfile', {
             userId: CURRENT_USER.id,
-            nationalId: nationalId,
-            phone: phone || CURRENT_USER.phone || ''
+            nationalId: nationalId || CURRENT_USER.nationalId || '',
+            phone: phone || CURRENT_USER.phone || '',
+            photoUrl: photoUrl
         });
         
-        CURRENT_USER.nationalId = nationalId;
+        CURRENT_USER.nationalId = nationalId || CURRENT_USER.nationalId || '';
         CURRENT_USER.phone = phone || CURRENT_USER.phone || '';
+        CURRENT_USER.photoUrl = photoUrl;
         
         hideSavingModal();
         showToast('✅ تم حفظ البيانات بنجاح', 'ok');
@@ -1261,7 +1346,7 @@ async function goPage(key, skipHistory, useCache = true) {
 }
 
 /* =====================================================================
-   الصفحات
+   الصفحات - تعريف جميع الدوال
    ===================================================================== */
 
 // الصفحة الرئيسية
@@ -1668,7 +1753,7 @@ async function renderAttendance(root) {
 }
 
 // ========================================================================
-// شاشة المتابعة
+// شاشة المتابعة - مع جدول الحضور والغياب
 // ========================================================================
 async function renderCoordination(root) {
     const selectedDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
@@ -1799,6 +1884,7 @@ async function renderCoordination(root) {
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <!-- جدول الحضور -->
             <div class="panel" style="padding:12px">
                 <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
                 <div class="attendance-table-wrap">
@@ -1809,6 +1895,8 @@ async function renderCoordination(root) {
                     `)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody></table>
                 </div>
             </div>
+            
+            <!-- جدول الغياب -->
             <div class="panel" style="padding:12px">
                 <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
                 <div class="attendance-table-wrap">
@@ -1849,7 +1937,7 @@ window.exportCoordinationExcel = function(selectedDate) {
 };
 
 // ========================================================================
-// إدارة المستخدمين - مع فلتر يعمل على الجدول والتصدير
+// إدارة المستخدمين - مع فلتر وترتيب
 // ========================================================================
 async function renderUsers(root) {
     const users = await api('listUsers', {});
@@ -1872,48 +1960,93 @@ async function renderUsers(root) {
     root.innerHTML = `
         <div class="panel">
             <div class="panel-head"><h3>طلبات بانتظار الاعتماد (${pending.length})</h3></div>
-            <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الدور</th><th>المركز</th><th>الهاتف</th><th>البريد</th><th>الرقم القومي</th><th>إجراء</th></tr></thead>
-            <tbody>${pending.map(u=>`<tr><td>${u.fullName}</td><td>${u.job}</td><td>${roleLabel(u.role)}</td><td>${u.center||'-'}</td><td>${u.phone||'-'}</td><td>${u.email}</td><td>${u.nationalId||'-'}</td>
-            <td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" onclick="approveUserAction('${u.id}')">قبول</button><button class="btn btn-danger btn-sm" onclick="rejectUserAction('${u.id}')">رفض</button></td></tr>`).join('') || `<tr><td colspan="8"><div class="empty-state">لا توجد طلبات معلّقة</div></td></tr>`}</tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الدور</th><th>المركز</th><th>الهاتف</th><th>البريد</th><th>الرقم القومي</th><th>الصورة</th><th>إجراء</th></tr></thead>
+            <tbody>${pending.map(u=>`<tr>
+                <td>${u.fullName}</td>
+                <td>${u.job}</td>
+                <td>${roleLabel(u.role)}</td>
+                <td>${u.center||'-'}</td>
+                <td>${u.phone||'-'}</td>
+                <td>${u.email}</td>
+                <td>${u.nationalId||'-'}</td>
+                <td>${u.photoUrl ? `<img src="${u.photoUrl}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;cursor:pointer" onclick="window.open('${u.photoUrl}','_blank')" title="عرض الصورة">` : '❌'}</td>
+                <td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" onclick="approveUserAction('${u.id}')">قبول</button><button class="btn btn-danger btn-sm" onclick="rejectUserAction('${u.id}')">رفض</button></td>
+            </tr>`).join('') || `<tr><td colspan="9"><div class="empty-state">لا توجد طلبات معلّقة</div></td></tr>`}</tbody></table></div>
         </div>
         
         <div class="panel">
             <div class="panel-head">
                 <h3>جميع المستخدمين (${others.length})</h3>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-                    <select id="userExportFilter" style="padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
-                        <option value="ALL">الكل</option>
-                        <option value="ENGINEER">المهندسين فقط</option>
+                    <select id="userFilterCenter" style="padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
+                        <option value="ALL">كل المراكز</option>
                         ${CENTERS.filter(c => c !== 'مجمع الذكاء').map(c => `<option value="${c}">مركز ${c}</option>`).join('')}
+                    </select>
+                    <select id="userFilterRole" style="padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
+                        <option value="ALL">كل الأدوار</option>
+                        <option value="ENGINEER">المهندسين</option>
+                        <option value="TECHNICIAN">الفنيين</option>
+                        <option value="CENTER_ADMIN">مدراء المراكز</option>
+                        <option value="SYSTEM_ADMIN">مدير النظام</option>
+                    </select>
+                    <select id="userSortOrder" style="padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
+                        <option value="name_asc">👤 أبجدياً (أ-ي)</option>
+                        <option value="name_desc">👤 أبجدياً (ي-أ)</option>
+                        <option value="newest">🕐 الأحدث أولاً</option>
+                        <option value="oldest">🕐 الأقدم أولاً</option>
                     </select>
                     <button class="btn btn-gold btn-sm" onclick="exportUsersExcel()">📊 تصدير Excel</button>
                     <button class="btn btn-warning btn-sm" onclick="openMergeUsersModal()">🔗 دمج مستخدمين</button>
                 </div>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الدور</th><th>المركز</th><th>الهاتف</th><th>البريد</th><th>الرقم القومي</th><th>الحالة</th><th>إجراء</th></tr></thead>
+            <div class="table-wrap"><table><thead><tr><th>#</th><th>الاسم</th><th>الوظيفة</th><th>الدور</th><th>المركز</th><th>الهاتف</th><th>البريد</th><th>الرقم القومي</th><th>الصورة</th><th>الحالة</th><th>إجراء</th></tr></thead>
             <tbody id="userTableBody"></tbody></table></div>
         </div>`;
     
-    // تطبيق الفلتر عند التحميل
-    applyUserFilter(others, root);
+    applyUserFilters(others, root);
     
-    // ربط الفلتر بالتغيير
-    const filterSelect = document.getElementById('userExportFilter');
-    if (filterSelect) {
-        filterSelect.onchange = function() {
-            applyUserFilter(others, root);
-        };
-    }
+    // ربط الفلاتر بالتغيير
+    ['userFilterCenter', 'userFilterRole', 'userSortOrder'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.onchange = function() { applyUserFilters(others, root); };
+        }
+    });
 }
 
-function applyUserFilter(allUsers, root) {
-    const filter = document.getElementById('userExportFilter')?.value || 'ALL';
-    let filteredUsers = allUsers;
+function applyUserFilters(allUsers, root) {
+    const centerFilter = document.getElementById('userFilterCenter')?.value || 'ALL';
+    const roleFilter = document.getElementById('userFilterRole')?.value || 'ALL';
+    const sortOrder = document.getElementById('userSortOrder')?.value || 'name_asc';
     
-    if (filter === 'ENGINEER') {
-        filteredUsers = allUsers.filter(u => u.role === 'ENGINEER');
-    } else if (filter !== 'ALL') {
-        filteredUsers = allUsers.filter(u => u.center === filter);
+    let filteredUsers = allUsers.filter(u => u.status === 'APPROVED' || u.status === 'SUSPENDED');
+    
+    // فلتر المركز
+    if (centerFilter !== 'ALL') {
+        filteredUsers = filteredUsers.filter(u => u.center === centerFilter);
+    }
+    
+    // فلتر الدور
+    if (roleFilter !== 'ALL') {
+        filteredUsers = filteredUsers.filter(u => u.role === roleFilter);
+    }
+    
+    // ترتيب المستخدمين
+    switch(sortOrder) {
+        case 'name_asc':
+            filteredUsers.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
+            break;
+        case 'name_desc':
+            filteredUsers.sort((a, b) => (b.fullName || '').localeCompare(a.fullName || ''));
+            break;
+        case 'newest':
+            filteredUsers.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            break;
+        case 'oldest':
+            filteredUsers.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+            break;
+        default:
+            break;
     }
     
     renderUserRows(filteredUsers, root);
@@ -1923,32 +2056,45 @@ function renderUserRows(data, root) {
     const body = root.querySelector('#userTableBody');
     if (!body) return;
     
-    body.innerHTML = data.map(u=>`<tr>
-        <td>${u.fullName}</td>
-        <td>${u.job||'-'}</td>
-        <td>${roleLabel(u.role)}</td>
-        <td>${u.center||'-'}</td>
-        <td>${u.phone||'-'}</td>
-        <td>${u.email||'-'}</td>
-        <td>${u.nationalId||'-'}</td>
-        <td><span class="chip ${u.status==='APPROVED'?'approved':'pending'}">${u.status==='APPROVED'?'معتمد':'معلق'}</span></td>
-        <td style="display:flex;gap:4px;flex-wrap:wrap">
-            <button class="btn btn-outline btn-sm" onclick="openEditUserModal('${u.id}')">✏️ تعديل</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.fullName}')">🗑️ حذف</button>
-        </td>
-    </tr>`).join('') || `<tr><td colspan="9"><div class="empty-state">لا يوجد مستخدمون</div></td></tr>`;
+    body.innerHTML = data.map((u, index) => {
+        const statusMap = { 'APPROVED': 'معتمد', 'SUSPENDED': 'موقوف' };
+        const photoHtml = u.photoUrl ? 
+            `<img src="${u.photoUrl}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;cursor:pointer" onclick="window.open('${u.photoUrl}','_blank')" title="عرض الصورة">` : 
+            '<span style="color:var(--ink-400)">❌</span>';
+        
+        return `<tr>
+            <td>${index + 1}</td>
+            <td>${u.fullName}</td>
+            <td>${u.job||'-'}</td>
+            <td>${roleLabel(u.role)}</td>
+            <td>${u.center||'-'}</td>
+            <td>${u.phone||'-'}</td>
+            <td>${u.email||'-'}</td>
+            <td>${u.nationalId||'-'}</td>
+            <td>${photoHtml}</td>
+            <td><span class="chip ${u.status==='APPROVED'?'approved':'rejected'}">${statusMap[u.status] || u.status}</span></td>
+            <td style="display:flex;gap:4px;flex-wrap:wrap">
+                <button class="btn btn-outline btn-sm" onclick="openEditUserModal('${u.id}')">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.fullName}')">🗑️</button>
+                ${u.photoUrl ? `<button class="btn btn-primary btn-sm" onclick="window.open('${u.photoUrl}','_blank')">🖼️</button>` : ''}
+            </td>
+        </tr>`;
+    }).join('') || `<tr><td colspan="11"><div class="empty-state">لا يوجد مستخدمون</div></td></tr>`;
 }
 
-// تصدير Excel للمستخدمين - بناءً على الفلتر الحالي
+// تصدير Excel للمستخدمين
 window.exportUsersExcel = function() {
-    const filter = document.getElementById('userExportFilter')?.value || 'ALL';
     const users = allUsersCache || [];
+    const centerFilter = document.getElementById('userFilterCenter')?.value || 'ALL';
+    const roleFilter = document.getElementById('userFilterRole')?.value || 'ALL';
     
-    let filteredUsers = users;
-    if (filter === 'ENGINEER') {
-        filteredUsers = users.filter(u => u.role === 'ENGINEER');
-    } else if (filter !== 'ALL') {
-        filteredUsers = users.filter(u => u.center === filter);
+    let filteredUsers = users.filter(u => u.status === 'APPROVED' || u.status === 'SUSPENDED');
+    
+    if (centerFilter !== 'ALL') {
+        filteredUsers = filteredUsers.filter(u => u.center === centerFilter);
+    }
+    if (roleFilter !== 'ALL') {
+        filteredUsers = filteredUsers.filter(u => u.role === roleFilter);
     }
     
     // حذف المكررين
@@ -1963,27 +2109,26 @@ window.exportUsersExcel = function() {
     
     let csv = '\uFEFF';
     csv += 'تقرير المستخدمين\n';
-    csv += 'الاسم,الوظيفة,الدور,المركز,الهاتف,البريد,الرقم القومي,الحالة\n';
+    csv += 'الاسم,الوظيفة,الدور,المركز,الهاتف,البريد,الرقم القومي,الحالة,تاريخ التسجيل\n';
     
     uniqueFiltered.forEach(u => {
-        const statusMap = { 'APPROVED': 'معتمد', 'PENDING': 'معلق', 'REJECTED': 'مرفوض', 'SUSPENDED': 'موقوف' };
-        csv += `"${u.fullName || ''}","${u.job || ''}","${roleLabel(u.role)}","${u.center || ''}","${u.phone || ''}","${u.email || ''}","${u.nationalId || ''}","${statusMap[u.status] || u.status || ''}"\n`;
+        const statusMap = { 'APPROVED': 'معتمد', 'SUSPENDED': 'موقوف', 'PENDING': 'معلق', 'REJECTED': 'مرفوض' };
+        csv += `"${u.fullName || ''}","${u.job || ''}","${roleLabel(u.role)}","${u.center || ''}","${u.phone || ''}","${u.email || ''}","${u.nationalId || ''}","${statusMap[u.status] || u.status || ''}","${fmtDate(u.createdAt) || ''}"\n`;
     });
     
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    const filterLabel = filter === 'ALL' ? 'الكل' : filter === 'ENGINEER' ? 'المهندسين' : 'مركز-' + filter;
+    const filterLabel = centerFilter === 'ALL' ? 'الكل' : centerFilter;
     link.download = `المستخدمين-${filterLabel}-${getEgyptDateKey(getEgyptNow())}.csv`;
     link.click();
     showToast('تم تصدير الملف بنجاح', 'ok');
 };
 
 // ========================================================================
-// دوال إدارة المستخدمين - تعديل، حذف، دمج
+// دوال إدارة المستخدمين
 // ========================================================================
 
-// تعديل المستخدم - مع إظهار الرقم القومي
 window.openEditUserModal = function(id) {
     const user = allUsersCache.find(u => u.id === id);
     if (!user) {
@@ -2008,6 +2153,11 @@ window.openEditUserModal = function(id) {
             <div class="field"><label>الدور</label><select id="editRole">${['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'].map(r=>`<option value="${r}" ${user.role===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select></div>
         </div>
         <div class="field"><label>الوظيفة</label><input id="editJob" value="${user.job||''}"></div>
+        <div class="field">
+            <label>صورة شخصية جديدة (اختياري)</label>
+            <input id="editPhotoFile" type="file" accept="image/*">
+            ${user.photoUrl ? `<div style="margin-top:8px"><img src="${user.photoUrl}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--line)"></div>` : ''}
+        </div>
         <div class="modal-close-row">
             <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
             <button class="btn btn-primary" onclick="submitEditUser()">💾 حفظ</button>
@@ -2024,6 +2174,7 @@ window.submitEditUser = async function() {
     const center = val('editCenter');
     const role = val('editRole');
     const job = val('editJob');
+    const fileInput = document.getElementById('editPhotoFile');
     
     if (!fullName) {
         showToast('الاسم مطلوب', 'err');
@@ -2038,6 +2189,19 @@ window.submitEditUser = async function() {
     showSavingModal('جارى حفظ التغييرات...');
     
     try {
+        let photoUrl = '';
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+            const file = fileInput.files[0];
+            if (file.size > 5 * 1024 * 1024) {
+                showToast('حجم الصورة كبير جداً', 'err');
+                hideSavingModal();
+                return;
+            }
+            const base64 = await fileToBase64(file);
+            const uploadRes = await api('uploadPhotoToDrive', { imageData: base64, fileName: file.name, mimeType: file.type });
+            if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
+        }
+        
         await api('updateUserByAdmin', {
             userId: id,
             fullName: fullName,
@@ -2047,6 +2211,7 @@ window.submitEditUser = async function() {
             center: center,
             role: role,
             job: job,
+            photoUrl: photoUrl || undefined,
             updatedBy: CURRENT_USER.id,
             updatedByName: CURRENT_USER.fullName
         });
@@ -2141,12 +2306,10 @@ window.submitMergeUsers = async function() {
         showToast('يرجى اختيار المستخدم الأساسي', 'err');
         return;
     }
-    
     if (!secondaryId) {
         showToast('يرجى اختيار المستخدم المراد دمجه', 'err');
         return;
     }
-    
     if (primaryId === secondaryId) {
         showToast('لا يمكن دمج المستخدم مع نفسه', 'err');
         return;
@@ -2507,7 +2670,7 @@ function togglePresentNowAutoRefresh(enable, root) {
 }
 
 // ========================================================================
-// الملف الشخصي والإشعارات
+// الملف الشخصي - مع إمكانية تحديث الصورة والرقم القومي
 // ========================================================================
 function openProfileModal() {
     openModal(`
@@ -2518,8 +2681,15 @@ function openProfileModal() {
             <div style="font-size:11px;color:var(--ink-400);margin-top:4px">الرقم القومي مكون من 14 رقم</div>
         </div>
         <div class="field"><label>الهاتف</label><input id="profilePhone" value="${CURRENT_USER.phone || ''}"></div>
-        <div class="field"><label>صورة شخصية</label><input id="profilePhotoFile" type="file" accept="image/*"></div>
-        <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="saveProfile()">حفظ</button></div>
+        <div class="field">
+            <label>الصورة الشخصية</label>
+            <input id="profilePhotoFile" type="file" accept="image/*">
+            ${CURRENT_USER.photoUrl ? `<div style="margin-top:8px"><img src="${CURRENT_USER.photoUrl}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--line);cursor:pointer" onclick="window.open('${CURRENT_USER.photoUrl}','_blank')" title="عرض الصورة"></div>` : '<div style="color:var(--ink-400);font-size:12px;margin-top:4px">لا توجد صورة شخصية</div>'}
+        </div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-primary" onclick="saveProfile()">💾 حفظ</button>
+        </div>
     `);
 }
 
@@ -2543,7 +2713,7 @@ window.saveProfile = async function() {
     if (fileInput && fileInput.files && fileInput.files[0]) {
         const file = fileInput.files[0];
         if (file.size > 5 * 1024 * 1024) {
-            showToast('حجم الصورة كبير جدًا', 'err');
+            showToast('حجم الصورة كبير جدًا (الحد الأقصى 5 ميجابايت)', 'err');
             return;
         }
         const base64 = await fileToBase64(file);
@@ -2592,6 +2762,9 @@ async function renderProfile(root) {
     root.innerHTML = `<div class="panel"><div class="panel-head"><h3>الملف الشخصي</h3></div></div>`;
 }
 
+// ========================================================================
+// الإشعارات
+// ========================================================================
 async function refreshNotifCount() {
     if (!CURRENT_USER) return;
     const list = await api('listNotifications', { userId: CURRENT_USER.id });
@@ -2612,7 +2785,9 @@ window.openNotifModal = async function() {
     setTimeout(refreshNotifCount, 500);
 };
 
-// دوال التسجيل
+// ========================================================================
+// دوال التسجيل الأولي
+// ========================================================================
 document.getElementById('submitRegisterBtn').addEventListener('click', async function() {
     const email = document.getElementById('regEmail').value.trim();
     const fullName = document.getElementById('regFullName').value.trim();
