@@ -1195,7 +1195,6 @@ function launchApp() {
     goPage(currentPage, true);
     refreshNotifCount();
     setInterval(refreshNotifCount, 60000);
-    // استخدام try/catch لتجنب خطأ recordLogin
     try {
         api('recordLogin', { userId: CURRENT_USER.id, userName: CURRENT_USER.fullName, email: CURRENT_USER.email }).catch(() => {});
     } catch(e) {
@@ -1423,7 +1422,7 @@ function updateDashboardClock() {
 }
 
 // ========================================================================
-// الحضور والانصراف
+// الحضور والانصراف - النسخة المُحدثة
 // ========================================================================
 
 async function hasCheckedInToday(userId) {
@@ -1440,6 +1439,25 @@ async function hasCheckedOutToday(userId) {
         const result = await api('listAttendance', { userId: userId, date: today, type: 'OUT' });
         return result && result.length > 0;
     } catch (e) { return false; }
+}
+
+async function todayAttendanceStatus(p) {
+    try {
+        const today = getEgyptDateKey(getEgyptNow());
+        const list = await api('listAttendance', { userId: p.userId, date: today });
+        var checkedIn = list.filter(function (a) { return a.type === 'IN'; });
+        var checkedOut = list.filter(function (a) { return a.type === 'OUT'; });
+        var isLate = checkedIn.length > 0 ? (checkedIn[0].isLate === true || checkedIn[0].isLate === 'true') : false;
+        return {
+            hasCheckedIn: checkedIn.length > 0,
+            hasCheckedOut: checkedOut.length > 0,
+            lastIn: checkedIn[0] || null,
+            lastOut: checkedOut[0] || null,
+            isLate: isLate
+        };
+    } catch (e) {
+        return { hasCheckedIn: false, hasCheckedOut: false, lastIn: null, lastOut: null, isLate: false };
+    }
 }
 
 async function doAttendanceEnhanced(action, extra = {}) {
@@ -1630,23 +1648,33 @@ async function renderAttendance(root) {
     const checkInKey = 'attendance_checkin_' + CURRENT_USER.id + '_' + today;
     const checkOutKey = 'attendance_checkout_' + CURRENT_USER.id + '_' + today;
 
-    let hasCheckIn = localStorage.getItem(checkInKey) === '1';
-    let hasCheckOut = localStorage.getItem(checkOutKey) === '1';
+    // ==================== الإصلاح: التحقق من السيرفر أولاً ====================
+    // جلب حالة الحضور من السيرفر (المصدر الأساسي)
+    const status = await todayAttendanceStatus({ userId: CURRENT_USER.id });
     
-    if (!hasCheckIn) {
-        hasCheckIn = await hasCheckedInToday(CURRENT_USER.id);
-        if (hasCheckIn) localStorage.setItem(checkInKey, '1');
+    // تحديث Local Storage بناءً على حالة السيرفر
+    if (status.hasCheckedIn) {
+        localStorage.setItem(checkInKey, '1');
+    } else {
+        localStorage.removeItem(checkInKey);
     }
-    if (!hasCheckOut) {
-        hasCheckOut = await hasCheckedOutToday(CURRENT_USER.id);
-        if (hasCheckOut) localStorage.setItem(checkOutKey, '1');
+    
+    if (status.hasCheckedOut) {
+        localStorage.setItem(checkOutKey, '1');
+    } else {
+        localStorage.removeItem(checkOutKey);
     }
-
-    // جلب حالة الحضور مع isLate من الـ API
-    const status = await api('todayAttendanceStatus', { userId: CURRENT_USER.id });
+    
+    let hasCheckIn = status.hasCheckedIn;
+    let hasCheckOut = status.hasCheckedOut;
     const isLate = status.isLate || false;
 
-    const myAttendance = await api('listAttendance', { userId: CURRENT_USER.id, date: today }) || [];
+    // جلب سجلات الحضور لعرضها في الجدول
+    const myAttendance = await api('listAttendance', { 
+        userId: CURRENT_USER.id,
+        date: today
+    }) || [];
+
     const checkInRecord = myAttendance.find(a => a.type === 'IN');
     const checkOutRecord = myAttendance.find(a => a.type === 'OUT');
     
@@ -1730,13 +1758,16 @@ async function renderAttendance(root) {
         </div>
     `;
 
+    // تحديث الساعة
     setInterval(() => {
         const c = document.getElementById('clockNow');
         if (c) c.textContent = getEgyptNow().toLocaleTimeString('ar-EG');
     }, 1000);
 
+    // تحديث حالة الأزرار
     updateAttendanceUI(hasCheckIn, hasCheckOut);
 
+    // ربط الأزرار
     const checkInBtn = document.getElementById('checkInBtn');
     const checkOutBtn = document.getElementById('checkOutBtn');
     if (checkInBtn) {
@@ -1771,7 +1802,6 @@ async function renderCoordination(root) {
     } else if (CURRENT_USER.role === 'SYSTEM_ADMIN') {
         centersToShow = CENTERS.filter(c => c !== 'مجمع الذكاء');
     } else {
-        // للمهندسين والفنيين: عرض مركزهم فقط
         centersToShow = [CURRENT_USER.center];
     }
 
@@ -1865,7 +1895,6 @@ async function renderCoordination(root) {
     });
 
     root.innerHTML = `
-        <!-- الإحصائيات الإجمالية -->
         <div class="coordination-stats-grid">
             <div class="stat-box"><div class="stat-number">${totalEmployees}</div><div class="stat-label">👥 إجمالي الموظفين</div></div>
             <div class="stat-box" style="border-color:var(--good)"><div class="stat-number" style="color:var(--good)">${totalPresent}</div><div class="stat-label">✅ الحضور</div></div>
@@ -1875,7 +1904,6 @@ async function renderCoordination(root) {
             <div class="stat-box" style="border-color:var(--navy-600)"><div class="stat-number">${Math.round((totalPresent / (totalEmployees || 1)) * 100)}%</div><div class="stat-label">📊 نسبة الحضور</div></div>
         </div>
 
-        <!-- جدول إحصائيات المراكز -->
         <div style="overflow-x:auto;margin-bottom:20px">
             <table class="center-summary-table">
                 <thead><tr><th>المركز</th><th>إجمالي</th><th>✅ حضور في الموعد</th><th>⏰ حضور متأخر</th><th>❌ غياب</th><th>📊 نسبة الحضور</th></tr></thead>
@@ -1895,30 +1923,25 @@ async function renderCoordination(root) {
             </table>
         </div>
 
-        <!-- جدول الحضور -->
-        <div class="panel" style="padding:12px;margin-bottom:16px">
-            <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
-            <div class="attendance-table-wrap">
-                <table>
-                    <thead><tr><th>المركز</th><th>الاسم</th><th>الوقت</th><th>الموقع</th><th>الحالة</th></tr></thead>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div class="panel" style="padding:12px">
+                <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
+                <div class="attendance-table-wrap">
+                    <table><thead><tr><th>المركز</th><th>الاسم</th><th>الوقت</th><th>الموقع</th><th>الحالة</th></tr></thead>
                     <tbody>${centerData.flatMap(c => c.presentList.map(p => `
                         <tr><td>${c.center}</td><td>${p.name}</td><td>${fmtTime(p.time)}</td><td>${p.location}</td>
                         <td>${p.late ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">في الموعد</span>'}</td></tr>
-                    `)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody>
-                </table>
+                    `)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody></table>
+                </div>
             </div>
-        </div>
-
-        <!-- جدول الغياب (أسفل الحضور) -->
-        <div class="panel" style="padding:12px">
-            <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
-            <div class="attendance-table-wrap">
-                <table>
-                    <thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead>
+            <div class="panel" style="padding:12px">
+                <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
+                <div class="attendance-table-wrap">
+                    <table><thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead>
                     <tbody>${centerData.flatMap(c => c.absentList.map(a => `
                         <tr><td>${c.center}</td><td>${a.name}</td><td>${roleLabel(a.role)}</td></tr>
-                    `)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}</tbody>
-                </table>
+                    `)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}</tbody></table>
+                </div>
             </div>
         </div>
 
@@ -1956,7 +1979,6 @@ window.exportCoordinationExcel = function(selectedDate) {
 async function renderUsers(root) {
     const users = await api('listUsers', {});
     allUsersCache = users;
-    
     window.__usersCache = users;
     
     const pending = users.filter(u=>u.status==='PENDING');
@@ -2120,10 +2142,10 @@ window.exportUsersExcel = function() {
 };
 
 // ========================================================================
-// دوال إدارة المستخدمين
+// دوال إدارة المستخدمين - مع إصلاح إلغاء الحضور
 // ========================================================================
 
-// إلغاء حضور الموظف (للمدير فقط)
+// دالة إلغاء حضور الموظف (للمدير فقط)
 window.cancelUserAttendance = function(userId, userName) {
     const today = getEgyptDateKey(getEgyptNow());
     
@@ -2154,9 +2176,44 @@ window.confirmCancelAttendance = async function(userId) {
             date: date
         });
         
+        // ==================== إصلاح المشكلة: تحديث Local Storage ====================
+        // 1) مسح حالة الحضور والانصراف للمستخدم من Local Storage
+        const checkInKey = 'attendance_checkin_' + userId + '_' + date;
+        const checkOutKey = 'attendance_checkout_' + userId + '_' + date;
+        const checkInTimeKey = 'attendance_checkin_time_' + userId + '_' + date;
+        const locationKey = 'attendance_location_' + userId + '_' + date;
+        
+        localStorage.removeItem(checkInKey);
+        localStorage.removeItem(checkOutKey);
+        localStorage.removeItem(checkInTimeKey);
+        localStorage.removeItem(locationKey);
+        
+        // 2) إذا كان المستخدم هو المستخدم الحالي، قم بتحديث واجهته
+        if (CURRENT_USER && CURRENT_USER.id === userId) {
+            // تحديث حالة الأزرار في شاشة الحضور
+            updateAttendanceUI(false, false);
+            
+            // حذف كاش الصفحة الحالية لإعادة تحميلها من السيرفر
+            delete PAGE_CACHE['attendance'];
+            
+            // إعادة تحميل شاشة الحضور إذا كانت مفتوحة حالياً
+            if (currentPage === 'attendance') {
+                goPage('attendance', true, false);
+            }
+        }
+        
+        // 3) إذا كان المستخدم هو المستخدم الحالي، قم بتحديث الـ UI العام
+        if (CURRENT_USER && CURRENT_USER.id === userId) {
+            CURRENT_USER.hasCheckedIn = false;
+            CURRENT_USER.hasCheckedOut = false;
+        }
+        
         hideSavingModal();
         showToast('✅ ' + (result.message || 'تم إلغاء الحضور بنجاح'), 'ok');
+        
+        // 4) إعادة تحميل صفحة المستخدمين لتحديث الجدول
         goPage('users', true);
+        
     } catch (e) {
         hideSavingModal();
         showToast('❌ فشل الإلغاء: ' + e.message, 'err');
@@ -2409,7 +2466,7 @@ window.confirmReject = async function(id) {
 };
 
 // ========================================================================
-// باقي الصفحات (مختصرة)
+// باقي الصفحات (مختصرة للاختصار)
 // ========================================================================
 
 // التكليفات والمهام
