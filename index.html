@@ -1688,9 +1688,10 @@ async function doAttendanceEnhanced(action, extra = {}) {
             action === 'checkOut' || localStorage.getItem(checkOutKey) === '1'
         );
 
-        // ==================== تحديث الصفحة تلقائياً بعد 1 ثانية ====================
+        // ==================== تحديث الصفحة تلقائياً بعد 1 ثانية (بدون كاش قديم) ====================
         setTimeout(() => {
-            goPage('attendance', true);
+            delete PAGE_CACHE['attendance'];
+            goPage('attendance', true, false);
         }, 1000);
 
     } catch (error) {
