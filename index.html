@@ -1483,17 +1483,47 @@ function updateDashboardClock() {
 async function hasCheckedInToday(userId) {
     try {
         const today = getEgyptDateKey(getEgyptNow());
-        const result = await api('listAttendance', { userId: userId, date: today, type: 'IN' });
-        return result && result.length > 0;
+        // ملاحظة: الباك اند بيتجاهل باراميتر type، فبنفلتر هنا يدويًا لضمان الدقة
+        const result = await api('listAttendance', { userId: userId, date: today });
+        return Array.isArray(result) && result.some(a => a.type === 'IN');
     } catch (e) { return false; }
 }
 
 async function hasCheckedOutToday(userId) {
     try {
         const today = getEgyptDateKey(getEgyptNow());
-        const result = await api('listAttendance', { userId: userId, date: today, type: 'OUT' });
-        return result && result.length > 0;
+        // ملاحظة: الباك اند بيتجاهل باراميتر type، فبنفلتر هنا يدويًا لضمان الدقة
+        const result = await api('listAttendance', { userId: userId, date: today });
+        return Array.isArray(result) && result.some(a => a.type === 'OUT');
     } catch (e) { return false; }
+}
+
+// دالة موقع محصّنة: تضمن الرفض خلال المهلة المحددة حتى لو لم يستدعِ المتصفح دالة الخطأ إطلاقًا
+// (بعض الأجهزة لا تستدعي أي callback عند تعطيل خدمة الموقع من إعدادات النظام)
+function getCurrentPositionSafe(timeoutMs) {
+    const limit = timeoutMs || 12000;
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('NO_GEOLOCATION'));
+            return;
+        }
+        let settled = false;
+        const timer = setTimeout(() => {
+            if (!settled) {
+                settled = true;
+                reject(new Error('GEO_TIMEOUT'));
+            }
+        }, limit);
+        navigator.geolocation.getCurrentPosition(
+            function (pos) {
+                if (!settled) { settled = true; clearTimeout(timer); resolve(pos); }
+            },
+            function (err) {
+                if (!settled) { settled = true; clearTimeout(timer); reject(err); }
+            },
+            { enableHighAccuracy: true, timeout: limit, maximumAge: 0 }
+        );
+    });
 }
 
 async function todayAttendanceStatus(p) {
@@ -1541,7 +1571,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             localStorage.setItem(checkInKey, '1');
             showToast('تم تسجيل حضورك اليوم بالفعل', 'ok');
             updateAttendanceUI(true, false);
-            setTimeout(() => goPage('attendance', true), 500);
+            setTimeout(() => { delete PAGE_CACHE['attendance']; goPage('attendance', true, false); }, 500);
             return;
         }
     }
@@ -1561,7 +1591,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             localStorage.setItem(checkOutKey, '1');
             showToast('تم تسجيل انصرافك اليوم بالفعل', 'ok');
             updateAttendanceUI(true, true);
-            setTimeout(() => goPage('attendance', true), 500);
+            setTimeout(() => { delete PAGE_CACHE['attendance']; goPage('attendance', true, false); }, 500);
             return;
         }
         
@@ -1601,19 +1631,21 @@ async function doAttendanceEnhanced(action, extra = {}) {
     // ==================== التحقق الإجباري من تفعيل الموقع قبل تسجيل الحضور ====================
     let checkInPosition = null;
     if (action === 'checkIn') {
+        const geoBtnEl = document.getElementById('checkInBtn');
+        const geoBtnOriginalText = geoBtnEl ? geoBtnEl.textContent : '';
+        const geoBtnOriginalClass = geoBtnEl ? geoBtnEl.className : '';
+        if (geoBtnEl) {
+            geoBtnEl.disabled = true;
+            geoBtnEl.textContent = '📍 جارِ التحقق من تفعيل الموقع...';
+        }
         try {
-            checkInPosition = await new Promise((resolve, reject) => {
-                if (!navigator.geolocation) {
-                    reject(new Error('NO_GEOLOCATION'));
-                    return;
-                }
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0
-                });
-            });
+            checkInPosition = await getCurrentPositionSafe(12000);
         } catch (geoError) {
+            if (geoBtnEl) {
+                geoBtnEl.disabled = false;
+                geoBtnEl.textContent = geoBtnOriginalText;
+                geoBtnEl.className = geoBtnOriginalClass;
+            }
             openModal(`
                 <h3>📍 يجب تفعيل خدمة الموقع</h3>
                 <p style="color:var(--ink-600);font-size:14px;line-height:1.9">لا يمكن تسجيل الحضور بدون تفعيل خدمة تحديد الموقع (GPS) والسماح للمتصفح بالوصول إلى موقعك.</p>
@@ -1623,6 +1655,11 @@ async function doAttendanceEnhanced(action, extra = {}) {
                 </div>
             `);
             return;
+        }
+        if (geoBtnEl) {
+            geoBtnEl.disabled = false;
+            geoBtnEl.textContent = geoBtnOriginalText;
+            geoBtnEl.className = geoBtnOriginalClass;
         }
     }
 
@@ -1651,13 +1688,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
         let position = checkInPosition;
         if (!position) {
             try {
-                position = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, {
-                        enableHighAccuracy: true,
-                        timeout: 10000,
-                        maximumAge: 60000
-                    });
-                });
+                position = await getCurrentPositionSafe(10000);
             } catch (geoError) {
                 console.warn('Geolocation not available:', geoError);
             }
