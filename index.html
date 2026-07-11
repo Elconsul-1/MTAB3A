@@ -1595,37 +1595,39 @@ async function doAttendanceEnhanced(action, extra = {}) {
             return;
         }
         
-        // ==================== فتح نافذة إدخال ما تم تنفيذه قبل الانصراف ====================
-        openModal(`
-            <h3>📋 ما تم تنفيذه اليوم</h3>
-            <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">يرجى كتابة ملخص لما تم إنجازه خلال اليوم قبل تسجيل الانصراف:</p>
-            <div class="field">
-                <label>نوع العمل *</label>
-                <select id="checkoutWorkType" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px">
-                    <option value="FIELD">🚶 ميداني</option>
-                    <option value="OFFICE">🏢 مكتبي</option>
-                </select>
-            </div>
-            <div class="field">
-                <label>المهام المنفذة *</label>
-                <textarea id="checkoutTasks" rows="5" placeholder="مثال:&#10;1. رفع مساحي لقطعة رقم 123 بقرية كفر النيل&#10;2. تحديد منسوب بمنطقة المشتل&#10;3. معاينة أملاك دولة بمنطقة الزاوية" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px;font-family:var(--font-body)"></textarea>
-            </div>
-            <div class="field">
-                <label>عدد الحالات المنفذة</label>
-                <input id="checkoutCasesCount" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px">
-            </div>
-            <div class="field">
-                <label>ملاحظات إضافية</label>
-                <textarea id="checkoutNotes" rows="2" placeholder="أي ملاحظات أو عقبات واجهتك..." style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px;font-family:var(--font-body)"></textarea>
-            </div>
-            <div class="modal-close-row">
-                <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-                <button class="btn btn-primary" onclick="submitCheckoutWithDetails()">✅ تأكيد الانصراف</button>
-            </div>
-        `);
-        
-        window.__pendingCheckout = { userId: CURRENT_USER.id, center: extra.center || CURRENT_USER.center };
-        return;
+        // ==================== فتح نافذة إدخال ما تم تنفيذه قبل الانصراف (فقط في المرة الأولى قبل ملء البيانات) ====================
+        if (!extra.tasks) {
+            openModal(`
+                <h3>📋 ما تم تنفيذه اليوم</h3>
+                <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">يرجى كتابة ملخص لما تم إنجازه خلال اليوم قبل تسجيل الانصراف:</p>
+                <div class="field">
+                    <label>نوع العمل *</label>
+                    <select id="checkoutWorkType" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px">
+                        <option value="FIELD">🚶 ميداني</option>
+                        <option value="OFFICE">🏢 مكتبي</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>المهام المنفذة *</label>
+                    <textarea id="checkoutTasks" rows="5" placeholder="مثال:&#10;1. رفع مساحي لقطعة رقم 123 بقرية كفر النيل&#10;2. تحديد منسوب بمنطقة المشتل&#10;3. معاينة أملاك دولة بمنطقة الزاوية" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px;font-family:var(--font-body)"></textarea>
+                </div>
+                <div class="field">
+                    <label>عدد الحالات المنفذة</label>
+                    <input id="checkoutCasesCount" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px">
+                </div>
+                <div class="field">
+                    <label>ملاحظات إضافية</label>
+                    <textarea id="checkoutNotes" rows="2" placeholder="أي ملاحظات أو عقبات واجهتك..." style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px;font-family:var(--font-body)"></textarea>
+                </div>
+                <div class="modal-close-row">
+                    <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+                    <button class="btn btn-primary" onclick="submitCheckoutWithDetails()">✅ تأكيد الانصراف</button>
+                </div>
+            `);
+            window.__pendingCheckout = { userId: CURRENT_USER.id, center: extra.center || CURRENT_USER.center };
+            return;
+        }
+        // extra.tasks موجودة (جاية من submitCheckoutWithDetails) -> نكمل تنفيذ الانصراف فعليًا بدل ما نفتح البوكس تاني
     }
 
     // ==================== التحقق الإجباري من تفعيل الموقع قبل تسجيل الحضور ====================
@@ -1892,7 +1894,6 @@ async function renderAttendance(root) {
     
     let hasCheckIn = status.hasCheckedIn;
     let hasCheckOut = status.hasCheckedOut;
-    const isLate = status.isLate || false;
 
     const myAttendance = await api('listAttendance', { 
         userId: CURRENT_USER.id,
@@ -1907,6 +1908,14 @@ async function renderAttendance(root) {
     let checkInLat = checkInRecord ? checkInRecord.lat : null;
     let checkInLng = checkInRecord ? checkInRecord.lng : null;
     let checkInMapsLink = checkInRecord ? checkInRecord.mapsLink : null;
+
+    // ==================== حساب التأخير من توقيت الحضور الفعلي (بدل الاعتماد على قيمة السيرفر فقط) ====================
+    await loadAttendanceWindowConfig();
+    let isLate = status.isLate || false;
+    if (checkInTime) {
+        const windowState = getAttendanceWindowState(new Date(checkInTime));
+        isLate = windowState.isLate;
+    }
 
     let locationLink = '-';
     if (checkInMapsLink) {
@@ -1960,7 +1969,7 @@ async function renderAttendance(root) {
                     </thead>
                     <tbody>
                         ${myAttendance.length ? myAttendance.map(a => {
-                            const isLateCheck = a.type === 'IN' ? (a.isLate === true || a.isLate === 'true') : false;
+                            const isLateCheck = a.type === 'IN' ? getAttendanceWindowState(new Date(a.timestamp)).isLate : false;
                             let locLink = '-';
                             if (a.mapsLink) {
                                 locLink = `<a href="${a.mapsLink}" target="_blank" class="location-link">📍 عرض</a>`;
