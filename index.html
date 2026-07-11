@@ -795,9 +795,6 @@ const FIREBASE_CONFIG = {
 };
 const API_URL = "https://script.google.com/macros/s/AKfycbzvLzXmAEvDvgeYB87PTusZYO17tKLv73UeXlY9Hj28VCWquDopHS-9XoeR2VdFmDH79Q/exec";
 
-// مفتاح Google Geocoding API (تم التحديث بالمفتاح التجريبي الجديد)
-const GOOGLE_API_KEY = 'AIzaSyC0v0i6U_Cv0KBl8OozaVRlm3pqBpeMXH0';
-
 firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 
@@ -997,9 +994,9 @@ function roleLabel(r) {
 }
 
 /* =====================================================================
-   دالة للحصول على اسم الموقع من الإحداثيات باستخدام Google Geocoding API
+   دالة للحصول على اسم الموقع من الإحداثيات باستخدام Nominatim (مجاني وآمن)
    ===================================================================== */
-async function getLocationNameGoogle(lat, lng) {
+async function getLocationNameOSM(lat, lng) {
     if (!lat || !lng) return 'موقع غير معروف';
     
     const latNum = parseFloat(lat);
@@ -1007,89 +1004,33 @@ async function getLocationNameGoogle(lat, lng) {
     if (isNaN(latNum) || isNaN(lngNum)) return 'موقع غير معروف';
     
     try {
-        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latNum},${lngNum}&key=${GOOGLE_API_KEY}&language=ar`;
-        const response = await fetch(url);
-        const data = await response.json();
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latNum}&lon=${lngNum}&zoom=18&addressdetails=1&accept-language=ar&countrycodes=eg`;
+        const response = await fetch(url, {
+            headers: { 'User-Agent': 'MTAB3A-App/1.0' }
+        });
         
-        if (data.status === 'OK' && data.results && data.results.length > 0) {
-            const result = data.results[0];
-            const addressComponents = result.address_components || [];
-            
-            // ترتيب الأولوية للحصول على أدق اسم للقرية/المدينة
-            let locationName = '';
-            
-            // 1. البحث عن locality (مدينة/قرية)
-            for (const component of addressComponents) {
-                if (component.types.includes('locality')) {
-                    locationName = component.long_name;
-                    break;
-                }
-            }
-            
-            // 2. إذا لم يتم العثور على locality، جرب administrative_area_level_3 (قرية/مركز)
-            if (!locationName) {
-                for (const component of addressComponents) {
-                    if (component.types.includes('administrative_area_level_3')) {
-                        locationName = component.long_name;
-                        break;
-                    }
-                }
-            }
-            
-            // 3. إذا لم يتم العثور، جرب administrative_area_level_4
-            if (!locationName) {
-                for (const component of addressComponents) {
-                    if (component.types.includes('administrative_area_level_4')) {
-                        locationName = component.long_name;
-                        break;
-                    }
-                }
-            }
-            
-            // 4. إذا لم يتم العثور، جرب neighborhood
-            if (!locationName) {
-                for (const component of addressComponents) {
-                    if (component.types.includes('neighborhood')) {
-                        locationName = component.long_name;
-                        break;
-                    }
-                }
-            }
-            
-            // 5. إذا لم يتم العثور، جرب sublocality
-            if (!locationName) {
-                for (const component of addressComponents) {
-                    if (component.types.includes('sublocality')) {
-                        locationName = component.long_name;
-                        break;
-                    }
-                }
-            }
-            
-            // 6. إذا لم يتم العثور على أي شيء، استخدم العنوان المنسق
-            if (!locationName) {
-                const formatted = result.formatted_address || '';
-                const parts = formatted.split(',');
-                if (parts.length > 0 && parts[0].trim() !== '') {
-                    locationName = parts[0].trim();
-                } else {
-                    locationName = formatted;
-                }
-            }
-            
-            return locationName || 'موقع غير معروف';
-        } else if (data.status === 'OVER_QUERY_LIMIT') {
-            console.warn('Google Geocoding API: تجاوزت حد الطلبات المجاني');
-            return 'موقع غير معروف (تجاوز الحد)';
-        } else if (data.status === 'REQUEST_DENIED') {
-            console.warn('Google Geocoding API: المفتاح غير صالح أو الخدمة غير مفعلة');
-            return 'موقع غير معروف (خطأ في المفتاح)';
-        } else {
-            console.warn('Google Geocoding API response:', data.status);
+        if (!response.ok) {
+            console.warn('Nominatim request failed:', response.status);
             return 'موقع غير معروف';
         }
+        
+        const data = await response.json();
+        
+        if (data && data.address) {
+            const address = data.address;
+            return address.village || 
+                   address.hamlet || 
+                   address.neighbourhood || 
+                   address.suburb || 
+                   address.town ||
+                   address.city ||
+                   address.district ||
+                   data.display_name?.split(',').slice(0, 2).join(', ') || 
+                   'موقع غير معروف';
+        }
+        return 'موقع غير معروف';
     } catch (error) {
-        console.error('خطأ في جلب الموقع من Google:', error);
+        console.error('خطأ في جلب الموقع من Nominatim:', error);
         return 'موقع غير معروف';
     }
 }
@@ -1786,11 +1727,11 @@ async function doAttendanceEnhanced(action, extra = {}) {
             }
         }
 
-        // ==================== الحصول على اسم الموقع باستخدام Google API ====================
+        // ==================== الحصول على اسم الموقع باستخدام Nominatim ====================
         let locationName = 'موقع غير معروف';
         if (position) {
             try {
-                locationName = await getLocationNameGoogle(position.coords.latitude, position.coords.longitude);
+                locationName = await getLocationNameOSM(position.coords.latitude, position.coords.longitude);
             } catch (e) {
                 console.warn('فشل في جلب اسم الموقع:', e);
             }
@@ -3524,7 +3465,7 @@ async function renderPresentNow(root) {
         if (!p.locationName || p.locationName === '' || p.locationName === 'موقع غير معروف') {
             if (p.lat && p.lng) {
                 try {
-                    p.locationName = await getLocationNameGoogle(p.lat, p.lng);
+                    p.locationName = await getLocationNameOSM(p.lat, p.lng);
                 } catch (e) {
                     p.locationName = 'موقع غير معروف';
                 }
