@@ -2840,7 +2840,7 @@ window.confirmReject = async function(id) {
 };
 
 // ========================================================================
-// التكليفات والمهام - مع إضافة إمكانية الإضافة لمدير المركز
+// التكليفات والمهام - مع خيارات توزيع متقدمة
 // ========================================================================
 async function renderAssignments(root) {
     let missions = await api('listMissions', {});
@@ -2961,126 +2961,237 @@ function taskStatusChip(status) {
 }
 
 // ========================================================================
-// نافذة إضافة تكليف جديد
+// نافذة إضافة تكليف جديد - مع خيارات متعددة
 // ========================================================================
 window.openAddMissionModal = function() {
+    const isSystemAdmin = CURRENT_USER.role === 'SYSTEM_ADMIN';
     const center = CURRENT_USER.role === 'CENTER_ADMIN' ? CURRENT_USER.center : '';
     const centerOptionsHtml = CENTERS.map(c => 
         `<option value="${c}" ${c === center ? 'selected' : ''}>${c}</option>`
     ).join('');
     
-    // جلب قائمة المهندسين للاختيار
-    api('listEngineers', { center: CURRENT_USER.center }).then(engineers => {
-        const engineerOptions = engineers.map(e => 
-            `<option value="${e.fullName}">${e.fullName}</option>`
-        ).join('');
+    // تحديد خيارات التوزيع حسب صلاحية المستخدم
+    let distributionOptions = '';
+    if (isSystemAdmin) {
+        distributionOptions = `
+            <option value="ALL_CENTERS">🌍 كل المراكز</option>
+            <option value="SPECIFIC_CENTER">🏢 مركز محدد</option>
+            <option value="SPECIFIC_ENGINEER_CENTER">👨‍💻 مهندس في مركز</option>
+            <option value="SPECIFIC_TECHNICIAN_CENTER">🔧 فني في مركز</option>
+            <option value="ALL_ENGINEERS">👨‍💻 جميع المهندسين</option>
+        `;
+    } else {
+        distributionOptions = `
+            <option value="CENTER_ALL">🏢 المركز كله</option>
+            <option value="SPECIFIC_ENGINEER">👨‍💻 مهندس محدد</option>
+            <option value="SPECIFIC_TECHNICIAN">🔧 فني محدد</option>
+        `;
+    }
+    
+    openModal(`
+        <h3>➕ إضافة تكليف جديد</h3>
+        <div class="field">
+            <label>نوع التوزيع *</label>
+            <select id="missionDistributionType" onchange="updateMissionRecipients()">
+                ${distributionOptions}
+            </select>
+        </div>
+        <div id="missionRecipientsContainer">
+            <!-- سيتم تعبئتها بواسطة updateMissionRecipients() -->
+            <div style="color:var(--ink-400);font-size:13px;text-align:center;padding:10px">⏳ جاري تحميل البيانات...</div>
+        </div>
+        <div class="field" id="missionCenterField" style="display:none">
+            <label>المركز *</label>
+            <select id="missionCenter" onchange="updateMissionRecipients()">${centerOptionsHtml}</select>
+        </div>
+        <div class="field-row">
+            <div class="field"><label>الوحدة المحلية</label><input id="missionLocalUnit" placeholder="الوحدة المحلية"></div>
+            <div class="field"><label>القرية</label><input id="missionVillage" placeholder="القرية"></div>
+        </div>
+        <div class="field">
+            <label>نوع العمل *</label>
+            <select id="missionWorkType">
+                <option value="">اختر نوع العمل</option>
+                <option value="مسح">مسح</option>
+                <option value="رفع مساحي">رفع مساحي</option>
+                <option value="معاينة">معاينة</option>
+                <option value="تحديد منسوب">تحديد منسوب</option>
+                <option value="أخرى">أخرى</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>الجهة الطالبة</label>
+            <input id="missionRequester" placeholder="الجهة الطالبة">
+        </div>
+        <div class="field">
+            <label>الوصف</label>
+            <textarea id="missionDescription" rows="3" placeholder="وصف التكليف..."></textarea>
+        </div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-primary" onclick="submitNewMission()">💾 حفظ التكليف</button>
+        </div>
+    `);
+    
+    // تحديث قائمة المستلمين عند فتح النافذة
+    setTimeout(() => updateMissionRecipients(), 200);
+};
+
+// ========================================================================
+// دالة تحديث قائمة المستلمين حسب نوع التوزيع
+// ========================================================================
+window.updateMissionRecipients = function() {
+    const distType = document.getElementById('missionDistributionType')?.value || '';
+    const container = document.getElementById('missionRecipientsContainer');
+    const centerField = document.getElementById('missionCenterField');
+    const centerSelect = document.getElementById('missionCenter');
+    
+    if (!container) return;
+    
+    // إخفاء حقل المركز افتراضياً
+    if (centerField) centerField.style.display = 'none';
+    
+    // إذا كان النوع لا يحتاج مركز، اخفِه
+    const centerTypes = ['SPECIFIC_CENTER', 'SPECIFIC_ENGINEER_CENTER', 'SPECIFIC_TECHNICIAN_CENTER'];
+    if (centerTypes.includes(distType)) {
+        if (centerField) centerField.style.display = 'block';
+    }
+    
+    // جلب المستخدمين من الخادم
+    api('listUsers', {}).then(users => {
+        const approvedUsers = users.filter(u => u.status === 'APPROVED');
+        const systemAdmin = CURRENT_USER;
+        const userCenter = systemAdmin.center || '';
+        const selectedCenter = centerSelect ? centerSelect.value : userCenter;
         
-        openModal(`
-            <h3>➕ إضافة تكليف جديد</h3>
-            <div class="field">
-                <label>المهندس المسؤول *</label>
-                <select id="missionEngineer">
-                    <option value="">اختر المهندس</option>
-                    ${engineerOptions}
-                </select>
-            </div>
-            <div class="field">
-                <label>المركز *</label>
-                <select id="missionCenter">${centerOptionsHtml}</select>
-            </div>
-            <div class="field-row">
-                <div class="field"><label>الوحدة المحلية</label><input id="missionLocalUnit" placeholder="الوحدة المحلية"></div>
-                <div class="field"><label>القرية</label><input id="missionVillage" placeholder="القرية"></div>
-            </div>
-            <div class="field">
-                <label>نوع العمل *</label>
-                <select id="missionWorkType">
-                    <option value="">اختر نوع العمل</option>
-                    <option value="مسح">مسح</option>
-                    <option value="رفع مساحي">رفع مساحي</option>
-                    <option value="معاينة">معاينة</option>
-                    <option value="تحديد منسوب">تحديد منسوب</option>
-                    <option value="أخرى">أخرى</option>
-                </select>
-            </div>
-            <div class="field">
-                <label>الجهة الطالبة</label>
-                <input id="missionRequester" placeholder="الجهة الطالبة">
-            </div>
-            <div class="field">
-                <label>الوصف</label>
-                <textarea id="missionDescription" rows="3" placeholder="وصف التكليف..."></textarea>
-            </div>
-            <div class="modal-close-row">
-                <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-                <button class="btn btn-primary" onclick="submitNewMission()">💾 حفظ التكليف</button>
-            </div>
-        `);
-    }).catch(() => {
-        // إذا فشل جلب المهندسين، افتح النموذج بدون قائمة
-        openModal(`
-            <h3>➕ إضافة تكليف جديد</h3>
-            <div class="field">
-                <label>المهندس المسؤول *</label>
-                <input id="missionEngineer" placeholder="اسم المهندس">
-            </div>
-            <div class="field">
-                <label>المركز *</label>
-                <select id="missionCenter">${centerOptionsHtml}</select>
-            </div>
-            <div class="field-row">
-                <div class="field"><label>الوحدة المحلية</label><input id="missionLocalUnit" placeholder="الوحدة المحلية"></div>
-                <div class="field"><label>القرية</label><input id="missionVillage" placeholder="القرية"></div>
-            </div>
-            <div class="field">
-                <label>نوع العمل *</label>
-                <select id="missionWorkType">
-                    <option value="">اختر نوع العمل</option>
-                    <option value="مسح">مسح</option>
-                    <option value="رفع مساحي">رفع مساحي</option>
-                    <option value="معاينة">معاينة</option>
-                    <option value="تحديد منسوب">تحديد منسوب</option>
-                    <option value="أخرى">أخرى</option>
-                </select>
-            </div>
-            <div class="field">
-                <label>الجهة الطالبة</label>
-                <input id="missionRequester" placeholder="الجهة الطالبة">
-            </div>
-            <div class="field">
-                <label>الوصف</label>
-                <textarea id="missionDescription" rows="3" placeholder="وصف التكليف..."></textarea>
-            </div>
-            <div class="modal-close-row">
-                <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-                <button class="btn btn-primary" onclick="submitNewMission()">💾 حفظ التكليف</button>
-            </div>
-        `);
+        let html = '';
+        
+        if (distType === 'ALL_CENTERS') {
+            // كل المراكز - لا يوجد اختيارات إضافية
+            const totalUsers = approvedUsers.filter(u => u.role !== 'SYSTEM_ADMIN').length;
+            html = `<div class="field" style="background:#e7f6ee;padding:12px;border-radius:10px;text-align:center;color:var(--good)">
+                🌍 سيتم إرسال التكليف إلى جميع المراكز (${totalUsers} مستخدم)
+            </div>`;
+            
+        } else if (distType === 'SPECIFIC_CENTER' || distType === 'CENTER_ALL') {
+            // مركز محدد أو المركز كله (للمدير)
+            const centerStaff = approvedUsers.filter(u => u.center === selectedCenter && u.role !== 'SYSTEM_ADMIN');
+            html = `<div class="field" style="background:#eaf1fb;padding:12px;border-radius:10px;text-align:center;color:var(--navy-700)">
+                🏢 عدد المستلمين في مركز ${selectedCenter}: ${centerStaff.length} موظف
+            </div>`;
+            
+        } else if (distType === 'SPECIFIC_ENGINEER_CENTER' || distType === 'SPECIFIC_ENGINEER') {
+            // مهندس محدد في مركز أو مهندس محدد (للمدير)
+            const engineers = approvedUsers.filter(u => u.center === selectedCenter && u.role === 'ENGINEER');
+            html = `
+                <div class="field">
+                    <label>اختر المهندس *</label>
+                    <select id="missionSpecificEngineer">
+                        <option value="">اختر المهندس</option>
+                        ${engineers.map(e => `<option value="${e.id}">${e.fullName}</option>`).join('')}
+                    </select>
+                </div>
+                ${engineers.length === 0 ? '<div style="color:var(--warn);font-size:13px">⚠️ لا يوجد مهندسون في هذا المركز</div>' : ''}
+            `;
+            
+        } else if (distType === 'SPECIFIC_TECHNICIAN_CENTER' || distType === 'SPECIFIC_TECHNICIAN') {
+            // فني محدد في مركز أو فني محدد (للمدير)
+            const technicians = approvedUsers.filter(u => u.center === selectedCenter && u.role === 'TECHNICIAN');
+            html = `
+                <div class="field">
+                    <label>اختر الفني *</label>
+                    <select id="missionSpecificTechnician">
+                        <option value="">اختر الفني</option>
+                        ${technicians.map(t => `<option value="${t.id}">${t.fullName}</option>`).join('')}
+                    </select>
+                </div>
+                ${technicians.length === 0 ? '<div style="color:var(--warn);font-size:13px">⚠️ لا يوجد فنيون في هذا المركز</div>' : ''}
+            `;
+            
+        } else if (distType === 'ALL_ENGINEERS') {
+            // جميع المهندسين
+            const allEngineers = approvedUsers.filter(u => u.role === 'ENGINEER');
+            html = `<div class="field" style="background:#e7f6ee;padding:12px;border-radius:10px;text-align:center;color:var(--good)">
+                👨‍💻 سيتم إرسال التكليف إلى جميع المهندسين (${allEngineers.length} مهندس)
+            </div>`;
+        }
+        
+        container.innerHTML = html;
+    }).catch((err) => {
+        console.error('Error loading users:', err);
+        container.innerHTML = `<div style="color:var(--bad);font-size:13px">⚠️ تعذر تحميل قائمة المستخدمين: ${err.message}</div>`;
     });
 };
 
 // ========================================================================
-// دالة إرسال التكليف
+// دالة إرسال التكليف - مع دعم الخيارات المتعددة
 // ========================================================================
 window.submitNewMission = async function() {
-    const engineerName = document.getElementById('missionEngineer')?.value?.trim();
-    const center = document.getElementById('missionCenter')?.value;
+    const distType = document.getElementById('missionDistributionType')?.value;
+    const center = document.getElementById('missionCenter')?.value || CURRENT_USER.center || '';
     const localUnit = document.getElementById('missionLocalUnit')?.value?.trim();
     const village = document.getElementById('missionVillage')?.value?.trim();
     const workType = document.getElementById('missionWorkType')?.value;
     const requestingEntity = document.getElementById('missionRequester')?.value?.trim();
     const description = document.getElementById('missionDescription')?.value?.trim();
     
-    if (!engineerName) {
-        showToast('يرجى إدخال اسم المهندس المسؤول', 'err');
-        return;
-    }
-    if (!center) {
-        showToast('يرجى اختيار المركز', 'err');
-        return;
-    }
+    // المتغيرات الخاصة بالمستلمين
+    let engineerName = '';
+    let technicianName = '';
+    let targetScope = '';
+    let targetCenters = [];
+    let recipientIds = [];
+    
+    // التحقق من الحقول الإلزامية
     if (!workType) {
         showToast('يرجى اختيار نوع العمل', 'err');
+        return;
+    }
+    
+    // تحديد البيانات حسب نوع التوزيع
+    if (distType === 'ALL_CENTERS') {
+        targetScope = 'ALL';
+        targetCenters = CENTERS.filter(c => c !== 'مجمع الذكاء');
+    } else if (distType === 'SPECIFIC_CENTER' || distType === 'CENTER_ALL') {
+        if (!center) {
+            showToast('يرجى اختيار المركز', 'err');
+            return;
+        }
+        targetScope = 'CENTERS';
+        targetCenters = [center];
+    } else if (distType === 'SPECIFIC_ENGINEER_CENTER' || distType === 'SPECIFIC_ENGINEER') {
+        const engineerId = document.getElementById('missionSpecificEngineer')?.value;
+        if (!engineerId) {
+            showToast('يرجى اختيار المهندس', 'err');
+            return;
+        }
+        const users = await api('listUsers', {});
+        const engineer = users.find(u => u.id === engineerId);
+        if (engineer) {
+            engineerName = engineer.fullName;
+            recipientIds = [engineerId];
+            targetScope = 'SPECIFIC';
+        }
+    } else if (distType === 'SPECIFIC_TECHNICIAN_CENTER' || distType === 'SPECIFIC_TECHNICIAN') {
+        const technicianId = document.getElementById('missionSpecificTechnician')?.value;
+        if (!technicianId) {
+            showToast('يرجى اختيار الفني', 'err');
+            return;
+        }
+        const users = await api('listUsers', {});
+        const technician = users.find(u => u.id === technicianId);
+        if (technician) {
+            technicianName = technician.fullName;
+            recipientIds = [technicianId];
+            targetScope = 'SPECIFIC';
+        }
+    } else if (distType === 'ALL_ENGINEERS') {
+        targetScope = 'ENGINEERS';
+    }
+    
+    // التحقق من وجود مستلمين
+    if (!targetScope && recipientIds.length === 0) {
+        showToast('يرجى تحديد المستلمين', 'err');
         return;
     }
     
@@ -3088,21 +3199,29 @@ window.submitNewMission = async function() {
     showSavingModal('جارى إضافة التكليف...');
     
     try {
-        const result = await api('createMission', {
-            engineerName: engineerName,
+        const payload = {
             center: center,
             localUnit: localUnit,
             village: village,
             workType: workType,
             requestingEntity: requestingEntity,
-            description: description,
+            details: description,
             source: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'GENERAL' : 'CENTER',
             createdBy: CURRENT_USER.id,
-            createdByName: CURRENT_USER.fullName
-        });
+            createdByName: CURRENT_USER.fullName,
+            // حقول التوزيع
+            targetScope: targetScope,
+            targetCenters: targetCenters,
+            recipientIds: recipientIds,
+            engineerName: engineerName,
+            technicianName: technicianName
+        };
+        
+        // استخدام createAssignment للتوزيع المتعدد
+        const result = await api('createAssignment', payload);
         
         hideSavingModal();
-        showToast('✅ تم إضافة التكليف بنجاح', 'ok');
+        showToast(`✅ تم إضافة التكليف بنجاح (${result.count || 1} مستلم)`, 'ok');
         refreshAssignments();
     } catch (e) {
         hideSavingModal();
@@ -3371,7 +3490,7 @@ function eqStatusChip(s) {
 }
 
 // ========================================================================
-// المتواجدين حاليا (مختصر)
+// المتواجدين حاليا
 // ========================================================================
 function normalizeDriveThumbnail(url) {
     if (!url) return '';
