@@ -1570,6 +1570,13 @@ async function doAttendanceEnhanced(action, extra = {}) {
             <h3>📋 ما تم تنفيذه اليوم</h3>
             <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">يرجى كتابة ملخص لما تم إنجازه خلال اليوم قبل تسجيل الانصراف:</p>
             <div class="field">
+                <label>نوع العمل *</label>
+                <select id="checkoutWorkType" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px">
+                    <option value="FIELD">🚶 ميداني</option>
+                    <option value="OFFICE">🏢 مكتبي</option>
+                </select>
+            </div>
+            <div class="field">
                 <label>المهام المنفذة *</label>
                 <textarea id="checkoutTasks" rows="5" placeholder="مثال:&#10;1. رفع مساحي لقطعة رقم 123 بقرية كفر النيل&#10;2. تحديد منسوب بمنطقة المشتل&#10;3. معاينة أملاك دولة بمنطقة الزاوية" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px;font-family:var(--font-body)"></textarea>
             </div>
@@ -1589,6 +1596,34 @@ async function doAttendanceEnhanced(action, extra = {}) {
         
         window.__pendingCheckout = { userId: CURRENT_USER.id, center: extra.center || CURRENT_USER.center };
         return;
+    }
+
+    // ==================== التحقق الإجباري من تفعيل الموقع قبل تسجيل الحضور ====================
+    let checkInPosition = null;
+    if (action === 'checkIn') {
+        try {
+            checkInPosition = await new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error('NO_GEOLOCATION'));
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                });
+            });
+        } catch (geoError) {
+            openModal(`
+                <h3>📍 يجب تفعيل خدمة الموقع</h3>
+                <p style="color:var(--ink-600);font-size:14px;line-height:1.9">لا يمكن تسجيل الحضور بدون تفعيل خدمة تحديد الموقع (GPS) والسماح للمتصفح بالوصول إلى موقعك.</p>
+                <p style="color:var(--ink-600);font-size:13px;line-height:1.9">يرجى تفعيل خدمة الموقع من إعدادات الجهاز أو المتصفح، ثم اضغط "تسجيل حضور" مرة أخرى.</p>
+                <div class="modal-close-row">
+                    <button class="btn btn-primary" onclick="closeModal()">حسنًا</button>
+                </div>
+            `);
+            return;
+        }
     }
 
     // ==================== تغيير الزرار فوراً ====================
@@ -1612,18 +1647,20 @@ async function doAttendanceEnhanced(action, extra = {}) {
     showSavingModal(action === 'checkIn' ? 'جارى تسجيل الحضور...' : 'جارى تسجيل الانصراف...');
 
     try {
-        // الحصول على الموقع
-        let position = null;
-        try {
-            position = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 60000
+        // الحصول على الموقع (تم الحصول عليه بالفعل إجباريًا في حالة الحضور)
+        let position = checkInPosition;
+        if (!position) {
+            try {
+                position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 60000
+                    });
                 });
-            });
-        } catch (geoError) {
-            console.warn('Geolocation not available:', geoError);
+            } catch (geoError) {
+                console.warn('Geolocation not available:', geoError);
+            }
         }
 
         const windowState = getAttendanceWindowState(new Date());
@@ -1776,6 +1813,7 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
 // ========================================================================
 
 window.submitCheckoutWithDetails = function() {
+    const workType = document.getElementById('checkoutWorkType')?.value || 'FIELD';
     const tasks = document.getElementById('checkoutTasks')?.value?.trim() || '';
     const casesCount = parseInt(document.getElementById('checkoutCasesCount')?.value || '0');
     const notes = document.getElementById('checkoutNotes')?.value?.trim() || '';
@@ -1791,7 +1829,8 @@ window.submitCheckoutWithDetails = function() {
         center: window.__pendingCheckout?.center || CURRENT_USER.center,
         tasks: tasks,
         casesCount: casesCount,
-        notes: notes
+        notes: notes,
+        workType: workType
     };
     
     doAttendanceEnhanced('checkOut', extra);
