@@ -1040,7 +1040,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
         // تحديد نوع العمل من النافذة المنبثقة
         let workType = extra.workType || 'FIELD';
         if (action === 'checkOut' && extra.tasks) {
-            // تم تمرير workType من submitCheckoutWithDetails
             workType = extra.workType || 'FIELD';
         }
         
@@ -1172,12 +1171,331 @@ async function renderAttendance(root) {
 }
 
 // ========================================================================
-// شاشة المتابعة (مختصرة)
+// شاشة المتابعة - عرض تفصيلي للحضور والغياب حسب المركز
 // ========================================================================
 async function renderCoordination(root) {
-    // ... (نفس الكود السابق، لا تغيير)
-    root.innerHTML = `<div class="empty-state"><div class="ic">🧭</div>جاري تطوير شاشة المتابعة...</div>`;
+    // الحصول على التاريخ المحدد
+    let selectedDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
+    const today = getEgyptDateKey(getEgyptNow());
+    if (selectedDate > today) { 
+        selectedDate = today; 
+        localStorage.setItem('coordinationDate', selectedDate); 
+    }
+
+    // تحديد المراكز التي سيتم عرضها حسب صلاحية المستخدم
+    let centersToShow = [];
+    if (CURRENT_USER.role === 'CENTER_ADMIN') {
+        centersToShow = [CURRENT_USER.center];
+    } else if (CURRENT_USER.role === 'SYSTEM_ADMIN') {
+        centersToShow = CENTERS.filter(c => c !== 'مجمع الذكاء');
+    } else {
+        centersToShow = [CURRENT_USER.center];
+    }
+
+    // جلب البيانات من الخادم
+    const [users, attendance] = await Promise.all([
+        api('listUsers', {}),
+        api('listAttendance', { date: selectedDate })
+    ]);
+
+    // إزالة المكررين حسب الاسم
+    const uniqueUsers = [];
+    const seenNames = new Set();
+    users.forEach(u => {
+        if (!seenNames.has(u.fullName)) {
+            seenNames.add(u.fullName);
+            uniqueUsers.push(u);
+        }
+    });
+
+    await loadAttendanceWindowConfig();
+    const lateThresholdMinutes = getAttendanceWindowState(getEgyptNow()).checkInDeadline;
+
+    function minutesOfDay(iso) {
+        const egypt = toEgyptTime(iso instanceof Date ? iso : new Date(iso));
+        if (!egypt) return null;
+        return egypt.getHours() * 60 + egypt.getMinutes();
+    }
+
+    let centerData = [];
+    let totalEmployees = 0, totalPresent = 0, totalLate = 0, totalAbsent = 0;
+    let totalFieldWork = 0, totalOfficeWork = 0;
+
+    // معالجة كل مركز
+    centersToShow.forEach(center => {
+        const centerStaff = uniqueUsers.filter(u => 
+            u.status === 'APPROVED' && 
+            u.center === center && 
+            u.role !== 'SYSTEM_ADMIN'
+        );
+        
+        const centerAttendance = attendance.filter(a => a.center === center);
+        const centerAttendanceIn = centerAttendance.filter(a => a.type === 'IN');
+        const centerAttendanceOut = centerAttendance.filter(a => a.type === 'OUT');
+        
+        const presentList = [];
+        const absentList = [];
+        let centerLate = 0, centerFieldWork = 0, centerOfficeWork = 0;
+
+        centerStaff.forEach(u => {
+            const records = centerAttendanceIn
+                .filter(a => a.userId === u.id)
+                .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            if (records.length) {
+                const first = records[0];
+                const mins = minutesOfDay(first.timestamp);
+                const late = mins !== null && mins >= lateThresholdMinutes;
+                if (late) centerLate++;
+
+                // تحديد نوع العمل
+                const workType = first.workType || '';
+                if (workType === 'FIELD') centerFieldWork++;
+                else if (workType === 'OFFICE') centerOfficeWork++;
+
+                // رابط الموقع
+                const locationName = first.locationName || 'موقع غير معروف';
+                let locLink = '-';
+                if (first.mapsLink && first.mapsLink.trim().startsWith('http')) {
+                    locLink = `<a href="${first.mapsLink}" target="_blank" class="location-link">📍 ${locationName}</a>`;
+                } else if (first.lat && first.lng && !isNaN(first.lat) && !isNaN(first.lng)) {
+                    locLink = `<a href="https://www.google.com/maps?q=${first.lat},${first.lng}" target="_blank" class="location-link">📍 ${locationName}</a>`;
+                }
+
+                // سجل الانصراف
+                const checkOut = centerAttendanceOut
+                    .filter(a => a.userId === u.id)
+                    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))[0] || null;
+                let outLocLink = '-';
+                if (checkOut) {
+                    const outLocationName = checkOut.locationName || 'موقع غير معروف';
+                    if (checkOut.mapsLink && checkOut.mapsLink.trim().startsWith('http')) {
+                        outLocLink = `<a href="${checkOut.mapsLink}" target="_blank" class="location-link">📍 ${outLocationName}</a>`;
+                    } else if (checkOut.lat && checkOut.lng && !isNaN(checkOut.lat) && !isNaN(checkOut.lng)) {
+                        outLocLink = `<a href="https://www.google.com/maps?q=${checkOut.lat},${checkOut.lng}" target="_blank" class="location-link">📍 ${outLocationName}</a>`;
+                    }
+                }
+
+                presentList.push({
+                    name: u.fullName,
+                    role: u.role,
+                    time: first.timestamp,
+                    late: late,
+                    location: locLink,
+                    workType: workType,
+                    checkOut: checkOut,
+                    checkOutTime: checkOut ? checkOut.timestamp : null,
+                    checkOutLocation: outLocLink
+                });
+            } else {
+                absentList.push({ name: u.fullName, role: u.role });
+            }
+        });
+
+        const centerPresent = presentList.length;
+        const centerAbsent = absentList.length;
+        totalLate += centerLate;
+        totalFieldWork += centerFieldWork;
+        totalOfficeWork += centerOfficeWork;
+
+        centerData.push({
+            center: center,
+            totalEmployees: centerStaff.length,
+            presentCount: centerPresent,
+            absentCount: centerAbsent,
+            lateCount: centerLate,
+            fieldWorkCount: centerFieldWork,
+            officeWorkCount: centerOfficeWork,
+            presentList: presentList,
+            absentList: absentList
+        });
+
+        totalEmployees += centerStaff.length;
+        totalPresent += centerPresent;
+        totalAbsent += centerAbsent;
+    });
+
+    // تنسيق التاريخ
+    const displayDate = new Date(selectedDate + 'T00:00:00');
+    const formattedDate = displayDate.toLocaleDateString('ar-EG', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+    const isToday = selectedDate === today;
+
+    // عرض الصفحة
+    root.innerHTML = `
+        <!-- شريط التنقل بالتاريخ -->
+        <div class="date-nav-bar">
+            <span class="date-label">📅 التاريخ:</span>
+            <button class="nav-btn" onclick="changeCoordinationDate(-1)">‹</button>
+            <input type="date" id="coordinationDatePicker" value="${selectedDate}">
+            <button class="nav-btn" onclick="changeCoordinationDate(1)">›</button>
+            <button class="today-btn" onclick="goToTodayCoordination()">📅 اليوم</button>
+            <span class="date-display">${isToday ? '📌 اليوم' : formattedDate}</span>
+        </div>
+
+        <!-- الإحصائيات -->
+        <div class="coordination-stats-grid">
+            <div class="stat-box"><div class="stat-number">${totalEmployees}</div><div class="stat-label">👥 إجمالي الموظفين</div></div>
+            <div class="stat-box" style="border-color:var(--good)"><div class="stat-number" style="color:var(--good)">${totalPresent}</div><div class="stat-label">✅ الحضور</div></div>
+            <div class="stat-box" style="border-color:var(--bad)"><div class="stat-number" style="color:var(--bad)">${totalAbsent}</div><div class="stat-label">❌ الغياب</div></div>
+            <div class="stat-box" style="border-color:var(--warn)"><div class="stat-number" style="color:var(--warn)">${totalLate}</div><div class="stat-label">⏰ متأخرين</div></div>
+            <div class="stat-box" style="border-color:#2196f3"><div class="stat-number" style="color:#2196f3">${totalFieldWork}</div><div class="stat-label">🚶 ميداني</div></div>
+            <div class="stat-box" style="border-color:#9c27b0"><div class="stat-number" style="color:#9c27b0">${totalOfficeWork}</div><div class="stat-label">🏢 مكتبي</div></div>
+            <div class="stat-box" style="border-color:var(--navy-700)"><div class="stat-number">${centerData.length}</div><div class="stat-label">🏢 عدد المراكز</div></div>
+            <div class="stat-box" style="border-color:var(--navy-600)"><div class="stat-number">${totalEmployees > 0 ? Math.round((totalPresent / totalEmployees) * 100) : 0}%</div><div class="stat-label">📊 نسبة الحضور</div></div>
+        </div>
+
+        <!-- جدول ملخص المراكز -->
+        <div style="overflow-x:auto;margin-bottom:20px">
+            <table class="center-summary-table">
+                <thead><tr>
+                    <th>المركز</th>
+                    <th>إجمالي</th>
+                    <th>✅ حضور</th>
+                    <th>⏰ متأخر</th>
+                    <th>❌ غياب</th>
+                    <th>🚶 ميداني</th>
+                    <th>🏢 مكتبي</th>
+                    <th>📊 نسبة الحضور</th>
+                </tr></thead>
+                <tbody>
+                    ${centerData.map(c => {
+                        const attendancePercent = c.totalEmployees > 0 ? Math.round((c.presentCount / c.totalEmployees) * 100) : 0;
+                        return `<tr>
+                            <td><strong>${c.center}</strong></td>
+                            <td>${c.totalEmployees}</td>
+                            <td class="present-count">${c.presentCount}</td>
+                            <td class="late-count">${c.lateCount}</td>
+                            <td class="absent-count">${c.absentCount}</td>
+                            <td style="color:#2196f3">${c.fieldWorkCount}</td>
+                            <td style="color:#9c27b0">${c.officeWorkCount}</td>
+                            <td>${attendancePercent}%</td>
+                        </tr>`;
+                    }).join('')}
+                    <tr class="total-row">
+                        <td><strong>الإجمالي</strong></td>
+                        <td>${totalEmployees}</td>
+                        <td class="present-count">${totalPresent}</td>
+                        <td class="late-count">${totalLate}</td>
+                        <td class="absent-count">${totalAbsent}</td>
+                        <td style="color:#2196f3">${totalFieldWork}</td>
+                        <td style="color:#9c27b0">${totalOfficeWork}</td>
+                        <td>${totalEmployees > 0 ? Math.round((totalPresent / totalEmployees) * 100) : 0}%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- تفاصيل الحضور -->
+        <div class="panel" style="padding:12px;margin-bottom:16px">
+            <div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div>
+            <div class="attendance-table-wrap">
+                <table>
+                    <thead><tr>
+                        <th>المركز</th>
+                        <th>الاسم</th>
+                        <th>الوظيفة</th>
+                        <th>الوقت</th>
+                        <th>الموقع</th>
+                        <th>نوع العمل</th>
+                        <th>الحالة</th>
+                    </tr></thead>
+                    <tbody>
+                        ${centerData.flatMap(c => c.presentList.map(p => `
+                            <tr>
+                                <td>${c.center}</td>
+                                <td>${p.name}</td>
+                                <td>${roleLabel(p.role)}</td>
+                                <td>${fmtTime(p.time)}</td>
+                                <td>${p.location}</td>
+                                <td>${p.workType === 'FIELD' ? '🚶 ميداني' : (p.workType === 'OFFICE' ? '🏢 مكتبي' : '-')}</td>
+                                <td>${p.late ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">✅ في الموعد</span>'}</td>
+                            </tr>
+                        `)).join('') || '<tr><td colspan="7"><div class="empty-state">لا يوجد حضور</div></td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- تفاصيل الغياب -->
+        <div class="panel" style="padding:12px">
+            <div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div>
+            <div class="attendance-table-wrap">
+                <table>
+                    <thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead>
+                    <tbody>
+                        ${centerData.flatMap(c => c.absentList.map(a => `
+                            <tr>
+                                <td>${c.center}</td>
+                                <td>${a.name}</td>
+                                <td>${roleLabel(a.role)}</td>
+                            </tr>
+                        `)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- أزرار إضافية -->
+        <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap">
+            <button class="btn btn-gold btn-sm" onclick="exportCoordinationExcel('${selectedDate}')">📊 تصدير Excel</button>
+        </div>
+    `;
+
+    // ربط حدث تغيير التاريخ
+    const datePicker = document.getElementById('coordinationDatePicker');
+    if (datePicker) {
+        datePicker.addEventListener('change', function() {
+            const newDate = this.value;
+            if (newDate) {
+                localStorage.setItem('coordinationDate', newDate);
+                goPage('coordination', true);
+            }
+        });
+    }
 }
+
+// دوال التنقل في التاريخ
+window.changeCoordinationDate = function(delta) {
+    const currentDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
+    const dateObj = new Date(currentDate + 'T00:00:00');
+    dateObj.setDate(dateObj.getDate() + delta);
+    const newDate = getEgyptDateKey(dateObj);
+    localStorage.setItem('coordinationDate', newDate);
+    goPage('coordination', true);
+};
+
+window.goToTodayCoordination = function() {
+    const today = getEgyptDateKey(getEgyptNow());
+    localStorage.setItem('coordinationDate', today);
+    goPage('coordination', true);
+};
+
+// تصدير Excel
+window.exportCoordinationExcel = function(selectedDate) {
+    const rows = document.querySelectorAll('.center-summary-table tbody tr');
+    let csv = '\uFEFF';
+    csv += 'تقرير متابعة اليوم - ' + selectedDate + '\n';
+    csv += 'المركز,إجمالي الموظفين,حضور,متأخرين,غياب,ميداني,مكتبي,نسبة الحضور\n';
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length === 8) {
+            const data = [];
+            cells.forEach(cell => data.push(cell.textContent.trim().replace('%', '')));
+            csv += data.join(',') + '\n';
+        }
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `متابعة-${selectedDate}.csv`;
+    link.click();
+    showToast('تم تصدير الملف بنجاح', 'ok');
+};
 
 // ========================================================================
 // إدارة المستخدمين (مختصرة)
