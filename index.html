@@ -994,6 +994,47 @@ function roleLabel(r) {
 }
 
 /* =====================================================================
+   دالة للحصول على اسم الموقع من الإحداثيات باستخدام Nominatim
+   ===================================================================== */
+async function getLocationNameOSM(lat, lng) {
+    if (!lat || !lng) return 'موقع غير معروف';
+    
+    try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=ar`;
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'MTAB3A-App/1.0' // مطلوب حسب سياسة Nominatim
+            }
+        });
+        
+        if (!response.ok) {
+            console.warn('Nominatim request failed:', response.status);
+            return 'موقع غير معروف';
+        }
+        
+        const data = await response.json();
+        
+        if (data && data.address) {
+            const address = data.address;
+            // ترتيب الأولوية: قرية > مدينة > بلدة > حي > منطقة
+            return address.village || 
+                   address.city || 
+                   address.town || 
+                   address.suburb || 
+                   address.district || 
+                   address.county ||
+                   address.state_district ||
+                   data.display_name?.split(',').slice(0, 2).join(', ') || 
+                   'موقع غير معروف';
+        }
+        return 'موقع غير معروف';
+    } catch (error) {
+        console.error('خطأ في جلب الموقع من Nominatim:', error);
+        return 'موقع غير معروف';
+    }
+}
+
+/* =====================================================================
    طبقة الاتصال بالـ API
    ===================================================================== */
 async function api(action, params) {
@@ -1483,7 +1524,6 @@ function updateDashboardClock() {
 async function hasCheckedInToday(userId) {
     try {
         const today = getEgyptDateKey(getEgyptNow());
-        // ملاحظة: الباك اند بيتجاهل باراميتر type، فبنفلتر هنا يدويًا لضمان الدقة
         const result = await api('listAttendance', { userId: userId, date: today });
         return Array.isArray(result) && result.some(a => a.type === 'IN');
     } catch (e) { return false; }
@@ -1492,14 +1532,11 @@ async function hasCheckedInToday(userId) {
 async function hasCheckedOutToday(userId) {
     try {
         const today = getEgyptDateKey(getEgyptNow());
-        // ملاحظة: الباك اند بيتجاهل باراميتر type، فبنفلتر هنا يدويًا لضمان الدقة
         const result = await api('listAttendance', { userId: userId, date: today });
         return Array.isArray(result) && result.some(a => a.type === 'OUT');
     } catch (e) { return false; }
 }
 
-// دالة موقع محصّنة: تضمن الرفض خلال المهلة المحددة حتى لو لم يستدعِ المتصفح دالة الخطأ إطلاقًا
-// (بعض الأجهزة لا تستدعي أي callback عند تعطيل خدمة الموقع من إعدادات النظام)
 function getCurrentPositionSafe(timeoutMs) {
     const limit = timeoutMs || 12000;
     return new Promise((resolve, reject) => {
@@ -1595,7 +1632,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             return;
         }
         
-        // ==================== فتح نافذة إدخال ما تم تنفيذه قبل الانصراف (فقط في المرة الأولى قبل ملء البيانات) ====================
+        // ==================== فتح نافذة إدخال ما تم تنفيذه قبل الانصراف ====================
         if (!extra.tasks) {
             openModal(`
                 <h3>📋 ما تم تنفيذه اليوم</h3>
@@ -1627,7 +1664,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
             window.__pendingCheckout = { userId: CURRENT_USER.id, center: extra.center || CURRENT_USER.center };
             return;
         }
-        // extra.tasks موجودة (جاية من submitCheckoutWithDetails) -> نكمل تنفيذ الانصراف فعليًا بدل ما نفتح البوكس تاني
     }
 
     // ==================== التحقق الإجباري من تفعيل الموقع قبل تسجيل الحضور ====================
@@ -1671,7 +1707,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
     const originalText = btn ? btn.textContent : '';
     const originalClass = btn ? btn.className : '';
 
-    // تغيير الزرار فوراً إلى حالة "جاري الحفظ"
     if (btn) {
         btn.disabled = true;
         btn.textContent = '⏳ جاري الحفظ...';
@@ -1682,17 +1717,25 @@ async function doAttendanceEnhanced(action, extra = {}) {
         btn.style.transition = 'all 0.2s ease';
     }
 
-    // إظهار رسالة الحفظ
     showSavingModal(action === 'checkIn' ? 'جارى تسجيل الحضور...' : 'جارى تسجيل الانصراف...');
 
     try {
-        // الحصول على الموقع (تم الحصول عليه بالفعل إجباريًا في حالة الحضور)
         let position = checkInPosition;
         if (!position) {
             try {
                 position = await getCurrentPositionSafe(10000);
             } catch (geoError) {
                 console.warn('Geolocation not available:', geoError);
+            }
+        }
+
+        // ==================== الحصول على اسم الموقع من الإحداثيات ====================
+        let locationName = 'موقع غير معروف';
+        if (position) {
+            try {
+                locationName = await getLocationNameOSM(position.coords.latitude, position.coords.longitude);
+            } catch (e) {
+                console.warn('فشل في جلب اسم الموقع:', e);
             }
         }
 
@@ -1705,6 +1748,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             center: extra.center || CURRENT_USER.center,
             lat: position ? position.coords.latitude : null,
             lng: position ? position.coords.longitude : null,
+            locationName: locationName, // <-- الحقل الجديد
             workType: extra.workType || 'FIELD',
             isLate: isLate
         };
@@ -1713,15 +1757,12 @@ async function doAttendanceEnhanced(action, extra = {}) {
         if (extra.casesCount) payload.casesCount = extra.casesCount;
         if (extra.notes) payload.checkoutNotes = extra.notes;
 
-        // ==================== استدعاء API ====================
         await api(action === 'checkIn' ? 'checkIn' : 'checkOut', payload);
 
-        // ==================== تحديث الحالة محلياً ====================
         if (action === 'checkIn') {
             localStorage.setItem(checkInKey, '1');
             localStorage.setItem('attendance_checkin_time_' + CURRENT_USER.id + '_' + today, new Date().toISOString());
             
-            // ==================== تغيير الزرار للأخضر مباشرة ====================
             if (btn) {
                 btn.disabled = true;
                 btn.textContent = '✅ تم تسجيل الحضور اليوم';
@@ -1736,7 +1777,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
         } else {
             localStorage.setItem(checkOutKey, '1');
             
-            // ==================== تغيير الزرار للأحمر مباشرة ====================
             if (btn) {
                 btn.disabled = true;
                 btn.textContent = '✅ تم تسجيل الانصراف اليوم';
@@ -1749,27 +1789,22 @@ async function doAttendanceEnhanced(action, extra = {}) {
             showToast('✅ تم تسجيل الانصراف بنجاح', 'ok');
         }
 
-        // إخفاء رسالة الحفظ
         hideSavingModal();
 
-        // ==================== تحديث واجهة الأزرار ====================
         updateAttendanceUI(
             action === 'checkIn' || localStorage.getItem(checkInKey) === '1',
             action === 'checkOut' || localStorage.getItem(checkOutKey) === '1'
         );
 
-        // ==================== تحديث الصفحة تلقائياً بعد 1 ثانية (بدون كاش قديم) ====================
         setTimeout(() => {
             delete PAGE_CACHE['attendance'];
             goPage('attendance', true, false);
         }, 1000);
 
     } catch (error) {
-        // ==================== في حالة الخطأ ====================
         hideSavingModal();
         showToast('❌ فشل التسجيل: ' + (error.message || 'خطأ غير معروف'), 'err');
         
-        // استعادة الزرار لحالته السابقة في حالة الخطأ
         if (btn) {
             btn.disabled = false;
             btn.textContent = originalText;
@@ -1783,10 +1818,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
         attendanceLock.processing = false;
     }
 }
-
-// ========================================================================
-// دالة updateAttendanceUI - نسخة مُصلحة
-// ========================================================================
 
 function updateAttendanceUI(hasCheckIn, hasCheckOut) {
     const checkInBtn = document.getElementById('checkInBtn');
@@ -1840,10 +1871,6 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
         }
     }
 }
-
-// ========================================================================
-// دالة submitCheckoutWithDetails - نسخة مُصلحة
-// ========================================================================
 
 window.submitCheckoutWithDetails = function() {
     const workType = document.getElementById('checkoutWorkType')?.value || 'FIELD';
@@ -1908,8 +1935,8 @@ async function renderAttendance(root) {
     let checkInLat = checkInRecord ? checkInRecord.lat : null;
     let checkInLng = checkInRecord ? checkInRecord.lng : null;
     let checkInMapsLink = checkInRecord ? checkInRecord.mapsLink : null;
+    let checkInLocationName = checkInRecord ? checkInRecord.locationName : null;
 
-    // ==================== حساب التأخير من توقيت الحضور الفعلي (بدل الاعتماد على قيمة السيرفر فقط) ====================
     await loadAttendanceWindowConfig();
     let isLate = status.isLate || false;
     if (checkInTime) {
@@ -1917,11 +1944,12 @@ async function renderAttendance(root) {
         isLate = windowState.isLate;
     }
 
+    let locationDisplay = checkInLocationName || 'موقع غير معروف';
     let locationLink = '-';
-    if (checkInMapsLink) {
-        locationLink = `<a href="${checkInMapsLink}" target="_blank" class="location-link">📍 عرض على الخريطة</a>`;
+    if (checkInMapsLink && checkInMapsLink.trim().startsWith('http')) {
+        locationLink = `<a href="${checkInMapsLink}" target="_blank" class="location-link">📍 ${locationDisplay}</a>`;
     } else if (checkInLat && checkInLng) {
-        locationLink = `<a href="https://www.google.com/maps?q=${checkInLat},${checkInLng}" target="_blank" class="location-link">📍 عرض على الخريطة</a>`;
+        locationLink = `<a href="https://www.google.com/maps?q=${checkInLat},${checkInLng}" target="_blank" class="location-link">📍 ${locationDisplay}</a>`;
     }
 
     root.innerHTML = `
@@ -1970,11 +1998,12 @@ async function renderAttendance(root) {
                     <tbody>
                         ${myAttendance.length ? myAttendance.map(a => {
                             const isLateCheck = a.type === 'IN' ? getAttendanceWindowState(new Date(a.timestamp)).isLate : false;
+                            const locName = a.locationName || 'موقع غير معروف';
                             let locLink = '-';
-                            if (a.mapsLink) {
-                                locLink = `<a href="${a.mapsLink}" target="_blank" class="location-link">📍 عرض</a>`;
+                            if (a.mapsLink && a.mapsLink.trim().startsWith('http')) {
+                                locLink = `<a href="${a.mapsLink}" target="_blank" class="location-link">📍 ${locName}</a>`;
                             } else if (a.lat && a.lng) {
-                                locLink = `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" class="location-link">📍 عرض</a>`;
+                                locLink = `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" class="location-link">📍 ${locName}</a>`;
                             }
                             const tasksSummary = a.tasks ? `<div style="font-size:11px;color:var(--ink-600);max-width:200px;white-space:normal;word-wrap:break-word">${a.tasks.substring(0, 100)}${a.tasks.length > 100 ? '...' : ''}</div>` : '-';
                             return `<tr>
@@ -2026,7 +2055,6 @@ async function renderAttendance(root) {
 // شاشة المتابعة - مع إضافة تاريخ وزر اليوم والتنقل بين الأيام
 // ========================================================================
 async function renderCoordination(root) {
-    // الحصول على التاريخ المخزن أو التاريخ الحالي
     let selectedDate = localStorage.getItem('coordinationDate');
     
     if (!selectedDate) {
@@ -2049,7 +2077,6 @@ async function renderCoordination(root) {
         centersToShow = [CURRENT_USER.center];
     }
 
-    // جلب البيانات مع التاريخ المحدد
     const [users, attendance] = await Promise.all([
         api('listUsers', {}),
         api('listAttendance', { date: selectedDate })
@@ -2092,17 +2119,25 @@ async function renderCoordination(root) {
                 const mins = minutesOfDay(first.timestamp);
                 const late = mins !== null && mins >= lateThresholdMinutes;
                 if (late) centerLate++;
+                
+                // ========== عرض اسم الموقع بجانب رابط الخريطة ==========
+                const locationName = first.locationName || 'موقع غير معروف';
                 let locLink = '-';
-                if (first.mapsLink) {
-                    locLink = `<a href="${first.mapsLink}" target="_blank" class="location-link">📍 عرض</a>`;
-                } else if (first.lat && first.lng) {
-                    locLink = `<a href="https://www.google.com/maps?q=${first.lat},${first.lng}" target="_blank" class="location-link">📍 عرض</a>`;
+                if (first.mapsLink && first.mapsLink.trim().startsWith('http')) {
+                    locLink = `<a href="${first.mapsLink}" target="_blank" class="location-link">📍 ${locationName}</a>`;
+                } else if (first.lat && first.lng && !isNaN(first.lat) && !isNaN(first.lng)) {
+                    locLink = `<a href="https://www.google.com/maps?q=${first.lat},${first.lng}" target="_blank" class="location-link">📍 ${locationName}</a>`;
                 }
+                
                 const checkOut = centerAttendanceOut.filter(a => a.userId === u.id).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))[0] || null;
                 let outLocLink = '-';
                 if (checkOut) {
-                    if (checkOut.mapsLink) outLocLink = `<a href="${checkOut.mapsLink}" target="_blank" class="location-link">📍 عرض</a>`;
-                    else if (checkOut.lat && checkOut.lng) outLocLink = `<a href="https://www.google.com/maps?q=${checkOut.lat},${checkOut.lng}" target="_blank" class="location-link">📍 عرض</a>`;
+                    const outLocationName = checkOut.locationName || 'موقع غير معروف';
+                    if (checkOut.mapsLink && checkOut.mapsLink.trim().startsWith('http')) {
+                        outLocLink = `<a href="${checkOut.mapsLink}" target="_blank" class="location-link">📍 ${outLocationName}</a>`;
+                    } else if (checkOut.lat && checkOut.lng && !isNaN(checkOut.lat) && !isNaN(checkOut.lng)) {
+                        outLocLink = `<a href="https://www.google.com/maps?q=${checkOut.lat},${checkOut.lng}" target="_blank" class="location-link">📍 ${outLocationName}</a>`;
+                    }
                 }
                 presentList.push({ 
                     name: u.fullName, 
@@ -2138,7 +2173,6 @@ async function renderCoordination(root) {
         totalAbsent += centerAbsent;
     });
 
-    // تنسيق التاريخ للعرض
     const displayDate = new Date(selectedDate + 'T00:00:00');
     const formattedDate = displayDate.toLocaleDateString('ar-EG', { 
         weekday:'long', 
@@ -2150,7 +2184,6 @@ async function renderCoordination(root) {
     const isToday = selectedDate === today;
 
     root.innerHTML = `
-        <!-- شريط التنقل بالتاريخ -->
         <div class="date-nav-bar">
             <span class="date-label">📅 التاريخ:</span>
             <button class="nav-btn" onclick="changeCoordinationDate(-1)" title="اليوم السابق">‹</button>
@@ -2220,7 +2253,6 @@ async function renderCoordination(root) {
         </div>
     `;
 
-    // ربط أحداث التاريخ
     const datePicker = document.getElementById('coordinationDatePicker');
     if (datePicker) {
         datePicker.addEventListener('change', function() {
@@ -2233,7 +2265,6 @@ async function renderCoordination(root) {
     }
 }
 
-// دوال التنقل في التاريخ
 window.changeCoordinationDate = function(delta) {
     const currentDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
     const dateObj = new Date(currentDate + 'T00:00:00');
@@ -2249,9 +2280,6 @@ window.goToTodayCoordination = function() {
     goPage('coordination', true);
 };
 
-// ========================================================================
-// تصدير Excel للمتابعة
-// ========================================================================
 window.exportCoordinationExcel = function(selectedDate) {
     const rows = document.querySelectorAll('.center-summary-table tbody tr');
     let csv = '\uFEFF';
@@ -2274,7 +2302,7 @@ window.exportCoordinationExcel = function(selectedDate) {
 };
 
 // ========================================================================
-// إدارة المستخدمين
+// إدارة المستخدمين (مختصرة - كما هي)
 // ========================================================================
 async function renderUsers(root) {
     const users = await api('listUsers', {});
@@ -2446,7 +2474,7 @@ window.exportUsersExcel = function() {
 };
 
 // ========================================================================
-// دوال إدارة المستخدمين
+// دوال إدارة المستخدمين (كما هي)
 // ========================================================================
 
 window.cancelUserAttendance = function(userId, userName) {
@@ -2513,7 +2541,6 @@ window.confirmCancelAttendance = async function(userId) {
     }
 };
 
-// تعديل المستخدم
 window.openEditUserModal = function(id) {
     const user = allUsersCache.find(u => u.id === id);
     if (!user) {
@@ -2611,7 +2638,6 @@ window.submitEditUser = async function() {
     }
 };
 
-// حذف المستخدم
 window.deleteUser = function(id, name) {
     openModal(`
         <h3>🗑️ تأكيد حذف المستخدم</h3>
@@ -2644,7 +2670,6 @@ window.confirmDeleteUser = async function(id) {
     }
 };
 
-// دمج المستخدمين
 window.openMergeUsersModal = function() {
     const users = allUsersCache.filter(u => u.status === 'APPROVED');
     
@@ -2921,9 +2946,13 @@ async function renderPresentNow(root) {
                 let photo = normalizeDriveThumbnail(p.userPhoto || p.photo || '');
                 const initials = (p.userName||p.userId||'-').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
                 const imgHtml = photo ? `<img src="${photo}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials;
+                const locationName = p.locationName || 'موقع غير معروف';
                 let locLink = '-';
-                if (p.mapsLink) locLink = `<a href="${p.mapsLink}" target="_blank" class="location-link">📍 عرض</a>`;
-                else if (p.lat && p.lng) locLink = `<a href="https://www.google.com/maps?q=${p.lat},${p.lng}" target="_blank" class="location-link">📍 عرض</a>`;
+                if (p.mapsLink && p.mapsLink.trim().startsWith('http')) {
+                    locLink = `<a href="${p.mapsLink}" target="_blank" class="location-link">📍 ${locationName}</a>`;
+                } else if (p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng)) {
+                    locLink = `<a href="https://www.google.com/maps?q=${p.lat},${p.lng}" target="_blank" class="location-link">📍 ${locationName}</a>`;
+                }
                 return `<tr>
                     <td><div class="small-avatar">${imgHtml}</div></td>
                     <td>${p.userName||p.userId||'-'}</td>
