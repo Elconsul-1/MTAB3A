@@ -795,6 +795,9 @@ const FIREBASE_CONFIG = {
 };
 const API_URL = "https://script.google.com/macros/s/AKfycbzvLzXmAEvDvgeYB87PTusZYO17tKLv73UeXlY9Hj28VCWquDopHS-9XoeR2VdFmDH79Q/exec";
 
+// مفتاح Google Geocoding API
+const GOOGLE_API_KEY = 'AIzaSyCW0pt_PF6aM3fUBOwDvlsCAPyIr1xz0Pk';
+
 firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 
@@ -994,42 +997,99 @@ function roleLabel(r) {
 }
 
 /* =====================================================================
-   دالة للحصول على اسم الموقع من الإحداثيات باستخدام Nominatim
+   دالة للحصول على اسم الموقع من الإحداثيات باستخدام Google Geocoding API
    ===================================================================== */
-async function getLocationNameOSM(lat, lng) {
+async function getLocationNameGoogle(lat, lng) {
     if (!lat || !lng) return 'موقع غير معروف';
     
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+    if (isNaN(latNum) || isNaN(lngNum)) return 'موقع غير معروف';
+    
     try {
-        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=ar`;
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'MTAB3A-App/1.0' // مطلوب حسب سياسة Nominatim
-            }
-        });
-        
-        if (!response.ok) {
-            console.warn('Nominatim request failed:', response.status);
-            return 'موقع غير معروف';
-        }
-        
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latNum},${lngNum}&key=${GOOGLE_API_KEY}&language=ar`;
+        const response = await fetch(url);
         const data = await response.json();
         
-        if (data && data.address) {
-            const address = data.address;
-            // ترتيب الأولوية: قرية > مدينة > بلدة > حي > منطقة
-            return address.village || 
-                   address.city || 
-                   address.town || 
-                   address.suburb || 
-                   address.district || 
-                   address.county ||
-                   address.state_district ||
-                   data.display_name?.split(',').slice(0, 2).join(', ') || 
-                   'موقع غير معروف';
+        if (data.status === 'OK' && data.results && data.results.length > 0) {
+            const result = data.results[0];
+            const addressComponents = result.address_components || [];
+            
+            // ترتيب الأولوية للحصول على أدق اسم للقرية/المدينة
+            let locationName = '';
+            
+            // 1. البحث عن locality (مدينة/قرية)
+            for (const component of addressComponents) {
+                if (component.types.includes('locality')) {
+                    locationName = component.long_name;
+                    break;
+                }
+            }
+            
+            // 2. إذا لم يتم العثور على locality، جرب administrative_area_level_3 (قرية/مركز)
+            if (!locationName) {
+                for (const component of addressComponents) {
+                    if (component.types.includes('administrative_area_level_3')) {
+                        locationName = component.long_name;
+                        break;
+                    }
+                }
+            }
+            
+            // 3. إذا لم يتم العثور، جرب administrative_area_level_4
+            if (!locationName) {
+                for (const component of addressComponents) {
+                    if (component.types.includes('administrative_area_level_4')) {
+                        locationName = component.long_name;
+                        break;
+                    }
+                }
+            }
+            
+            // 4. إذا لم يتم العثور، جرب neighborhood
+            if (!locationName) {
+                for (const component of addressComponents) {
+                    if (component.types.includes('neighborhood')) {
+                        locationName = component.long_name;
+                        break;
+                    }
+                }
+            }
+            
+            // 5. إذا لم يتم العثور، جرب sublocality
+            if (!locationName) {
+                for (const component of addressComponents) {
+                    if (component.types.includes('sublocality')) {
+                        locationName = component.long_name;
+                        break;
+                    }
+                }
+            }
+            
+            // 6. إذا لم يتم العثور على أي شيء، استخدم العنوان المنسق
+            if (!locationName) {
+                const formatted = result.formatted_address || '';
+                const parts = formatted.split(',');
+                if (parts.length > 0 && parts[0].trim() !== '') {
+                    locationName = parts[0].trim();
+                } else {
+                    locationName = formatted;
+                }
+            }
+            
+            return locationName || 'موقع غير معروف';
+        } else if (data.status === 'OVER_QUERY_LIMIT') {
+            console.warn('Google Geocoding API: تجاوزت حد الطلبات المجاني');
+            return 'موقع غير معروف (تجاوز الحد)';
+        } else if (data.status === 'REQUEST_DENIED') {
+            console.warn('Google Geocoding API: المفتاح غير صالح أو الخدمة غير مفعلة');
+            return 'موقع غير معروف (خطأ في المفتاح)';
+        } else {
+            console.warn('Google Geocoding API response:', data.status);
+            return 'موقع غير معروف';
         }
-        return 'موقع غير معروف';
     } catch (error) {
-        console.error('خطأ في جلب الموقع من Nominatim:', error);
+        console.error('خطأ في جلب الموقع من Google:', error);
         return 'موقع غير معروف';
     }
 }
@@ -1129,7 +1189,9 @@ async function refreshMyStatus() {
         } else {
             launchApp();
         }
-    } catch (e) {}
+    } catch (e) {
+        showToast('فشل الاتصال بالخادم: ' + e.message, 'err');
+    }
 }
 
 document.getElementById('submitCompleteBtn').addEventListener('click', async function() {
@@ -1587,7 +1649,6 @@ async function todayAttendanceStatus(p) {
 // ========================================================================
 
 async function doAttendanceEnhanced(action, extra = {}) {
-    // منع الضغط المتكرر
     if (attendanceLock.processing) {
         showToast('جاري معالجة طلب سابق...', 'err');
         return;
@@ -1597,7 +1658,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
     const checkInKey = 'attendance_checkin_' + CURRENT_USER.id + '_' + today;
     const checkOutKey = 'attendance_checkout_' + CURRENT_USER.id + '_' + today;
 
-    // ==================== التحقق المسبق ====================
     if (action === 'checkIn') {
         if (localStorage.getItem(checkInKey) === '1') {
             showToast('تم تسجيل حضورك اليوم بالفعل', 'ok');
@@ -1632,7 +1692,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
             return;
         }
         
-        // ==================== فتح نافذة إدخال ما تم تنفيذه قبل الانصراف ====================
         if (!extra.tasks) {
             openModal(`
                 <h3>📋 ما تم تنفيذه اليوم</h3>
@@ -1666,7 +1725,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
         }
     }
 
-    // ==================== التحقق الإجباري من تفعيل الموقع قبل تسجيل الحضور ====================
     let checkInPosition = null;
     if (action === 'checkIn') {
         const geoBtnEl = document.getElementById('checkInBtn');
@@ -1701,7 +1759,6 @@ async function doAttendanceEnhanced(action, extra = {}) {
         }
     }
 
-    // ==================== تغيير الزرار فوراً ====================
     attendanceLock.processing = true;
     const btn = document.getElementById(action === 'checkIn' ? 'checkInBtn' : 'checkOutBtn');
     const originalText = btn ? btn.textContent : '';
@@ -1729,11 +1786,11 @@ async function doAttendanceEnhanced(action, extra = {}) {
             }
         }
 
-        // ==================== الحصول على اسم الموقع من الإحداثيات ====================
+        // ==================== الحصول على اسم الموقع باستخدام Google API ====================
         let locationName = 'موقع غير معروف';
         if (position) {
             try {
-                locationName = await getLocationNameOSM(position.coords.latitude, position.coords.longitude);
+                locationName = await getLocationNameGoogle(position.coords.latitude, position.coords.longitude);
             } catch (e) {
                 console.warn('فشل في جلب اسم الموقع:', e);
             }
@@ -1748,7 +1805,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             center: extra.center || CURRENT_USER.center,
             lat: position ? position.coords.latitude : null,
             lng: position ? position.coords.longitude : null,
-            locationName: locationName, // <-- الحقل الجديد
+            locationName: locationName,
             workType: extra.workType || 'FIELD',
             isLate: isLate
         };
@@ -2120,7 +2177,6 @@ async function renderCoordination(root) {
                 const late = mins !== null && mins >= lateThresholdMinutes;
                 if (late) centerLate++;
                 
-                // ========== عرض اسم الموقع بجانب رابط الخريطة ==========
                 const locationName = first.locationName || 'موقع غير معروف';
                 let locLink = '-';
                 if (first.mapsLink && first.mapsLink.trim().startsWith('http')) {
@@ -2302,7 +2358,7 @@ window.exportCoordinationExcel = function(selectedDate) {
 };
 
 // ========================================================================
-// إدارة المستخدمين (مختصرة - كما هي)
+// إدارة المستخدمين
 // ========================================================================
 async function renderUsers(root) {
     const users = await api('listUsers', {});
@@ -2474,7 +2530,7 @@ window.exportUsersExcel = function() {
 };
 
 // ========================================================================
-// دوال إدارة المستخدمين (كما هي)
+// دوال إدارة المستخدمين
 // ========================================================================
 
 window.cancelUserAttendance = function(userId, userName) {
@@ -2784,28 +2840,40 @@ window.confirmReject = async function(id) {
 };
 
 // ========================================================================
-// دوال التكليفات والمهام (مختصرة)
+// التكليفات والمهام - مع إضافة إمكانية الإضافة لمدير المركز
 // ========================================================================
 async function renderAssignments(root) {
     let missions = await api('listMissions', {});
+    let tasks = await api('listTasks', {});
+    
+    // تصفية حسب صلاحيات المستخدم
     if (CURRENT_USER.role === 'CENTER_ADMIN') {
         missions = missions.filter(m => m.center === CURRENT_USER.center);
+        tasks = tasks.filter(t => t.center === CURRENT_USER.center);
     } else if (CURRENT_USER.role === 'ENGINEER' || CURRENT_USER.role === 'TECHNICIAN') {
         missions = missions.filter(m => m.engineerName === CURRENT_USER.fullName || m.assignedTo === CURRENT_USER.fullName);
+        tasks = tasks.filter(t => t.engineerName === CURRENT_USER.fullName);
     }
     
     const generalMissions = missions.filter(m => m.source === 'GENERAL');
     const centerMissions = missions.filter(m => m.source === 'CENTER');
     
-    let tasks = await api('listTasks', {});
-    if (CURRENT_USER.role === 'CENTER_ADMIN') {
-        tasks = tasks.filter(t => t.center === CURRENT_USER.center);
-    } else if (CURRENT_USER.role === 'ENGINEER' || CURRENT_USER.role === 'TECHNICIAN') {
-        tasks = tasks.filter(t => t.engineerName === CURRENT_USER.fullName);
-    }
-
+    // تحديد إذا كان المستخدم يمكنه الإضافة (مدير نظام أو مدير مركز)
+    const canAdd = ['SYSTEM_ADMIN', 'CENTER_ADMIN'].includes(CURRENT_USER.role);
+    
     root.innerHTML = `
-        <div class="panel"><div class="panel-head"><h3>التكليفات والمهام</h3></div></div>
+        <div class="panel">
+            <div class="panel-head">
+                <h3>التكليفات والمهام</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    ${canAdd ? `
+                        <button class="btn btn-primary btn-sm" onclick="openAddMissionModal()">➕ إضافة تكليف</button>
+                        <button class="btn btn-gold btn-sm" onclick="openAddTaskModal()">➕ إضافة مهمة</button>
+                    ` : ''}
+                    <button class="btn btn-outline btn-sm" onclick="refreshAssignments()">⟳ تحديث</button>
+                </div>
+            </div>
+        </div>
         <div class="tabs">
             <button class="tab-btn active" data-tab="general">تكليفات الإدارة (${generalMissions.length})</button>
             <button class="tab-btn" data-tab="center">تكليفات المركز (${centerMissions.length})</button>
@@ -2828,18 +2896,42 @@ async function renderAssignments(root) {
         tasksPane.style.display = tab === 'tasks' ? 'block' : 'none';
         
         if (tab === 'general') {
-            generalPane.innerHTML = `<div class="panel"><div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>البداية</th><th>الحالة</th></tr></thead><tbody>
-                ${generalMissions.map(m => `<tr><td>${m.engineerName||'-'}</td><td>${m.center||'-'}</td><td>${m.workType||'-'}</td><td>${m.village||'-'}</td><td>${fmtDate(m.startTime)}</td><td>${m.status||'-'}</td></tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">لا توجد تكليفات</div></td></tr>'}
+            generalPane.innerHTML = `<div class="panel"><div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>البداية</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>
+                ${generalMissions.map(m => `<tr>
+                    <td>${m.engineerName||'-'}</td>
+                    <td>${m.center||'-'}</td>
+                    <td>${m.workType||'-'}</td>
+                    <td>${m.village||'-'}</td>
+                    <td>${fmtDate(m.startTime)}</td>
+                    <td>${taskStatusChip(m.status)}</td>
+                    <td>${canAdd ? `<button class="btn btn-outline btn-sm" onclick="updateMissionStatusAction('${m.id}')">تحديث</button>` : ''}</td>
+                </tr>`).join('') || '<tr><td colspan="7"><div class="empty-state">لا توجد تكليفات</div></td></tr>'}
             </tbody></table></div></div>`;
         }
         if (tab === 'center') {
-            centerPane.innerHTML = `<div class="panel"><div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>البداية</th><th>الحالة</th></tr></thead><tbody>
-                ${centerMissions.map(m => `<tr><td>${m.engineerName||'-'}</td><td>${m.center||'-'}</td><td>${m.workType||'-'}</td><td>${m.village||'-'}</td><td>${fmtDate(m.startTime)}</td><td>${m.status||'-'}</td></tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">لا توجد تكليفات</div></td></tr>'}
+            centerPane.innerHTML = `<div class="panel"><div class="table-wrap"><table><thead><tr><th>المهندس</th><th>المركز</th><th>نوع العمل</th><th>القرية</th><th>البداية</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>
+                ${centerMissions.map(m => `<tr>
+                    <td>${m.engineerName||'-'}</td>
+                    <td>${m.center||'-'}</td>
+                    <td>${m.workType||'-'}</td>
+                    <td>${m.village||'-'}</td>
+                    <td>${fmtDate(m.startTime)}</td>
+                    <td>${taskStatusChip(m.status)}</td>
+                    <td>${canAdd ? `<button class="btn btn-outline btn-sm" onclick="updateMissionStatusAction('${m.id}')">تحديث</button>` : ''}</td>
+                </tr>`).join('') || '<tr><td colspan="7"><div class="empty-state">لا توجد تكليفات</div></td></tr>'}
             </tbody></table></div></div>`;
         }
         if (tab === 'tasks') {
-            tasksPane.innerHTML = `<div class="panel"><div class="table-wrap"><table><thead><tr><th>المهندس</th><th>نوع المهمة</th><th>الموقع</th><th>الحالات</th><th>التوقيت</th><th>الحالة</th></tr></thead><tbody>
-                ${tasks.map(t => `<tr><td>${t.engineerName}</td><td>${t.taskType}</td><td>${t.location||'-'}</td><td>${t.casesCount}</td><td>${fmtDate(t.startTime)}</td><td>${taskStatusChip(t.status)}</td></tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">لا توجد مهام</div></td></tr>'}
+            tasksPane.innerHTML = `<div class="panel"><div class="table-wrap"><table><thead><tr><th>المهندس</th><th>نوع المهمة</th><th>الموقع</th><th>الحالات</th><th>التوقيت</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>
+                ${tasks.map(t => `<tr>
+                    <td>${t.engineerName}</td>
+                    <td>${t.taskType}</td>
+                    <td>${t.location||'-'}</td>
+                    <td>${t.casesCount}</td>
+                    <td>${fmtDate(t.startTime)}</td>
+                    <td>${taskStatusChip(t.status)}</td>
+                    <td>${canAdd ? `<button class="btn btn-outline btn-sm" onclick="updateTaskStatusAction('${t.id}')">تحديث</button>` : ''}</td>
+                </tr>`).join('') || '<tr><td colspan="7"><div class="empty-state">لا توجد مهام</div></td></tr>'}
             </tbody></table></div></div>`;
         }
     }
@@ -2848,11 +2940,387 @@ async function renderAssignments(root) {
     await activate('general');
 }
 
+// دالة تحديث الصفحة
+window.refreshAssignments = function() {
+    delete PAGE_CACHE['assignments'];
+    goPage('assignments', true, false);
+};
+
+// دالة عرض حالة التكليف
 function taskStatusChip(status) {
-    const map = { DONE:['approved','منفذة'], PENDING:['pending','قيد التنفيذ'] };
+    const map = { 
+        'OPEN': ['open', 'مفتوح'],
+        'CLOSED': ['closed', 'مغلق'],
+        'IN_PROGRESS': ['open', 'قيد التنفيذ'],
+        'DONE': ['approved', 'منفذ'],
+        'PENDING': ['pending', 'قيد الانتظار'],
+        'COMPLETED': ['approved', 'مكتمل']
+    };
     const v = map[status] || ['pending', status || '-'];
     return `<span class="chip ${v[0]}">${v[1]}</span>`;
 }
+
+// ========================================================================
+// نافذة إضافة تكليف جديد
+// ========================================================================
+window.openAddMissionModal = function() {
+    const center = CURRENT_USER.role === 'CENTER_ADMIN' ? CURRENT_USER.center : '';
+    const centerOptionsHtml = CENTERS.map(c => 
+        `<option value="${c}" ${c === center ? 'selected' : ''}>${c}</option>`
+    ).join('');
+    
+    // جلب قائمة المهندسين للاختيار
+    api('listEngineers', { center: CURRENT_USER.center }).then(engineers => {
+        const engineerOptions = engineers.map(e => 
+            `<option value="${e.fullName}">${e.fullName}</option>`
+        ).join('');
+        
+        openModal(`
+            <h3>➕ إضافة تكليف جديد</h3>
+            <div class="field">
+                <label>المهندس المسؤول *</label>
+                <select id="missionEngineer">
+                    <option value="">اختر المهندس</option>
+                    ${engineerOptions}
+                </select>
+            </div>
+            <div class="field">
+                <label>المركز *</label>
+                <select id="missionCenter">${centerOptionsHtml}</select>
+            </div>
+            <div class="field-row">
+                <div class="field"><label>الوحدة المحلية</label><input id="missionLocalUnit" placeholder="الوحدة المحلية"></div>
+                <div class="field"><label>القرية</label><input id="missionVillage" placeholder="القرية"></div>
+            </div>
+            <div class="field">
+                <label>نوع العمل *</label>
+                <select id="missionWorkType">
+                    <option value="">اختر نوع العمل</option>
+                    <option value="مسح">مسح</option>
+                    <option value="رفع مساحي">رفع مساحي</option>
+                    <option value="معاينة">معاينة</option>
+                    <option value="تحديد منسوب">تحديد منسوب</option>
+                    <option value="أخرى">أخرى</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>الجهة الطالبة</label>
+                <input id="missionRequester" placeholder="الجهة الطالبة">
+            </div>
+            <div class="field">
+                <label>الوصف</label>
+                <textarea id="missionDescription" rows="3" placeholder="وصف التكليف..."></textarea>
+            </div>
+            <div class="modal-close-row">
+                <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+                <button class="btn btn-primary" onclick="submitNewMission()">💾 حفظ التكليف</button>
+            </div>
+        `);
+    }).catch(() => {
+        // إذا فشل جلب المهندسين، افتح النموذج بدون قائمة
+        openModal(`
+            <h3>➕ إضافة تكليف جديد</h3>
+            <div class="field">
+                <label>المهندس المسؤول *</label>
+                <input id="missionEngineer" placeholder="اسم المهندس">
+            </div>
+            <div class="field">
+                <label>المركز *</label>
+                <select id="missionCenter">${centerOptionsHtml}</select>
+            </div>
+            <div class="field-row">
+                <div class="field"><label>الوحدة المحلية</label><input id="missionLocalUnit" placeholder="الوحدة المحلية"></div>
+                <div class="field"><label>القرية</label><input id="missionVillage" placeholder="القرية"></div>
+            </div>
+            <div class="field">
+                <label>نوع العمل *</label>
+                <select id="missionWorkType">
+                    <option value="">اختر نوع العمل</option>
+                    <option value="مسح">مسح</option>
+                    <option value="رفع مساحي">رفع مساحي</option>
+                    <option value="معاينة">معاينة</option>
+                    <option value="تحديد منسوب">تحديد منسوب</option>
+                    <option value="أخرى">أخرى</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>الجهة الطالبة</label>
+                <input id="missionRequester" placeholder="الجهة الطالبة">
+            </div>
+            <div class="field">
+                <label>الوصف</label>
+                <textarea id="missionDescription" rows="3" placeholder="وصف التكليف..."></textarea>
+            </div>
+            <div class="modal-close-row">
+                <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+                <button class="btn btn-primary" onclick="submitNewMission()">💾 حفظ التكليف</button>
+            </div>
+        `);
+    });
+};
+
+// ========================================================================
+// دالة إرسال التكليف
+// ========================================================================
+window.submitNewMission = async function() {
+    const engineerName = document.getElementById('missionEngineer')?.value?.trim();
+    const center = document.getElementById('missionCenter')?.value;
+    const localUnit = document.getElementById('missionLocalUnit')?.value?.trim();
+    const village = document.getElementById('missionVillage')?.value?.trim();
+    const workType = document.getElementById('missionWorkType')?.value;
+    const requestingEntity = document.getElementById('missionRequester')?.value?.trim();
+    const description = document.getElementById('missionDescription')?.value?.trim();
+    
+    if (!engineerName) {
+        showToast('يرجى إدخال اسم المهندس المسؤول', 'err');
+        return;
+    }
+    if (!center) {
+        showToast('يرجى اختيار المركز', 'err');
+        return;
+    }
+    if (!workType) {
+        showToast('يرجى اختيار نوع العمل', 'err');
+        return;
+    }
+    
+    closeModal();
+    showSavingModal('جارى إضافة التكليف...');
+    
+    try {
+        const result = await api('createMission', {
+            engineerName: engineerName,
+            center: center,
+            localUnit: localUnit,
+            village: village,
+            workType: workType,
+            requestingEntity: requestingEntity,
+            description: description,
+            source: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'GENERAL' : 'CENTER',
+            createdBy: CURRENT_USER.id,
+            createdByName: CURRENT_USER.fullName
+        });
+        
+        hideSavingModal();
+        showToast('✅ تم إضافة التكليف بنجاح', 'ok');
+        refreshAssignments();
+    } catch (e) {
+        hideSavingModal();
+        showToast('❌ فشل إضافة التكليف: ' + e.message, 'err');
+    }
+};
+
+// ========================================================================
+// نافذة إضافة مهمة جديدة
+// ========================================================================
+window.openAddTaskModal = function() {
+    const center = CURRENT_USER.role === 'CENTER_ADMIN' ? CURRENT_USER.center : '';
+    const centerOptionsHtml = CENTERS.map(c => 
+        `<option value="${c}" ${c === center ? 'selected' : ''}>${c}</option>`
+    ).join('');
+    
+    openModal(`
+        <h3>➕ إضافة مهمة جديدة</h3>
+        <div class="field">
+            <label>المهندس المسؤول *</label>
+            <input id="taskEngineer" placeholder="اسم المهندس">
+        </div>
+        <div class="field">
+            <label>المركز *</label>
+            <select id="taskCenter">${centerOptionsHtml}</select>
+        </div>
+        <div class="field">
+            <label>نوع المهمة *</label>
+            <select id="taskType">
+                <option value="">اختر نوع المهمة</option>
+                <option value="رفع مساحي">رفع مساحي</option>
+                <option value="معاينة">معاينة</option>
+                <option value="تحديد منسوب">تحديد منسوب</option>
+                <option value="مراجعة">مراجعة</option>
+                <option value="أخرى">أخرى</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>الموقع</label>
+            <input id="taskLocation" placeholder="الموقع">
+        </div>
+        <div class="field">
+            <label>عدد الحالات</label>
+            <input id="taskCasesCount" type="number" min="0" value="0">
+        </div>
+        <div class="field">
+            <label>ملاحظات</label>
+            <textarea id="taskNotes" rows="3" placeholder="ملاحظات إضافية..."></textarea>
+        </div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-gold" onclick="submitNewTask()">💾 حفظ المهمة</button>
+        </div>
+    `);
+};
+
+// ========================================================================
+// دالة إرسال المهمة
+// ========================================================================
+window.submitNewTask = async function() {
+    const engineerName = document.getElementById('taskEngineer')?.value?.trim();
+    const center = document.getElementById('taskCenter')?.value;
+    const taskType = document.getElementById('taskType')?.value;
+    const location = document.getElementById('taskLocation')?.value?.trim();
+    const casesCount = parseInt(document.getElementById('taskCasesCount')?.value || '0');
+    const notes = document.getElementById('taskNotes')?.value?.trim();
+    
+    if (!engineerName) {
+        showToast('يرجى إدخال اسم المهندس المسؤول', 'err');
+        return;
+    }
+    if (!center) {
+        showToast('يرجى اختيار المركز', 'err');
+        return;
+    }
+    if (!taskType) {
+        showToast('يرجى اختيار نوع المهمة', 'err');
+        return;
+    }
+    
+    closeModal();
+    showSavingModal('جارى إضافة المهمة...');
+    
+    try {
+        const result = await api('createTask', {
+            engineerName: engineerName,
+            center: center,
+            taskType: taskType,
+            location: location,
+            casesCount: casesCount,
+            notes: notes,
+            source: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'GENERAL' : 'CENTER',
+            createdBy: CURRENT_USER.id,
+            createdByName: CURRENT_USER.fullName
+        });
+        
+        hideSavingModal();
+        showToast('✅ تم إضافة المهمة بنجاح', 'ok');
+        refreshAssignments();
+    } catch (e) {
+        hideSavingModal();
+        showToast('❌ فشل إضافة المهمة: ' + e.message, 'err');
+    }
+};
+
+// ========================================================================
+// دوال تحديث حالة التكليف والمهمة
+// ========================================================================
+window.updateMissionStatusAction = function(missionId) {
+    openModal(`
+        <h3>تحديث حالة التكليف</h3>
+        <div class="field">
+            <label>الحالة *</label>
+            <select id="missionNewStatus">
+                <option value="OPEN">مفتوح</option>
+                <option value="IN_PROGRESS">قيد التنفيذ</option>
+                <option value="CLOSED">مغلق</option>
+                <option value="DONE">منفذ</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>ملاحظات التقدم</label>
+            <textarea id="missionProgressNote" rows="3" placeholder="ما تم إنجازه..."></textarea>
+        </div>
+        <div class="field">
+            <label>سبب الإنهاء (إذا كان مغلقاً)</label>
+            <textarea id="missionCompletionReason" rows="2" placeholder="سبب الإنهاء..."></textarea>
+        </div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-primary" onclick="submitMissionStatusUpdate('${missionId}')">💾 تحديث</button>
+        </div>
+    `);
+};
+
+window.submitMissionStatusUpdate = async function(missionId) {
+    const status = document.getElementById('missionNewStatus')?.value;
+    const progressNote = document.getElementById('missionProgressNote')?.value?.trim() || '';
+    const completionReason = document.getElementById('missionCompletionReason')?.value?.trim() || '';
+    
+    if (!status) {
+        showToast('يرجى اختيار الحالة', 'err');
+        return;
+    }
+    
+    closeModal();
+    showSavingModal('جارى تحديث الحالة...');
+    
+    try {
+        await api('updateMissionStatus', {
+            missionId: missionId,
+            status: status,
+            progressNote: progressNote,
+            completionReason: completionReason,
+            updatedBy: CURRENT_USER.id,
+            updatedByName: CURRENT_USER.fullName
+        });
+        
+        hideSavingModal();
+        showToast('✅ تم تحديث حالة التكليف بنجاح', 'ok');
+        refreshAssignments();
+    } catch (e) {
+        hideSavingModal();
+        showToast('❌ فشل تحديث الحالة: ' + e.message, 'err');
+    }
+};
+
+window.updateTaskStatusAction = function(taskId) {
+    openModal(`
+        <h3>تحديث حالة المهمة</h3>
+        <div class="field">
+            <label>الحالة *</label>
+            <select id="taskNewStatus">
+                <option value="PENDING">قيد الانتظار</option>
+                <option value="IN_PROGRESS">قيد التنفيذ</option>
+                <option value="COMPLETED">مكتمل</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>ملاحظات التقدم</label>
+            <textarea id="taskProgressNote" rows="3" placeholder="ما تم إنجازه..."></textarea>
+        </div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-gold" onclick="submitTaskStatusUpdate('${taskId}')">💾 تحديث</button>
+        </div>
+    `);
+};
+
+window.submitTaskStatusUpdate = async function(taskId) {
+    const status = document.getElementById('taskNewStatus')?.value;
+    const progressNote = document.getElementById('taskProgressNote')?.value?.trim() || '';
+    
+    if (!status) {
+        showToast('يرجى اختيار الحالة', 'err');
+        return;
+    }
+    
+    closeModal();
+    showSavingModal('جارى تحديث الحالة...');
+    
+    try {
+        await api('updateTaskStatus', {
+            taskId: taskId,
+            status: status,
+            progressNote: progressNote,
+            updatedBy: CURRENT_USER.id,
+            updatedByName: CURRENT_USER.fullName
+        });
+        
+        hideSavingModal();
+        showToast('✅ تم تحديث حالة المهمة بنجاح', 'ok');
+        refreshAssignments();
+    } catch (e) {
+        hideSavingModal();
+        showToast('❌ فشل تحديث الحالة: ' + e.message, 'err');
+    }
+};
 
 // ========================================================================
 // الأجهزة المساحية (مختصرة)
@@ -2931,6 +3399,22 @@ async function renderPresentNow(root) {
     });
     const present = Object.values(lastByUser).filter(r => String(r.type || '').toUpperCase() === 'IN');
     present.sort((a,b) => (a.userName || '').localeCompare(b.userName || ''));
+    
+    // تحديث أسماء المواقع للسجلات التي ليس لها locationName
+    for (const p of present) {
+        if (!p.locationName || p.locationName === '' || p.locationName === 'موقع غير معروف') {
+            if (p.lat && p.lng) {
+                try {
+                    p.locationName = await getLocationNameGoogle(p.lat, p.lng);
+                } catch (e) {
+                    p.locationName = 'موقع غير معروف';
+                }
+            } else {
+                p.locationName = 'موقع غير معروف';
+            }
+        }
+    }
+    
     root.innerHTML = `
         <div class="panel">
             <div class="panel-head"><h3>المتواجدين حاليا</h3>
