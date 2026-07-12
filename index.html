@@ -1349,41 +1349,6 @@ async function renderCoordination(root) {
             <div class="stat-box" style="border-color:var(--navy-600)"><div class="stat-number">${totalEmployees > 0 ? Math.round((totalPresent / totalEmployees) * 100) : 0}%</div><div class="stat-label">📊 نسبة الحضور</div></div>
         </div>
 
-        <!-- لوحة التحرك اليومي -->
-        <div class="panel">
-            <div class="panel-head">
-                <h3>🔄 التحرك اليومي</h3>
-                ${CURRENT_USER.role === 'ENGINEER' || CURRENT_USER.role === 'TECHNICIAN' ? `
-                    <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <button class="btn btn-primary btn-sm" onclick="openDailyMovementModal()">📍 تسجيل التحرك</button>
-                    </div>
-                ` : ''}
-            </div>
-            <div class="daily-board" id="dailyBoardContainer">
-                ${centerData.map(c => `
-                    <div class="daily-card">
-                        <div class="daily-card-header">🏢 ${c.center}</div>
-                        <div class="daily-item">
-                            <span class="daily-item-label">الموظفين الحاضرين</span>
-                            <span class="daily-status yes">${c.presentCount}/${c.totalEmployees}</span>
-                        </div>
-                        <div class="daily-item">
-                            <span class="daily-item-label">المتأخرين</span>
-                            <span class="daily-status ${c.lateCount > 0 ? 'no' : 'yes'}">${c.lateCount}</span>
-                        </div>
-                        <div class="daily-item">
-                            <span class="daily-item-label">العمل الميداني</span>
-                            <span style="font-size:12px;color:var(--ink-600)">${c.fieldWorkCount}</span>
-                        </div>
-                        <div class="daily-item">
-                            <span class="daily-item-label">العمل المكتبي</span>
-                            <span style="font-size:12px;color:var(--ink-600)">${c.officeWorkCount}</span>
-                        </div>
-                    </div>
-                `).join('')}
-            </div>
-        </div>
-
         <!-- جدول ملخص المراكز -->
         <div style="overflow-x:auto;margin-bottom:20px">
             <table class="center-summary-table">
@@ -1704,33 +1669,6 @@ async function renderAssignments(root) {
             .assignment-status.pending{background:#f3e5f5;color:#4a148c}
             .assignment-status.done{background:#e8f5e9;color:#1b5e20}
             .assignment-status.closed{background:#eceff1;color:#37474f}
-            
-            /* -------- بطاقات التكليفات والمهام -------- */
-            .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:20px}
-            .task-card{background:var(--card);border-radius:14px;padding:16px;border-left:5px solid #999;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px}
-            .task-card.new{border-left-color:var(--navy-700)}
-            .task-card.received{border-left-color:var(--warn)}
-            .task-card.inprogress{border-left-color:var(--navy-600)}
-            .task-card.completed{border-left-color:var(--good)}
-            .task-card.notdone{border-left-color:var(--bad)}
-            .task-card-title{font-weight:700;font-size:15px;color:var(--ink-900)}
-            .task-card-meta{font-size:12px;color:var(--ink-600);display:flex;gap:8px;flex-wrap:wrap}
-            .task-card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-            .task-card-action-btn{padding:6px 12px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;flex:1;min-width:100px}
-            .btn-accept{background:var(--navy-700);color:#fff}
-            .btn-start{background:var(--navy-600);color:#fff}
-            .btn-done{background:var(--good);color:#fff}
-            .btn-fail{background:var(--bad);color:#fff}
-            
-            /* -------- لوحة التحرك اليومي -------- */
-            .daily-board{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-bottom:20px}
-            .daily-card{background:var(--card);border-radius:14px;padding:16px;border:1px solid var(--line);box-shadow:var(--shadow)}
-            .daily-card-header{font-weight:700;font-size:14px;color:var(--navy-900);margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid var(--line)}
-            .daily-item{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:6px 0}
-            .daily-item-label{color:var(--ink-600);font-weight:600}
-            .daily-status{padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
-            .daily-status.yes{background:#e8f5e9;color:var(--good)}
-            .daily-status.no{background:#ffebee;color:var(--bad)}
             .admin-mission-row{background:var(--admin-bg) !important;border-right:4px solid var(--admin-color) !important}
             .admin-mission-row .admin-badge{background:var(--admin-color);color:#fff;padding:2px 10px;border-radius:12px;font-size:10px;font-weight:700;display:inline-block}
             .stats-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
@@ -1823,7 +1761,6 @@ async function renderAssignments(root) {
             container.innerHTML = `<div class="empty-state">لا توجد تكليفات</div>`;
             return;
         }
-        // عرض البطاقات بدلاً من الجداول
         container.innerHTML = `
             <div class="filter-bar">
                 <select id="filterAssignmentStatus">
@@ -1834,33 +1771,59 @@ async function renderAssignments(root) {
                     <option value="COMPLETED">منفذ</option>
                     <option value="NOT_DONE">غير منفذ</option>
                 </select>
+                <select id="filterAssignmentSource">
+                    <option value="ALL">كل المصادر</option>
+                    <option value="SYSTEM_ADMIN">الإدارة العامة</option>
+                    <option value="CENTER_ADMIN">مدير المركز</option>
+                </select>
+                <input type="date" id="filterAssignmentDate">
                 <button class="btn btn-outline btn-sm" onclick="applyAssignmentFilters()">🔍 بحث</button>
                 <button class="btn btn-outline btn-sm" onclick="clearAssignmentFilters()">✖ إلغاء</button>
             </div>
-            <div class="cards-grid" id="assignmentCards">
-                ${batchList.map(b => `
-                    <div class="task-card ${b.status.toLowerCase()}" data-status="${b.status}">
-                        <div class="task-card-title">${b.details}</div>
-                        <div class="task-card-meta">
-                            <span>🏢 ${b.sourceCenter}</span>
-                            <span>👥 ${b.recipientCount} مستلم</span>
-                        </div>
-                        <div class="task-card-meta">
-                            <span>📅 ${fmtDate(b.createdAt)}</span>
-                            <span class="assignment-status ${b.status.toLowerCase()}">${getStatusLabel(b.status)}</span>
-                        </div>
-                        <div class="task-card-actions">
-                            ${(isSystemAdmin || isCenterAdmin) ? `
-                                <button class="task-card-action-btn btn-start" onclick="updateAssignmentStatus('${b.batchId}')">تحديث الحالة</button>
-                                <button class="task-card-action-btn btn-fail" onclick="deleteAssignment('${b.batchId}')">حذف</button>
-                            ` : !isSystemAdmin && !isCenterAdmin && b.recipients.includes(CURRENT_USER.fullName) ? `
-                                <button class="task-card-action-btn btn-accept" onclick="updateMyAssignmentStatus('${b.batchId}')">قبول</button>
-                                <button class="task-card-action-btn btn-done" onclick="completeMyAssignment('${b.batchId}')">منجز</button>
-                                <button class="task-card-action-btn btn-fail" onclick="failMyAssignment('${b.batchId}')">غير منجز</button>
-                            ` : ''}
-                        </div>
-                    </div>
-                `).join('')}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>التفاصيل</th>
+                            <th>المصدر</th>
+                            <th>المركز</th>
+                            <th>المستلمون</th>
+                            <th>الحالة</th>
+                            <th>التاريخ</th>
+                            <th>إجراء</th>
+                        </tr>
+                    </thead>
+                    <tbody id="assignmentBody">
+                        ${batchList.map((b, idx) => `
+                            <tr class="${b.isAdminSource ? 'admin-mission-row' : ''}" 
+                                data-status="${b.status}" 
+                                data-date="${b.createdAt?.slice(0,10) || ''}"
+                                data-source="${b.sourceType || ''}">
+                                <td>${idx + 1}</td>
+                                <td>
+                                    <strong>${b.details}</strong>
+                                    ${b.isAdminSource ? '<span class="admin-badge">الإدارة</span>' : ''}
+                                </td>
+                                <td>${b.isAdminSource ? 'الإدارة العامة' : 'مدير المركز'}</td>
+                                <td>${b.sourceCenter}</td>
+                                <td>${b.recipientCount} مستلم (${b.receivedCount} استلم، ${b.completedCount} أنجز)</td>
+                                <td><span class="assignment-status ${b.status.toLowerCase()}">${getStatusLabel(b.status)}</span></td>
+                                <td>${fmtDate(b.createdAt)}</td>
+                                <td style="display:flex;gap:4px;flex-wrap:wrap">
+                                    ${(isSystemAdmin || isCenterAdmin) ? `
+                                        <button class="btn btn-outline btn-sm" onclick="updateAssignmentStatus('${b.batchId}')">📊 حالة</button>
+                                        <button class="btn btn-warning btn-sm" onclick="resendAssignment('${b.batchId}')">🔄 إعادة</button>
+                                        <button class="btn btn-danger btn-sm" onclick="deleteAssignment('${b.batchId}')">🗑️ حذف</button>
+                                    ` : ''}
+                                    ${!isSystemAdmin && !isCenterAdmin && b.recipients.includes(CURRENT_USER.fullName) ? `
+                                        <button class="btn btn-outline btn-sm" onclick="updateMyAssignmentStatus('${b.batchId}')">📊 تحديث</button>
+                                    ` : ''}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
             </div>
         `;
     }
@@ -1878,27 +1841,26 @@ async function renderAssignments(root) {
                     <option value="تحديد منسوب">تحديد منسوب</option>
                     <option value="مراجعة">مراجعة</option>
                 </select>
+                <input type="date" id="filterTaskDate">
                 <button class="btn btn-outline btn-sm" onclick="applyTaskFilters()">🔍 بحث</button>
                 <button class="btn btn-outline btn-sm" onclick="clearTaskFilters()">✖ إلغاء</button>
             </div>
-            <div class="cards-grid" id="taskCards">
-                ${pending.length ? pending.map(t => `
-                    <div class="task-card ${t.status?.toLowerCase() || 'pending'}" data-type="${t.taskType || ''}" data-date="${t.startTime?.slice(0,10) || ''}">
-                        <div class="task-card-title">${t.notes || t.taskType || 'مهمة'}</div>
-                        <div class="task-card-meta">
-                            <span>📍 ${t.location || '-'}</span>
-                            <span>🏢 ${t.center || '-'}</span>
-                        </div>
-                        <div class="task-card-meta">
-                            <span>📊 ${t.casesCount || 0} حالة</span>
-                            <span>📅 ${fmtDate(t.startTime)}</span>
-                        </div>
-                        <div class="task-card-actions">
-                            <button class="task-card-action-btn btn-done" onclick="updateTaskStatusAction('${t.id}', 'COMPLETED')">تم الإنجاز</button>
-                            <button class="task-card-action-btn btn-fail" onclick="updateTaskStatusAction('${t.id}', 'NOT_DONE')">لم ينجز</button>
-                        </div>
-                    </div>
-                `).join('') : '<div class="empty-state">لا توجد مهام قيد التنفيذ</div>'}
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>#</th><th>المهمة</th><th>النوع</th><th>الموقع</th><th>الحالات</th><th>الحالة</th><th>التاريخ</th><th>إجراء</th></tr></thead>
+                    <tbody>${pending.length ? pending.map((t, idx) => `
+                        <tr data-type="${t.taskType || ''}" data-date="${t.startTime?.slice(0,10) || ''}">
+                            <td>${idx+1}</td>
+                            <td>${t.notes || t.taskType || 'مهمة'}</td>
+                            <td>${t.taskType || '-'}</td>
+                            <td>${t.location || '-'}</td>
+                            <td>${t.casesCount || 0}</td>
+                            <td><span class="assignment-status ${t.status?.toLowerCase() || 'pending'}">${getStatusLabel(t.status || 'PENDING')}</span></td>
+                            <td>${fmtDate(t.startTime)}</td>
+                            <td><button class="btn btn-outline btn-sm" onclick="updateTaskStatusAction('${t.id}')">تحديث</button></td>
+                        </tr>
+                    `).join('') : '<tr><td colspan="8"><div class="empty-state">لا توجد مهام</div></td></tr>'}</tbody>
+                </table>
             </div>
         `;
     }
@@ -1916,71 +1878,85 @@ async function renderAssignments(root) {
                     <option value="تحديد منسوب">تحديد منسوب</option>
                     <option value="مراجعة">مراجعة</option>
                 </select>
+                <input type="date" id="filterCompletedDate">
                 <button class="btn btn-outline btn-sm" onclick="applyCompletedFilters()">🔍 بحث</button>
                 <button class="btn btn-outline btn-sm" onclick="clearCompletedFilters()">✖ إلغاء</button>
             </div>
-            <div class="cards-grid" id="completedCards">
-                ${completed.length ? completed.map(t => `
-                    <div class="task-card completed" data-type="${t.taskType || ''}" data-date="${t.startTime?.slice(0,10) || ''}">
-                        <div class="task-card-title">${t.notes || t.taskType || 'مهمة'}</div>
-                        <div class="task-card-meta">
-                            <span>📍 ${t.location || '-'}</span>
-                            <span>🏢 ${t.center || '-'}</span>
-                        </div>
-                        <div class="task-card-meta">
-                            <span>📊 ${t.casesCount || 0} حالة</span>
-                            <span>✅ تم في ${fmtDate(t.startTime)}</span>
-                        </div>
-                        <div class="task-card-meta">
-                            <span>${t.completionReason || t.progressNote || 'تم التنفيذ بنجاح'}</span>
-                        </div>
-                    </div>
-                `).join('') : '<div class="empty-state">لا توجد مهام منفذة بعد</div>'}
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>#</th><th>المهمة</th><th>النوع</th><th>الموقع</th><th>الحالات</th><th>تاريخ التنفيذ</th><th>النتيجة</th></tr></thead>
+                    <tbody>${completed.length ? completed.map((t, idx) => `
+                        <tr data-type="${t.taskType || ''}" data-date="${t.startTime?.slice(0,10) || ''}">
+                            <td>${idx+1}</td>
+                            <td>${t.notes || t.taskType || 'مهمة'}</td>
+                            <td>${t.taskType || '-'}</td>
+                            <td>${t.location || '-'}</td>
+                            <td>${t.casesCount || 0}</td>
+                            <td>${fmtDate(t.startTime)}</td>
+                            <td>${t.completionReason || t.progressNote || 'تم التنفيذ'}</td>
+                        </tr>
+                    `).join('') : '<tr><td colspan="7"><div class="empty-state">لا توجد مهام منفذة</div></td></tr>'}</tbody>
+                </table>
             </div>
-        `;
-    }
-
         `;
     }
 
     // ==================== دوال الفلاتر ====================
     window.applyAssignmentFilters = function() {
         const status = document.getElementById('filterAssignmentStatus')?.value || 'ALL';
-        document.querySelectorAll('#assignmentCards .task-card').forEach(card => {
-            const cardStatus = card.dataset.status || '';
-            const show = status === 'ALL' || cardStatus === status;
-            card.style.display = show ? '' : 'none';
+        const source = document.getElementById('filterAssignmentSource')?.value || 'ALL';
+        const date = document.getElementById('filterAssignmentDate')?.value || '';
+        document.querySelectorAll('#assignmentBody tr').forEach(row => {
+            const rowStatus = row.dataset.status || '';
+            const rowSource = row.dataset.source || '';
+            const rowDate = row.dataset.date || '';
+            let show = true;
+            if (status !== 'ALL' && rowStatus !== status) show = false;
+            if (source !== 'ALL' && rowSource !== source) show = false;
+            if (date && rowDate !== date) show = false;
+            row.style.display = show ? '' : 'none';
         });
     };
     window.clearAssignmentFilters = function() {
         document.getElementById('filterAssignmentStatus').value = 'ALL';
+        document.getElementById('filterAssignmentSource').value = 'ALL';
+        document.getElementById('filterAssignmentDate').value = '';
         applyAssignmentFilters();
     };
     window.applyTaskFilters = function() {
         const type = document.getElementById('filterTaskType')?.value || 'ALL';
-        document.querySelectorAll('#taskCards .task-card').forEach(card => {
-            const cardType = card.dataset.type || '';
-            const show = type === 'ALL' || cardType === type;
-            card.style.display = show ? '' : 'none';
+        const date = document.getElementById('filterTaskDate')?.value || '';
+        document.querySelectorAll('#tabMyTasks tbody tr').forEach(row => {
+            const rowType = row.dataset.type || '';
+            const rowDate = row.dataset.date || '';
+            let show = true;
+            if (type !== 'ALL' && rowType !== type) show = false;
+            if (date && rowDate !== date) show = false;
+            row.style.display = show ? '' : 'none';
         });
     };
     window.clearTaskFilters = function() {
         document.getElementById('filterTaskType').value = 'ALL';
+        document.getElementById('filterTaskDate').value = '';
         applyTaskFilters();
     };
     window.applyCompletedFilters = function() {
         const type = document.getElementById('filterCompletedType')?.value || 'ALL';
-        document.querySelectorAll('#completedCards .task-card').forEach(card => {
-            const cardType = card.dataset.type || '';
-            const show = type === 'ALL' || cardType === type;
-            card.style.display = show ? '' : 'none';
+        const date = document.getElementById('filterCompletedDate')?.value || '';
+        document.querySelectorAll('#tabCompletedTasks tbody tr').forEach(row => {
+            const rowType = row.dataset.type || '';
+            const rowDate = row.dataset.date || '';
+            let show = true;
+            if (type !== 'ALL' && rowType !== type) show = false;
+            if (date && rowDate !== date) show = false;
+            row.style.display = show ? '' : 'none';
         });
     };
     window.clearCompletedFilters = function() {
         document.getElementById('filterCompletedType').value = 'ALL';
+        document.getElementById('filterCompletedDate').value = '';
         applyCompletedFilters();
     };
-
 
     // ==================== دوال التبويبات ====================
     function activateTab(tab) {
@@ -2012,80 +1988,368 @@ function getStatusLabel(status) {
     return map[status] || status;
 }
 
-// ==================== دوال التكليفات والمهام الجديدة ====================
-// (الدوال القديمة قد تم حذفها لتجنب التضارب)
-
-// ========================================================================
-// دوال تحديث حالة التكليفات والمهام من البطاقات
-// ========================================================================
-window.completeMyAssignment = async function(batchId) {
-    if (!confirm('هل تريد تأكيد إنجاز هذا التكليف؟')) return;
-    showSavingModal('جاري تحديث الحالة...');
-    try {
-        await api('updateAssignmentStatus', { batchId: batchId, status: 'COMPLETED' });
-        hideSavingModal(); showToast('✅ تم تحديث الحالة بنجاح', 'ok');
-        delete PAGE_CACHE['assignments'];
-        setTimeout(() => goPage('assignments', true, false), 500);
-    } catch(e) { 
-        hideSavingModal(); showToast('❌ فشل التحديث: ' + e.message, 'err'); 
-    }
+// ==================== دوال التكليفات ====================
+window.updateAssignmentStatus = function(batchId) {
+    openModal(`
+        <h3>📊 تحديث حالة التكليف</h3>
+        <div class="field"><label>الحالة *</label>
+            <select id="assignmentNewStatus">
+                <option value="NEW">جديد</option>
+                <option value="RECEIVED">تم الاستلام</option>
+                <option value="IN_PROGRESS">قيد التنفيذ</option>
+                <option value="COMPLETED">منفذ</option>
+                <option value="NOT_DONE">غير منفذ</option>
+            </select>
+        </div>
+        <div class="field"><label>ملاحظات التقدم</label><textarea id="assignmentProgressNote" rows="3" placeholder="ما تم إنجازه..."></textarea></div>
+        <div class="field"><label>سبب عدم التنفيذ (إذا كان غير منفذ)</label><textarea id="assignmentNotDoneReason" rows="2" placeholder="سبب عدم التنفيذ..."></textarea></div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-primary" onclick="submitAssignmentStatusUpdate('${batchId}')">💾 تحديث</button>
+        </div>
+    `);
 };
 
-window.failMyAssignment = async function(batchId) {
-    if (!confirm('هل تريد تسجيل عدم إنجاز هذا التكليف؟')) return;
-    showSavingModal('جاري تحديث الحالة...');
+window.submitAssignmentStatusUpdate = async function(batchId) {
+    const status = document.getElementById('assignmentNewStatus')?.value;
+    const progressNote = document.getElementById('assignmentProgressNote')?.value?.trim() || '';
+    const notDoneReason = document.getElementById('assignmentNotDoneReason')?.value?.trim() || '';
+    if (!status) { showToast('يرجى اختيار الحالة', 'err'); return; }
+    closeModal(); showSavingModal('جارى تحديث الحالة...');
     try {
-        await api('updateAssignmentStatus', { batchId: batchId, status: 'NOT_DONE' });
-        hideSavingModal(); showToast('✅ تم تحديث الحالة بنجاح', 'ok');
-        delete PAGE_CACHE['assignments'];
-        setTimeout(() => goPage('assignments', true, false), 500);
-    } catch(e) { 
-        hideSavingModal(); showToast('❌ فشل التحديث: ' + e.message, 'err'); 
-    }
+        const assignments = await api('listAssignments', { batchId: batchId });
+        for (const a of assignments) {
+            await api('updateAssignmentStatus', {
+                assignmentId: a.id,
+                status: status,
+                progressNote: progressNote,
+                completionNote: notDoneReason || progressNote,
+                updatedBy: CURRENT_USER.id,
+                updatedByName: CURRENT_USER.fullName
+            });
+        }
+        hideSavingModal(); showToast('✅ تم تحديث حالة التكليف بنجاح', 'ok');
+        refreshAssignments();
+    } catch(e) { hideSavingModal(); showToast('❌ فشل تحديث الحالة: ' + e.message, 'err'); }
 };
 
-window.completeMyAssignment = async function(batchId) {
-    if (!confirm('هل تريد تأكيد إنجاز هذا التكليف؟')) return;
-    showSavingModal('جاري تحديث الحالة...');
-    try {
-        await api('updateAssignmentStatus', { batchId: batchId, status: 'COMPLETED' });
-        hideSavingModal(); showToast('✅ تم تحديث الحالة بنجاح', 'ok');
-        delete PAGE_CACHE['assignments'];
-        setTimeout(() => goPage('assignments', true, false), 500);
-    } catch(e) { 
-        hideSavingModal(); showToast('❌ فشل التحديث: ' + e.message, 'err'); 
-    }
+window.updateMyAssignmentStatus = function(batchId) {
+    openModal(`
+        <h3>📊 تحديث حالة التكليف الخاص بي</h3>
+        <div class="field"><label>الحالة *</label>
+            <select id="myAssignmentStatus">
+                <option value="RECEIVED">تم الاستلام</option>
+                <option value="IN_PROGRESS">قيد التنفيذ</option>
+                <option value="COMPLETED">منفذ</option>
+                <option value="NOT_DONE">غير منفذ</option>
+            </select>
+        </div>
+        <div class="field"><label>ملاحظات التقدم</label><textarea id="myAssignmentNote" rows="3" placeholder="ما تم إنجازه..."></textarea></div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-primary" onclick="submitMyAssignmentStatusUpdate('${batchId}')">💾 تحديث</button>
+        </div>
+    `);
 };
 
-window.failMyAssignment = async function(batchId) {
-    if (!confirm('هل تريد تسجيل عدم إنجاز هذا التكليف؟')) return;
-    showSavingModal('جاري تحديث الحالة...');
+window.submitMyAssignmentStatusUpdate = async function(batchId) {
+    const status = document.getElementById('myAssignmentStatus')?.value;
+    const note = document.getElementById('myAssignmentNote')?.value?.trim() || '';
+    if (!status) { showToast('يرجى اختيار الحالة', 'err'); return; }
+    closeModal(); showSavingModal('جارى تحديث الحالة...');
     try {
-        await api('updateAssignmentStatus', { batchId: batchId, status: 'NOT_DONE' });
-        hideSavingModal(); showToast('✅ تم تحديث الحالة بنجاح', 'ok');
-        delete PAGE_CACHE['assignments'];
-        setTimeout(() => goPage('assignments', true, false), 500);
-    } catch(e) { 
-        hideSavingModal(); showToast('❌ فشل التحديث: ' + e.message, 'err'); 
-    }
+        const assignments = await api('listAssignments', { batchId: batchId });
+        // تحديث فقط التكليف الخاص بالمستخدم الحالي
+        const myAssignment = assignments.find(a => a.recipientId === CURRENT_USER.id || a.recipientName === CURRENT_USER.fullName);
+        if (myAssignment) {
+            await api('updateAssignmentStatus', {
+                assignmentId: myAssignment.id,
+                status: status,
+                progressNote: note,
+                completionNote: note,
+                updatedBy: CURRENT_USER.id,
+                updatedByName: CURRENT_USER.fullName
+            });
+        }
+        hideSavingModal(); showToast('✅ تم تحديث حالة التكليف بنجاح', 'ok');
+        refreshAssignments();
+    } catch(e) { hideSavingModal(); showToast('❌ فشل تحديث الحالة: ' + e.message, 'err'); }
 };
 
-window.updateTaskStatusAction = async function(taskId, status) {
-    if (!confirm(status === 'COMPLETED' ? 'هل تم إنجاز المهمة؟' : 'هل لم تنجز المهمة؟')) return;
-    showSavingModal('جاري التحديث...');
+window.resendAssignment = function(batchId) {
+    openModal(`
+        <h3>🔄 إعادة إرسال التكليف</h3>
+        <p style="color:var(--ink-600);font-size:14px">هل أنت متأكد من إعادة إرسال هذا التكليف؟</p>
+        <p style="color:var(--ink-400);font-size:13px">سيتم إعادة إرسال التكليف إلى جميع المستلمين مع تحديث الحالة إلى "جديد".</p>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-warning" onclick="confirmResendAssignment('${batchId}')">🔄 تأكيد الإعادة</button>
+        </div>
+    `);
+};
+
+window.confirmResendAssignment = async function(batchId) {
+    closeModal(); showSavingModal('جارى إعادة إرسال التكليف...');
     try {
-        await api('updateTaskStatus', { 
-            taskId: taskId, 
-            status: status || 'COMPLETED',
+        const assignments = await api('listAssignments', { batchId: batchId });
+        for (const a of assignments) {
+            await api('updateAssignmentStatus', {
+                assignmentId: a.id,
+                status: 'NEW',
+                updatedBy: CURRENT_USER.id,
+                updatedByName: CURRENT_USER.fullName
+            });
+            await api('addNotification', {
+                userId: a.recipientId,
+                message: 'تم إعادة إرسال التكليف: ' + a.details,
+                type: 'NEW_ASSIGNMENT'
+            });
+        }
+        hideSavingModal(); showToast('✅ تم إعادة إرسال التكليف بنجاح', 'ok');
+        refreshAssignments();
+    } catch(e) { hideSavingModal(); showToast('❌ فشل إعادة الإرسال: ' + e.message, 'err'); }
+};
+
+window.deleteAssignment = function(batchId) {
+    openModal(`
+        <h3>🗑️ حذف التكليف</h3>
+        <p style="color:var(--bad);font-size:14px">هل أنت متأكد من حذف هذا التكليف؟</p>
+        <p style="color:var(--ink-600);font-size:13px">سيتم حذف التكليف نهائياً ولا يمكن استرجاعه.</p>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-danger" onclick="confirmDeleteAssignment('${batchId}')">🗑️ تأكيد الحذف</button>
+        </div>
+    `);
+};
+
+window.confirmDeleteAssignment = async function(batchId) {
+    closeModal(); showSavingModal('جارى حذف التكليف...');
+    try {
+        const assignments = await api('listAssignments', { batchId: batchId });
+        for (const a of assignments) {
+            await api('deleteAssignment', { assignmentId: a.id });
+        }
+        hideSavingModal(); showToast('✅ تم حذف التكليف بنجاح', 'ok');
+        refreshAssignments();
+    } catch(e) { hideSavingModal(); showToast('❌ فشل الحذف: ' + e.message, 'err'); }
+};
+
+// ==================== دوال إضافة التكليف والمهمة ====================
+window.openAddMissionModal = function() {
+    const isSystemAdmin = CURRENT_USER.role === 'SYSTEM_ADMIN';
+    const center = CURRENT_USER.role === 'CENTER_ADMIN' ? CURRENT_USER.center : '';
+    const centerOptionsHtml = CENTERS.map(c => `<option value="${c}" ${c === center ? 'selected' : ''}>${c}</option>`).join('');
+    let distributionOptions = isSystemAdmin ?
+        `<option value="ALL_CENTERS">🌍 كل المراكز</option>
+         <option value="SPECIFIC_CENTER">🏢 مركز محدد</option>
+         <option value="SPECIFIC_ENGINEER_CENTER">👨‍💻 مهندس في مركز</option>
+         <option value="SPECIFIC_TECHNICIAN_CENTER">🔧 فني في مركز</option>
+         <option value="ALL_ENGINEERS">👨‍💻 جميع المهندسين</option>` :
+        `<option value="CENTER_ALL">🏢 المركز كله</option>
+         <option value="SPECIFIC_ENGINEER">👨‍💻 مهندس محدد</option>
+         <option value="SPECIFIC_TECHNICIAN">🔧 فني محدد</option>`;
+    openModal(`
+        <h3>➕ إضافة تكليف جديد</h3>
+        <div class="field"><label>نوع التوزيع *</label><select id="missionDistributionType" onchange="updateMissionRecipients()">${distributionOptions}</select></div>
+        <div id="missionRecipientsContainer"><div style="color:var(--ink-400);font-size:13px;text-align:center;padding:10px">⏳ جاري تحميل البيانات...</div></div>
+        <div class="field" id="missionCenterField" style="display:none"><label>المركز *</label><select id="missionCenter" onchange="updateMissionRecipients()">${centerOptionsHtml}</select></div>
+        <div class="field-row">
+            <div class="field"><label>الوحدة المحلية</label><input id="missionLocalUnit" placeholder="الوحدة المحلية"></div>
+            <div class="field"><label>القرية</label><input id="missionVillage" placeholder="القرية"></div>
+        </div>
+        <div class="field"><label>نوع العمل *</label>
+            <select id="missionWorkType">
+                <option value="">اختر نوع العمل</option>
+                <option value="مسح">مسح</option>
+                <option value="رفع مساحي">رفع مساحي</option>
+                <option value="معاينة">معاينة</option>
+                <option value="تحديد منسوب">تحديد منسوب</option>
+                <option value="أخرى">أخرى</option>
+            </select>
+        </div>
+        <div class="field"><label>الجهة الطالبة</label><input id="missionRequester" placeholder="الجهة الطالبة"></div>
+        <div class="field"><label>الوصف</label><textarea id="missionDescription" rows="3" placeholder="وصف التكليف..."></textarea></div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-primary" onclick="submitNewMission()">💾 حفظ التكليف</button>
+        </div>
+    `);
+    setTimeout(() => updateMissionRecipients(), 200);
+};
+
+window.updateMissionRecipients = function() {
+    const distType = document.getElementById('missionDistributionType')?.value || '';
+    const container = document.getElementById('missionRecipientsContainer');
+    const centerField = document.getElementById('missionCenterField');
+    const centerSelect = document.getElementById('missionCenter');
+    if (!container) return;
+    if (centerField) centerField.style.display = 'none';
+    const centerTypes = ['SPECIFIC_CENTER', 'SPECIFIC_ENGINEER_CENTER', 'SPECIFIC_TECHNICIAN_CENTER'];
+    if (centerTypes.includes(distType)) { if (centerField) centerField.style.display = 'block'; }
+    api('listUsers', {}).then(users => {
+        const approvedUsers = users.filter(u => u.status === 'APPROVED');
+        const userCenter = CURRENT_USER.center || '';
+        const selectedCenter = centerSelect ? centerSelect.value : userCenter;
+        let html = '';
+        if (distType === 'ALL_CENTERS') {
+            const totalUsers = approvedUsers.filter(u => u.role !== 'SYSTEM_ADMIN').length;
+            html = `<div style="background:#e7f6ee;padding:12px;border-radius:10px;text-align:center;color:var(--good)">🌍 سيتم إرسال التكليف إلى جميع المراكز (${totalUsers} مستخدم)</div>`;
+        } else if (distType === 'SPECIFIC_CENTER' || distType === 'CENTER_ALL') {
+            const centerStaff = approvedUsers.filter(u => u.center === selectedCenter && u.role !== 'SYSTEM_ADMIN');
+            html = `<div style="background:#eaf1fb;padding:12px;border-radius:10px;text-align:center;color:var(--navy-700)">🏢 عدد المستلمين في مركز ${selectedCenter}: ${centerStaff.length} موظف</div>`;
+        } else if (distType === 'SPECIFIC_ENGINEER_CENTER' || distType === 'SPECIFIC_ENGINEER') {
+            const engineers = approvedUsers.filter(u => u.center === selectedCenter && u.role === 'ENGINEER');
+            html = `<div class="field"><label>اختر المهندس *</label><select id="missionSpecificEngineer"><option value="">اختر المهندس</option>${engineers.map(e => `<option value="${e.id}">${e.fullName}</option>`).join('')}</select></div>${engineers.length === 0 ? '<div style="color:var(--warn);font-size:13px">⚠️ لا يوجد مهندسون في هذا المركز</div>' : ''}`;
+        } else if (distType === 'SPECIFIC_TECHNICIAN_CENTER' || distType === 'SPECIFIC_TECHNICIAN') {
+            const technicians = approvedUsers.filter(u => u.center === selectedCenter && u.role === 'TECHNICIAN');
+            html = `<div class="field"><label>اختر الفني *</label><select id="missionSpecificTechnician"><option value="">اختر الفني</option>${technicians.map(t => `<option value="${t.id}">${t.fullName}</option>`).join('')}</select></div>${technicians.length === 0 ? '<div style="color:var(--warn);font-size:13px">⚠️ لا يوجد فنيون في هذا المركز</div>' : ''}`;
+        } else if (distType === 'ALL_ENGINEERS') {
+            const allEngineers = approvedUsers.filter(u => u.role === 'ENGINEER');
+            html = `<div style="background:#e7f6ee;padding:12px;border-radius:10px;text-align:center;color:var(--good)">👨‍💻 سيتم إرسال التكليف إلى جميع المهندسين (${allEngineers.length} مهندس)</div>`;
+        }
+        container.innerHTML = html;
+    }).catch(err => { console.error('Error loading users:', err); container.innerHTML = `<div style="color:var(--bad);font-size:13px">⚠️ تعذر تحميل قائمة المستخدمين: ${err.message}</div>`; });
+};
+
+window.submitNewMission = async function() {
+    const distType = document.getElementById('missionDistributionType')?.value;
+    const center = document.getElementById('missionCenter')?.value || CURRENT_USER.center || '';
+    const localUnit = document.getElementById('missionLocalUnit')?.value?.trim();
+    const village = document.getElementById('missionVillage')?.value?.trim();
+    const workType = document.getElementById('missionWorkType')?.value;
+    const requestingEntity = document.getElementById('missionRequester')?.value?.trim();
+    const description = document.getElementById('missionDescription')?.value?.trim();
+    let targetScope = '', targetCenters = [], recipientIds = [];
+    if (!workType) { showToast('يرجى اختيار نوع العمل', 'err'); return; }
+    if (distType === 'ALL_CENTERS') { targetScope = 'ALL'; targetCenters = CENTERS.filter(c => c !== 'مجمع الذكاء'); }
+    else if (distType === 'SPECIFIC_CENTER' || distType === 'CENTER_ALL') {
+        if (!center) { showToast('يرجى اختيار المركز', 'err'); return; }
+        targetScope = 'CENTERS'; targetCenters = [center];
+    } else if (distType === 'SPECIFIC_ENGINEER_CENTER' || distType === 'SPECIFIC_ENGINEER') {
+        const engineerId = document.getElementById('missionSpecificEngineer')?.value;
+        if (!engineerId) { showToast('يرجى اختيار المهندس', 'err'); return; }
+        recipientIds = [engineerId]; targetScope = 'SPECIFIC';
+    } else if (distType === 'SPECIFIC_TECHNICIAN_CENTER' || distType === 'SPECIFIC_TECHNICIAN') {
+        const technicianId = document.getElementById('missionSpecificTechnician')?.value;
+        if (!technicianId) { showToast('يرجى اختيار الفني', 'err'); return; }
+        recipientIds = [technicianId]; targetScope = 'SPECIFIC';
+    } else if (distType === 'ALL_ENGINEERS') { targetScope = 'ENGINEERS'; }
+    if (!targetScope && !recipientIds.length) { showToast('يرجى تحديد المستلمين', 'err'); return; }
+    closeModal(); showSavingModal('جارى إضافة التكليف...');
+    try {
+        const payload = {
+            center, localUnit, village, workType, requestingEntity,
+            details: description,
+            sourceType: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'SYSTEM_ADMIN' : 'CENTER_ADMIN',
+            sourceCenter: CURRENT_USER.role === 'SYSTEM_ADMIN' ? '' : CURRENT_USER.center,
+            createdBy: CURRENT_USER.id,
+            createdByName: CURRENT_USER.fullName,
+            targetScope, targetCenters, recipientIds
+        };
+        const result = await api('createAssignment', payload);
+        hideSavingModal(); showToast(`✅ تم إضافة التكليف بنجاح (${result.count || 1} مستلم)`, 'ok');
+        // مسح الكاش وإعادة تحميل الصفحة
+        delete PAGE_CACHE['assignments'];
+        setTimeout(() => goPage('assignments', true, false), 500);
+    } catch(e) { hideSavingModal(); showToast('❌ فشل إضافة التكليف: ' + e.message, 'err'); }
+};
+
+// ==================== نافذة إضافة مهمة جديدة ====================
+window.openAddTaskModal = function() {
+    const center = CURRENT_USER.role === 'CENTER_ADMIN' ? CURRENT_USER.center : '';
+    const centerOptionsHtml = CENTERS.map(c => `<option value="${c}" ${c === center ? 'selected' : ''}>${c}</option>`).join('');
+    openModal(`
+        <h3>➕ إضافة مهمة جديدة</h3>
+        <div class="field"><label>المهندس/الفني المسؤول *</label><input id="taskEngineer" placeholder="اسم المهندس أو الفني"></div>
+        <div class="field"><label>المركز *</label><select id="taskCenter">${centerOptionsHtml}</select></div>
+        <div class="field"><label>نوع المهمة *</label>
+            <select id="taskType">
+                <option value="">اختر نوع المهمة</option>
+                <option value="رفع مساحي">رفع مساحي</option>
+                <option value="معاينة">معاينة</option>
+                <option value="تحديد منسوب">تحديد منسوب</option>
+                <option value="مراجعة">مراجعة</option>
+                <option value="أخرى">أخرى</option>
+            </select>
+        </div>
+        <div class="field"><label>الموقع</label><input id="taskLocation" placeholder="الموقع"></div>
+        <div class="field"><label>عدد الحالات</label><input id="taskCasesCount" type="number" min="0" value="0"></div>
+        <div class="field"><label>ملاحظات</label><textarea id="taskNotes" rows="3" placeholder="ملاحظات إضافية..."></textarea></div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-gold" onclick="submitNewTask()">💾 حفظ المهمة</button>
+        </div>
+    `);
+};
+
+window.submitNewTask = async function() {
+    const engineerName = document.getElementById('taskEngineer')?.value?.trim();
+    const center = document.getElementById('taskCenter')?.value;
+    const taskType = document.getElementById('taskType')?.value;
+    const location = document.getElementById('taskLocation')?.value?.trim();
+    const casesCount = parseInt(document.getElementById('taskCasesCount')?.value || '0');
+    const notes = document.getElementById('taskNotes')?.value?.trim();
+    if (!engineerName) { showToast('يرجى إدخال اسم المسؤول', 'err'); return; }
+    if (!center) { showToast('يرجى اختيار المركز', 'err'); return; }
+    if (!taskType) { showToast('يرجى اختيار نوع المهمة', 'err'); return; }
+    closeModal(); showSavingModal('جارى إضافة المهمة...');
+    try {
+        await api('createTask', {
+            engineerName, center, taskType, location, casesCount, notes,
+            source: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'GENERAL' : 'CENTER',
+            sourceType: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'SYSTEM_ADMIN' : 'CENTER_ADMIN',
+            assignedTo: engineerName,
+            createdBy: CURRENT_USER.id,
+            createdByName: CURRENT_USER.fullName
+        });
+        hideSavingModal(); showToast('✅ تم إضافة المهمة بنجاح', 'ok');
+        delete PAGE_CACHE['assignments'];
+        setTimeout(() => goPage('assignments', true, false), 500);
+    } catch(e) { hideSavingModal(); showToast('❌ فشل إضافة المهمة: ' + e.message, 'err'); }
+};
+
+// ==================== دوال تحديث حالة المهمة ====================
+window.updateTaskStatusAction = function(taskId) {
+    openModal(`
+        <h3>تحديث حالة المهمة</h3>
+        <div class="field"><label>الحالة *</label>
+            <select id="taskNewStatus">
+                <option value="PENDING">قيد الانتظار</option>
+                <option value="IN_PROGRESS">قيد التنفيذ</option>
+                <option value="COMPLETED">مكتمل</option>
+            </select>
+        </div>
+        <div class="field"><label>ملاحظات التقدم</label><textarea id="taskProgressNote" rows="3" placeholder="ما تم إنجازه..."></textarea></div>
+        <div class="field"><label>سبب الإكمال (إذا كانت مكتملة)</label><textarea id="taskCompletionReason" rows="2" placeholder="سبب الإكمال..."></textarea></div>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-gold" onclick="submitTaskStatusUpdate('${taskId}')">💾 تحديث</button>
+        </div>
+    `);
+};
+
+window.submitTaskStatusUpdate = async function(taskId) {
+    const status = document.getElementById('taskNewStatus')?.value;
+    const progressNote = document.getElementById('taskProgressNote')?.value?.trim() || '';
+    const completionReason = document.getElementById('taskCompletionReason')?.value?.trim() || '';
+    if (!status) { showToast('يرجى اختيار الحالة', 'err'); return; }
+    closeModal(); showSavingModal('جارى تحديث الحالة...');
+    try {
+        await api('updateTaskStatus', {
+            taskId, status, progressNote,
+            completionReason: completionReason || progressNote,
             updatedBy: CURRENT_USER.id,
             updatedByName: CURRENT_USER.fullName
         });
         hideSavingModal(); showToast('✅ تم تحديث حالة المهمة بنجاح', 'ok');
         delete PAGE_CACHE['assignments'];
         setTimeout(() => goPage('assignments', true, false), 500);
-    } catch(e) { 
-        hideSavingModal(); showToast('❌ فشل التحديث: ' + e.message, 'err'); 
-    }
+    } catch(e) { hideSavingModal(); showToast('❌ فشل تحديث الحالة: ' + e.message, 'err'); }
+};
+
+window.refreshAssignments = function() {
+    delete PAGE_CACHE['assignments'];
+    goPage('assignments', true, false);
 };
 
 // ========================================================================
@@ -2101,20 +2365,19 @@ function normalizeDriveThumbnail(url) {
 }
 
 async function updateCurrentLocation() {
-    if (!CURRENT_USER) { showToast('يرجى تسجيل الدخول اولا', 'err'); return; }
-    showSavingModal('جاري تحديث الموقع...');
+    if (!CURRENT_USER) { showToast('يرجى تسجيل الدخول أولاً', 'err'); return; }
+    showSavingModal('جارِ تحديث الموقع...');
     try {
         const position = await getCurrentPositionSafe(10000);
-        if (!position) { hideSavingModal(); showToast('تعذر الحصول على الموقع', 'err'); return; }
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        const mapsLink = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+        if (!position) { hideSavingModal(); showToast('تعذر الحصول على الموقع، تأكد من تفعيل GPS', 'err'); return; }
+        const lat = position.coords.latitude, lng = position.coords.longitude;
+        const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
         let locationName = await getLocationNameOSM(lat, lng);
-        await api('updateUserLocation', { userId: CURRENT_USER.id, lat: lat, lng: lng, mapsLink: mapsLink, locationName: locationName });
-        hideSavingModal(); showToast('تم تحديث موقعك بنجاح', 'ok');
+        await api('updateUserLocation', { userId: CURRENT_USER.id, lat, lng, mapsLink, locationName });
+        hideSavingModal(); showToast('✅ تم تحديث موقعك بنجاح', 'ok');
         const content = document.getElementById('pageContent');
         await renderPresentNow(content);
-    } catch(e) { hideSavingModal(); showToast('فشل تحديث الموقع: ' + e.message, 'err'); }
+    } catch(e) { hideSavingModal(); showToast('❌ فشل تحديث الموقع: ' + e.message, 'err'); }
 }
 
 function zoomToUser(userId, lat, lng) {
@@ -2133,8 +2396,7 @@ function zoomToUser(userId, lat, lng) {
         }
     });
     if (!found) {
-        const popupText = '📍 ' + userId;
-        const tempMarker = L.marker([lat, lng]).addTo(mapInstance).bindPopup(popupText).openPopup();
+        const tempMarker = L.marker([lat, lng]).addTo(mapInstance).bindPopup(`📍 ${userId}`).openPopup();
         setTimeout(() => { mapInstance.removeLayer(tempMarker); }, 5000);
     }
 }
@@ -2193,44 +2455,45 @@ async function renderPresentNow(root) {
             }
         }
     }
-    let tableRows = '';
-    if (present.length) {
-        present.forEach(p => {
-            let photo = normalizeDriveThumbnail(p.userPhoto || '');
-            const initials = (p.userName || '?').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
-            const imgHtml = photo ? '<img src="' + photo + '" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%">' : initials;
-            const locationName = p.locationName || 'موقع غير معروف';
-            let locLink = '-';
-            if (p.mapsLink && p.mapsLink.trim().startsWith('http')) {
-                locLink = '<a href="' + p.mapsLink + '" target="_blank" class="location-link">📍 ' + locationName + '</a>';
-            } else if (p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng)) {
-                locLink = '<a href="https://www.google.com/maps?q=' + p.lat + ',' + p.lng + '" target="_blank" class="location-link">📍 ' + locationName + '</a>';
-            }
-            const workTypeLabel = p.workType === 'FIELD' ? '🚶 ميداني' : (p.workType === 'OFFICE' ? '🏢 مكتبي' : '-');
-            tableRows += '<tr onclick="zoomToUser(\'' + p.userId + '\', ' + (p.lat || 0) + ', ' + (p.lng || 0) + ')" style="cursor:pointer;" title="اضغط لتكبير الموقع" class="clickable-row">';
-            tableRows += '<td><div class="small-avatar">' + imgHtml + '</div></td>';
-            tableRows += '<td>' + (p.userName || '-') + '</td>';
-            tableRows += '<td>' + (p.center || '-') + '</td>';
-            tableRows += '<td>' + (p.userPhone || '-') + '</td>';
-            tableRows += '<td>' + (p.checkInTime ? fmtTime(p.checkInTime) : '-') + '</td>';
-            tableRows += '<td>' + locLink + '</td>';
-            tableRows += '<td>' + workTypeLabel + '</td>';
-            tableRows += '<td>' + (p.lastUpdate ? fmtTime(p.lastUpdate) : '-') + '</td>';
-            tableRows += '</tr>';
-        });
-    } else {
-        tableRows = '<tr><td colspan="8"><div class="empty-state">لا يوجد أحد متواجد الآن</div></td></tr>';
-    }
-    let html = '<div class="panel"><div class="panel-head"><h3>المتواجدين حاليا (' + present.length + ')</h3>';
-    html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
-    html += '<button class="btn btn-primary btn-sm" onclick="updateCurrentLocation()">تحديث موقعي</button>';
-    html += '<button class="btn btn-outline btn-sm" onclick="toggleMapFullscreen()">تكبير الخريطة</button>';
-    html += '<button class="btn btn-outline btn-sm" id="presentNowRefreshBtn">تحديث</button>';
-    html += '<label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="presentNowAutoRefreshToggle"> تحديث تلقائي (30s)</label>';
-    html += '</div></div><div id="mapContainer" style="height:400px;border-radius:12px;border:1px solid var(--line);margin-bottom:16px;"></div>';
-    html += '<div class="table-wrap"><table><thead><tr><th>صورة</th><th>الاسم</th><th>المركز</th><th>الهاتف</th><th>وقت الحضور</th><th>الموقع</th><th>نوع العمل</th><th>آخر تحديث</th></tr></thead>';
-    html += '<tbody>' + tableRows + '</tbody></table></div></div>';
-    root.innerHTML = html;
+    root.innerHTML = `
+        <div class="panel">
+            <div class="panel-head">
+                <h3>📍 المتواجدين حاليا (${present.length})</h3>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <button class="btn btn-primary btn-sm" onclick="updateCurrentLocation()">📍 تحديث موقعي</button>
+                    <button class="btn btn-outline btn-sm" onclick="toggleMapFullscreen()">⛶ تكبير الخريطة</button>
+                    <button class="btn btn-outline btn-sm" id="presentNowRefreshBtn">⟳ تحديث</button>
+                    <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="presentNowAutoRefreshToggle"> تحديث تلقائي (30s)</label>
+                </div>
+            </div>
+            <div id="mapContainer" style="height:400px;border-radius:12px;border:1px solid var(--line);margin-bottom:16px;"></div>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>صورة</th><th>الاسم</th><th>المركز</th><th>الهاتف</th><th>وقت الحضور</th><th>الموقع</th><th>نوع العمل</th><th>آخر تحديث</th></tr></thead>
+                    <tbody>${present.length ? present.map(p => {
+                        let photo = normalizeDriveThumbnail(p.userPhoto || '');
+                        const initials = (p.userName || '?').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
+                        const imgHtml = photo ? `<img src="${photo}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials;
+                        const locationName = p.locationName || 'موقع غير معروف';
+                        let locLink = '-';
+                        if (p.mapsLink && p.mapsLink.trim().startsWith('http')) locLink = `<a href="${p.mapsLink}" target="_blank" class="location-link">📍 ${locationName}</a>`;
+                        else if (p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng)) locLink = `<a href="https://www.google.com/maps?q=${p.lat},${p.lng}" target="_blank" class="location-link">📍 ${locationName}</a>`;
+                        const workTypeLabel = p.workType === 'FIELD' ? '🚶 ميداني' : (p.workType === 'OFFICE' ? '🏢 مكتبي' : '-');
+                        return `<tr onclick="zoomToUser('${p.userId}', ${p.lat || 0}, ${p.lng || 0})" style="cursor:pointer;" title="اضغط لتكبير الموقع" class="clickable-row">
+                            <td><div class="small-avatar">${imgHtml}</div></td>
+                            <td>${p.userName || '-'}</td>
+                            <td>${p.center || '-'}</td>
+                            <td>${p.userPhone || '-'}</td>
+                            <td>${p.checkInTime ? fmtTime(p.checkInTime) : '-'}</td>
+                            <td>${locLink}</td>
+                            <td>${workTypeLabel}</td>
+                            <td>${p.lastUpdate ? fmtTime(p.lastUpdate) : '-'}</td>
+                        </tr>`;
+                    }).join('') : '<tr><td colspan="8"><div class="empty-state">لا يوجد أحد متواجد الآن</div></td></tr>'}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
     setTimeout(() => {
         const mapContainer = document.getElementById('mapContainer');
         if (!mapContainer) return;
@@ -2246,19 +2509,13 @@ async function renderPresentNow(root) {
                 const lat = parseFloat(p.lat), lng = parseFloat(p.lng);
                 if (!isNaN(lat) && !isNaN(lng)) {
                     bounds.push([lat, lng]);
-                    const locName = p.locationName || 'موقع غير معروف';
-                    const workType = p.workType === 'FIELD' ? 'ميداني' : (p.workType === 'OFFICE' ? 'مكتبي' : '');
-                    let popupContent = '<div style="text-align:right"><strong>' + p.userName + '</strong><br>';
-                    popupContent += '<span class="popup-location">' + locName + '</span><br>';
-                    popupContent += '<span class="popup-location">' + (p.center || '-') + '</span><br>';
-                    popupContent += '<span class="popup-location">' + workType + '</span><br>';
-                    popupContent += '<a href="https://www.google.com/maps?q=' + lat + ',' + lng + '" target="_blank" style="color:#215f8f;text-decoration:underline;font-size:12px">عرض على الخريطة</a></div>';
+                    const popupContent = `<div style="text-align:right"><strong>${p.userName}</strong><br><span class="popup-location">📍 ${p.locationName || 'موقع غير معروف'}</span><br><span class="popup-location">🏢 ${p.center || '-'}</span><br><span class="popup-location">${p.workType === 'FIELD' ? '🚶 ميداني' : (p.workType === 'OFFICE' ? '🏢 مكتبي' : '')}</span><br><a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" style="color:#215f8f;text-decoration:underline;font-size:12px">عرض على الخريطة</a></div>`;
                     const marker = L.marker([lat, lng]).bindPopup(popupContent, { maxWidth: 250 }).addTo(mapInstance);
                     if (p.userPhoto) {
                         const photoUrl = normalizeDriveThumbnail(p.userPhoto);
                         if (photoUrl) {
                             const icon = L.divIcon({
-                                html: '<img src="' + photoUrl + '" style="width:40px;height:40px;border-radius:50%;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">',
+                                html: `<img src="${photoUrl}" style="width:40px;height:40px;border-radius:50%;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">`,
                                 className: 'custom-marker', iconSize: [40, 40], iconAnchor: [20, 40]
                             });
                             marker.setIcon(icon);
@@ -2273,7 +2530,6 @@ async function renderPresentNow(root) {
     }, 200);
     const refreshBtn = document.getElementById('presentNowRefreshBtn');
     if (refreshBtn) refreshBtn.onclick = () => renderPresentNow(root);
-    const toggle = document.getElementById('presentNowAutoRefreshToggle');
     const toggle = document.getElementById('presentNowAutoRefreshToggle');
     const saved = localStorage.getItem('presentNowAutoRefresh') === '1';
     if (toggle) {
