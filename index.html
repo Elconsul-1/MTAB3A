@@ -2012,437 +2012,8 @@ function getStatusLabel(status) {
     return map[status] || status;
 }
 
-// ==================== دوال التكليفات ====================
-window.updateAssignmentStatus = function(batchId) {
-    openModal(`
-        <h3>📊 تحديث حالة التكليف</h3>
-        <div class="field"><label>الحالة *</label>
-            <select id="assignmentNewStatus">
-                <option value="NEW">جديد</option>
-                <option value="RECEIVED">تم الاستلام</option>
-                <option value="IN_PROGRESS">قيد التنفيذ</option>
-                <option value="COMPLETED">منفذ</option>
-                <option value="NOT_DONE">غير منفذ</option>
-            </select>
-        </div>
-        <div class="field"><label>ملاحظات التقدم</label><textarea id="assignmentProgressNote" rows="3" placeholder="ما تم إنجازه..."></textarea></div>
-        <div class="field"><label>سبب عدم التنفيذ (إذا كان غير منفذ)</label><textarea id="assignmentNotDoneReason" rows="2" placeholder="سبب عدم التنفيذ..."></textarea></div>
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-primary" onclick="submitAssignmentStatusUpdate('${batchId}')">💾 تحديث</button>
-        </div>
-    `);
-};
-
-window.submitAssignmentStatusUpdate = async function(batchId) {
-    const status = document.getElementById('assignmentNewStatus')?.value;
-    const progressNote = document.getElementById('assignmentProgressNote')?.value?.trim() || '';
-    const notDoneReason = document.getElementById('assignmentNotDoneReason')?.value?.trim() || '';
-    if (!status) { showToast('يرجى اختيار الحالة', 'err'); return; }
-    closeModal(); showSavingModal('جارى تحديث الحالة...');
-    try {
-        const assignments = await api('listAssignments', { batchId: batchId });
-        for (const a of assignments) {
-            await api('updateAssignmentStatus', {
-                assignmentId: a.id,
-                status: status,
-                progressNote: progressNote,
-                completionNote: notDoneReason || progressNote,
-                updatedBy: CURRENT_USER.id,
-                updatedByName: CURRENT_USER.fullName
-            });
-        }
-        hideSavingModal(); showToast('✅ تم تحديث حالة التكليف بنجاح', 'ok');
-        refreshAssignments();
-    } catch(e) { hideSavingModal(); showToast('❌ فشل تحديث الحالة: ' + e.message, 'err'); }
-};
-
-window.updateMyAssignmentStatus = function(batchId) {
-    openModal(`
-        <h3>📊 تحديث حالة التكليف الخاص بي</h3>
-        <div class="field"><label>الحالة *</label>
-            <select id="myAssignmentStatus">
-                <option value="RECEIVED">تم الاستلام</option>
-                <option value="IN_PROGRESS">قيد التنفيذ</option>
-                <option value="COMPLETED">منفذ</option>
-                <option value="NOT_DONE">غير منفذ</option>
-            </select>
-        </div>
-        <div class="field"><label>ملاحظات التقدم</label><textarea id="myAssignmentNote" rows="3" placeholder="ما تم إنجازه..."></textarea></div>
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-primary" onclick="submitMyAssignmentStatusUpdate('${batchId}')">💾 تحديث</button>
-        </div>
-    `);
-};
-
-window.submitMyAssignmentStatusUpdate = async function(batchId) {
-    const status = document.getElementById('myAssignmentStatus')?.value;
-    const note = document.getElementById('myAssignmentNote')?.value?.trim() || '';
-    if (!status) { showToast('يرجى اختيار الحالة', 'err'); return; }
-    closeModal(); showSavingModal('جارى تحديث الحالة...');
-    try {
-        const assignments = await api('listAssignments', { batchId: batchId });
-        // تحديث فقط التكليف الخاص بالمستخدم الحالي
-        const myAssignment = assignments.find(a => a.recipientId === CURRENT_USER.id || a.recipientName === CURRENT_USER.fullName);
-        if (myAssignment) {
-            await api('updateAssignmentStatus', {
-                assignmentId: myAssignment.id,
-                status: status,
-                progressNote: note,
-                completionNote: note,
-                updatedBy: CURRENT_USER.id,
-                updatedByName: CURRENT_USER.fullName
-            });
-        }
-        hideSavingModal(); showToast('✅ تم تحديث حالة التكليف بنجاح', 'ok');
-        refreshAssignments();
-    } catch(e) { hideSavingModal(); showToast('❌ فشل تحديث الحالة: ' + e.message, 'err'); }
-};
-
-window.resendAssignment = function(batchId) {
-    openModal(`
-        <h3>🔄 إعادة إرسال التكليف</h3>
-        <p style="color:var(--ink-600);font-size:14px">هل أنت متأكد من إعادة إرسال هذا التكليف؟</p>
-        <p style="color:var(--ink-400);font-size:13px">سيتم إعادة إرسال التكليف إلى جميع المستلمين مع تحديث الحالة إلى "جديد".</p>
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-warning" onclick="confirmResendAssignment('${batchId}')">🔄 تأكيد الإعادة</button>
-        </div>
-    `);
-};
-
-window.confirmResendAssignment = async function(batchId) {
-    closeModal(); showSavingModal('جارى إعادة إرسال التكليف...');
-    try {
-        const assignments = await api('listAssignments', { batchId: batchId });
-        for (const a of assignments) {
-            await api('updateAssignmentStatus', {
-                assignmentId: a.id,
-                status: 'NEW',
-                updatedBy: CURRENT_USER.id,
-                updatedByName: CURRENT_USER.fullName
-            });
-            await api('addNotification', {
-                userId: a.recipientId,
-                message: 'تم إعادة إرسال التكليف: ' + a.details,
-                type: 'NEW_ASSIGNMENT'
-            });
-        }
-        hideSavingModal(); showToast('✅ تم إعادة إرسال التكليف بنجاح', 'ok');
-        refreshAssignments();
-    } catch(e) { hideSavingModal(); showToast('❌ فشل إعادة الإرسال: ' + e.message, 'err'); }
-};
-
-window.deleteAssignment = function(batchId) {
-    openModal(`
-        <h3>🗑️ حذف التكليف</h3>
-        <p style="color:var(--bad);font-size:14px">هل أنت متأكد من حذف هذا التكليف؟</p>
-        <p style="color:var(--ink-600);font-size:13px">سيتم حذف التكليف نهائياً ولا يمكن استرجاعه.</p>
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-danger" onclick="confirmDeleteAssignment('${batchId}')">🗑️ تأكيد الحذف</button>
-        </div>
-    `);
-};
-
-window.confirmDeleteAssignment = async function(batchId) {
-    closeModal(); showSavingModal('جارى حذف التكليف...');
-    try {
-        const assignments = await api('listAssignments', { batchId: batchId });
-        for (const a of assignments) {
-            await api('deleteAssignment', { assignmentId: a.id });
-        }
-        hideSavingModal(); showToast('✅ تم حذف التكليف بنجاح', 'ok');
-        refreshAssignments();
-    } catch(e) { hideSavingModal(); showToast('❌ فشل الحذف: ' + e.message, 'err'); }
-};
-
-// ==================== دوال إضافة التكليف والمهمة ====================
-window.openAddMissionModal = function() {
-    const isSystemAdmin = CURRENT_USER.role === 'SYSTEM_ADMIN';
-    const center = CURRENT_USER.role === 'CENTER_ADMIN' ? CURRENT_USER.center : '';
-    const centerOptionsHtml = CENTERS.map(c => `<option value="${c}" ${c === center ? 'selected' : ''}>${c}</option>`).join('');
-    let distributionOptions = isSystemAdmin ?
-        `<option value="ALL_CENTERS">🌍 كل المراكز</option>
-         <option value="SPECIFIC_CENTER">🏢 مركز محدد</option>
-         <option value="SPECIFIC_ENGINEER_CENTER">👨‍💻 مهندس في مركز</option>
-         <option value="SPECIFIC_TECHNICIAN_CENTER">🔧 فني في مركز</option>
-         <option value="ALL_ENGINEERS">👨‍💻 جميع المهندسين</option>` :
-        `<option value="CENTER_ALL">🏢 المركز كله</option>
-         <option value="SPECIFIC_ENGINEER">👨‍💻 مهندس محدد</option>
-         <option value="SPECIFIC_TECHNICIAN">🔧 فني محدد</option>`;
-    openModal(`
-        <h3>➕ إضافة تكليف جديد</h3>
-        <div class="field"><label>نوع التوزيع *</label><select id="missionDistributionType" onchange="updateMissionRecipients()">${distributionOptions}</select></div>
-        <div id="missionRecipientsContainer"><div style="color:var(--ink-400);font-size:13px;text-align:center;padding:10px">⏳ جاري تحميل البيانات...</div></div>
-        <div class="field" id="missionCenterField" style="display:none"><label>المركز *</label><select id="missionCenter" onchange="updateMissionRecipients()">${centerOptionsHtml}</select></div>
-        <div class="field-row">
-            <div class="field"><label>الوحدة المحلية</label><input id="missionLocalUnit" placeholder="الوحدة المحلية"></div>
-            <div class="field"><label>القرية</label><input id="missionVillage" placeholder="القرية"></div>
-        </div>
-        <div class="field"><label>نوع العمل *</label>
-            <select id="missionWorkType">
-                <option value="">اختر نوع العمل</option>
-                <option value="مسح">مسح</option>
-                <option value="رفع مساحي">رفع مساحي</option>
-                <option value="معاينة">معاينة</option>
-                <option value="تحديد منسوب">تحديد منسوب</option>
-                <option value="أخرى">أخرى</option>
-            </select>
-        </div>
-        <div class="field"><label>الجهة الطالبة</label><input id="missionRequester" placeholder="الجهة الطالبة"></div>
-        <div class="field"><label>الوصف</label><textarea id="missionDescription" rows="3" placeholder="وصف التكليف..."></textarea></div>
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-primary" onclick="submitNewMission()">💾 حفظ التكليف</button>
-        </div>
-    `);
-    setTimeout(() => updateMissionRecipients(), 200);
-};
-
-window.updateMissionRecipients = function() {
-    const distType = document.getElementById('missionDistributionType')?.value || '';
-    const container = document.getElementById('missionRecipientsContainer');
-    const centerField = document.getElementById('missionCenterField');
-    const centerSelect = document.getElementById('missionCenter');
-    if (!container) return;
-    if (centerField) centerField.style.display = 'none';
-    const centerTypes = ['SPECIFIC_CENTER', 'SPECIFIC_ENGINEER_CENTER', 'SPECIFIC_TECHNICIAN_CENTER'];
-    if (centerTypes.includes(distType)) { if (centerField) centerField.style.display = 'block'; }
-    api('listUsers', {}).then(users => {
-        const approvedUsers = users.filter(u => u.status === 'APPROVED');
-        const userCenter = CURRENT_USER.center || '';
-        const selectedCenter = centerSelect ? centerSelect.value : userCenter;
-        let html = '';
-        if (distType === 'ALL_CENTERS') {
-            const totalUsers = approvedUsers.filter(u => u.role !== 'SYSTEM_ADMIN').length;
-            html = `<div style="background:#e7f6ee;padding:12px;border-radius:10px;text-align:center;color:var(--good)">🌍 سيتم إرسال التكليف إلى جميع المراكز (${totalUsers} مستخدم)</div>`;
-        } else if (distType === 'SPECIFIC_CENTER' || distType === 'CENTER_ALL') {
-            const centerStaff = approvedUsers.filter(u => u.center === selectedCenter && u.role !== 'SYSTEM_ADMIN');
-            html = `<div style="background:#eaf1fb;padding:12px;border-radius:10px;text-align:center;color:var(--navy-700)">🏢 عدد المستلمين في مركز ${selectedCenter}: ${centerStaff.length} موظف</div>`;
-        } else if (distType === 'SPECIFIC_ENGINEER_CENTER' || distType === 'SPECIFIC_ENGINEER') {
-            const engineers = approvedUsers.filter(u => u.center === selectedCenter && u.role === 'ENGINEER');
-            html = `<div class="field"><label>اختر المهندس *</label><select id="missionSpecificEngineer"><option value="">اختر المهندس</option>${engineers.map(e => `<option value="${e.id}">${e.fullName}</option>`).join('')}</select></div>${engineers.length === 0 ? '<div style="color:var(--warn);font-size:13px">⚠️ لا يوجد مهندسون في هذا المركز</div>' : ''}`;
-        } else if (distType === 'SPECIFIC_TECHNICIAN_CENTER' || distType === 'SPECIFIC_TECHNICIAN') {
-            const technicians = approvedUsers.filter(u => u.center === selectedCenter && u.role === 'TECHNICIAN');
-            html = `<div class="field"><label>اختر الفني *</label><select id="missionSpecificTechnician"><option value="">اختر الفني</option>${technicians.map(t => `<option value="${t.id}">${t.fullName}</option>`).join('')}</select></div>${technicians.length === 0 ? '<div style="color:var(--warn);font-size:13px">⚠️ لا يوجد فنيون في هذا المركز</div>' : ''}`;
-        } else if (distType === 'ALL_ENGINEERS') {
-            const allEngineers = approvedUsers.filter(u => u.role === 'ENGINEER');
-            html = `<div style="background:#e7f6ee;padding:12px;border-radius:10px;text-align:center;color:var(--good)">👨‍💻 سيتم إرسال التكليف إلى جميع المهندسين (${allEngineers.length} مهندس)</div>`;
-        }
-        container.innerHTML = html;
-    }).catch(err => { console.error('Error loading users:', err); container.innerHTML = `<div style="color:var(--bad);font-size:13px">⚠️ تعذر تحميل قائمة المستخدمين: ${err.message}</div>`; });
-};
-
-window.submitNewMission = async function() {
-    const distType = document.getElementById('missionDistributionType')?.value;
-    const center = document.getElementById('missionCenter')?.value || CURRENT_USER.center || '';
-    const localUnit = document.getElementById('missionLocalUnit')?.value?.trim();
-    const village = document.getElementById('missionVillage')?.value?.trim();
-    const workType = document.getElementById('missionWorkType')?.value;
-    const requestingEntity = document.getElementById('missionRequester')?.value?.trim();
-    const description = document.getElementById('missionDescription')?.value?.trim();
-    let targetScope = '', targetCenters = [], recipientIds = [];
-    if (!workType) { showToast('يرجى اختيار نوع العمل', 'err'); return; }
-    if (distType === 'ALL_CENTERS') { targetScope = 'ALL'; targetCenters = CENTERS.filter(c => c !== 'مجمع الذكاء'); }
-    else if (distType === 'SPECIFIC_CENTER' || distType === 'CENTER_ALL') {
-        if (!center) { showToast('يرجى اختيار المركز', 'err'); return; }
-        targetScope = 'CENTERS'; targetCenters = [center];
-    } else if (distType === 'SPECIFIC_ENGINEER_CENTER' || distType === 'SPECIFIC_ENGINEER') {
-        const engineerId = document.getElementById('missionSpecificEngineer')?.value;
-        if (!engineerId) { showToast('يرجى اختيار المهندس', 'err'); return; }
-        recipientIds = [engineerId]; targetScope = 'SPECIFIC';
-    } else if (distType === 'SPECIFIC_TECHNICIAN_CENTER' || distType === 'SPECIFIC_TECHNICIAN') {
-        const technicianId = document.getElementById('missionSpecificTechnician')?.value;
-        if (!technicianId) { showToast('يرجى اختيار الفني', 'err'); return; }
-        recipientIds = [technicianId]; targetScope = 'SPECIFIC';
-    } else if (distType === 'ALL_ENGINEERS') { targetScope = 'ENGINEERS'; }
-    if (!targetScope && !recipientIds.length) { showToast('يرجى تحديد المستلمين', 'err'); return; }
-    closeModal(); showSavingModal('جارى إضافة التكليف...');
-    try {
-        const payload = {
-            center, localUnit, village, workType, requestingEntity,
-            details: description,
-            sourceType: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'SYSTEM_ADMIN' : 'CENTER_ADMIN',
-            sourceCenter: CURRENT_USER.role === 'SYSTEM_ADMIN' ? '' : CURRENT_USER.center,
-            createdBy: CURRENT_USER.id,
-            createdByName: CURRENT_USER.fullName,
-            targetScope, targetCenters, recipientIds
-        };
-        const result = await api('createAssignment', payload);
-        hideSavingModal(); showToast(`✅ تم إضافة التكليف بنجاح (${result.count || 1} مستلم)`, 'ok');
-        // مسح الكاش وإعادة تحميل الصفحة
-        delete PAGE_CACHE['assignments'];
-        setTimeout(() => goPage('assignments', true, false), 500);
-    } catch(e) { hideSavingModal(); showToast('❌ فشل إضافة التكليف: ' + e.message, 'err'); }
-};
-
-// ==================== نافذة إضافة مهمة جديدة ====================
-window.openAddTaskModal = function() {
-    const center = CURRENT_USER.role === 'CENTER_ADMIN' ? CURRENT_USER.center : '';
-    const centerOptionsHtml = CENTERS.map(c => `<option value="${c}" ${c === center ? 'selected' : ''}>${c}</option>`).join('');
-    openModal(`
-        <h3>➕ إضافة مهمة جديدة</h3>
-        <div class="field"><label>المهندس/الفني المسؤول *</label><input id="taskEngineer" placeholder="اسم المهندس أو الفني"></div>
-        <div class="field"><label>المركز *</label><select id="taskCenter">${centerOptionsHtml}</select></div>
-        <div class="field"><label>نوع المهمة *</label>
-            <select id="taskType">
-                <option value="">اختر نوع المهمة</option>
-                <option value="رفع مساحي">رفع مساحي</option>
-                <option value="معاينة">معاينة</option>
-                <option value="تحديد منسوب">تحديد منسوب</option>
-                <option value="مراجعة">مراجعة</option>
-                <option value="أخرى">أخرى</option>
-            </select>
-        </div>
-        <div class="field"><label>الموقع</label><input id="taskLocation" placeholder="الموقع"></div>
-        <div class="field"><label>عدد الحالات</label><input id="taskCasesCount" type="number" min="0" value="0"></div>
-        <div class="field"><label>ملاحظات</label><textarea id="taskNotes" rows="3" placeholder="ملاحظات إضافية..."></textarea></div>
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-gold" onclick="submitNewTask()">💾 حفظ المهمة</button>
-        </div>
-    `);
-};
-
-// ==================== دالة فتح نافذة التحرك اليومي ====================
-window.openDailyMovementModal = function() {
-    const workTypes = ['ميداني', 'مكتبي'];
-    const workTypeOptions = workTypes.map(wt => `<option value="${wt}">${wt}</option>`).join('');
-    
-    openModal(`
-        <h3>📍 تسجيل التحرك اليومي</h3>
-        <div class="field"><label>نوع التحرك *</label>
-            <select id="movementType">
-                <option value="">اختر نوع التحرك</option>
-                <option value="vehicleArrival">🚗 وصول السيارة</option>
-                <option value="engineerArrival">👨‍💼 وصول المهندس</option>
-                <option value="directorPresence">👔 تواجد المدير</option>
-                <option value="workStart">🎯 بدء العمل</option>
-                <option value="workEnd">⏹️ انتهاء العمل</option>
-                <option value="taskCompletion">✅ إنجاز المهام</option>
-            </select>
-        </div>
-        
-        <div id="movementDetails" style="display:none">
-            <div class="field"><label>المركز *</label>
-                <select id="movementCenter">
-                    ${CENTERS.map(c => `<option value="${c}">${c}</option>`).join('')}
-                </select>
-            </div>
-            <div class="field"><label>نوع العمل</label>
-                <select id="movementWorkType">
-                    <option value="">اختر نوع العمل</option>
-                    ${workTypeOptions}
-                </select>
-            </div>
-            <div class="field"><label>الملاحظات</label>
-                <textarea id="movementNotes" rows="3" placeholder="أضف ملاحظاتك هنا..."></textarea>
-            </div>
-        </div>
-        
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-primary" onclick="submitDailyMovement()">💾 حفظ</button>
-        </div>
-    `);
-    
-    document.getElementById('movementType').addEventListener('change', function() {
-        document.getElementById('movementDetails').style.display = this.value ? 'block' : 'none';
-    });
-};
-
-// ==================== دالة حفظ التحرك اليومي ====================
-window.submitDailyMovement = async function() {
-    const movementType = document.getElementById('movementType')?.value;
-    const center = document.getElementById('movementCenter')?.value;
-    const workType = document.getElementById('movementWorkType')?.value;
-    const notes = document.getElementById('movementNotes')?.value?.trim();
-    
-    if (!movementType) {
-        showToast('يرجى اختيار نوع التحرك', 'err');
-        return;
-    }
-    
-    closeModal();
-    showSavingModal('جاري حفظ التحرك اليومي...');
-    
-    try {
-        const actionMap = {
-            'vehicleArrival': 'vehicleArrival',
-            'engineerArrival': 'engineerArrival',
-            'directorPresence': 'directorPresence',
-            'workStart': 'workStart',
-            'workEnd': 'workEnd',
-            'taskCompletion': 'completion'
-        };
-        
-        const payload = {
-            action: actionMap[movementType],
-            center: center || CURRENT_USER.center,
-            workType: workType,
-            notes: notes,
-            recordedBy: CURRENT_USER.id,
-            recordedByName: CURRENT_USER.fullName
-        };
-        
-        const result = await api('recordDailyMovementAction', payload);
-        hideSavingModal();
-        showToast('✅ تم حفظ التحرك اليومي بنجاح', 'ok');
-        delete PAGE_CACHE['coordination'];
-        setTimeout(() => goPage('coordination', true, false), 500);
-    } catch(e) {
-        hideSavingModal();
-        showToast('❌ فشل الحفظ: ' + e.message, 'err');
-    }
-};
-
-
-
-// ==================== دوال تحديث حالة المهمة ====================
-window.updateTaskStatusAction = function(taskId) {
-    openModal(`
-        <h3>تحديث حالة المهمة</h3>
-        <div class="field"><label>الحالة *</label>
-            <select id="taskNewStatus">
-                <option value="PENDING">قيد الانتظار</option>
-                <option value="IN_PROGRESS">قيد التنفيذ</option>
-                <option value="COMPLETED">مكتمل</option>
-            </select>
-        </div>
-        <div class="field"><label>ملاحظات التقدم</label><textarea id="taskProgressNote" rows="3" placeholder="ما تم إنجازه..."></textarea></div>
-        <div class="field"><label>سبب الإكمال (إذا كانت مكتملة)</label><textarea id="taskCompletionReason" rows="2" placeholder="سبب الإكمال..."></textarea></div>
-        <div class="modal-close-row">
-            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-            <button class="btn btn-gold" onclick="submitTaskStatusUpdate('${taskId}')">💾 تحديث</button>
-        </div>
-    `);
-};
-
-window.submitTaskStatusUpdate = async function(taskId) {
-    const status = document.getElementById('taskNewStatus')?.value;
-    const progressNote = document.getElementById('taskProgressNote')?.value?.trim() || '';
-    const completionReason = document.getElementById('taskCompletionReason')?.value?.trim() || '';
-    if (!status) { showToast('يرجى اختيار الحالة', 'err'); return; }
-    closeModal(); showSavingModal('جارى تحديث الحالة...');
-    try {
-        await api('updateTaskStatus', {
-            taskId, status, progressNote,
-            completionReason: completionReason || progressNote,
-            updatedBy: CURRENT_USER.id,
-            updatedByName: CURRENT_USER.fullName
-        });
-        hideSavingModal(); showToast('✅ تم تحديث حالة المهمة بنجاح', 'ok');
-        delete PAGE_CACHE['assignments'];
-        setTimeout(() => goPage('assignments', true, false), 500);
-    } catch(e) { hideSavingModal(); showToast('❌ فشل تحديث الحالة: ' + e.message, 'err'); }
-};
-
-window.refreshAssignments = function() {
-    delete PAGE_CACHE['assignments'];
-    goPage('assignments', true, false);
-};
+// ==================== دوال التكليفات والمهام الجديدة ====================
+// (الدوال القديمة قد تم حذفها لتجنب التضارب)
 
 // ========================================================================
 // دوال تحديث حالة التكليفات والمهام من البطاقات
@@ -2473,8 +2044,34 @@ window.failMyAssignment = async function(batchId) {
     }
 };
 
+window.completeMyAssignment = async function(batchId) {
+    if (!confirm('هل تريد تأكيد إنجاز هذا التكليف؟')) return;
+    showSavingModal('جاري تحديث الحالة...');
+    try {
+        await api('updateAssignmentStatus', { batchId: batchId, status: 'COMPLETED' });
+        hideSavingModal(); showToast('✅ تم تحديث الحالة بنجاح', 'ok');
+        delete PAGE_CACHE['assignments'];
+        setTimeout(() => goPage('assignments', true, false), 500);
+    } catch(e) { 
+        hideSavingModal(); showToast('❌ فشل التحديث: ' + e.message, 'err'); 
+    }
+};
+
+window.failMyAssignment = async function(batchId) {
+    if (!confirm('هل تريد تسجيل عدم إنجاز هذا التكليف؟')) return;
+    showSavingModal('جاري تحديث الحالة...');
+    try {
+        await api('updateAssignmentStatus', { batchId: batchId, status: 'NOT_DONE' });
+        hideSavingModal(); showToast('✅ تم تحديث الحالة بنجاح', 'ok');
+        delete PAGE_CACHE['assignments'];
+        setTimeout(() => goPage('assignments', true, false), 500);
+    } catch(e) { 
+        hideSavingModal(); showToast('❌ فشل التحديث: ' + e.message, 'err'); 
+    }
+};
+
 window.updateTaskStatusAction = async function(taskId, status) {
-    if (!confirm(`هل تريد تحديث حالة المهمة إلى ${status === 'COMPLETED' ? 'منجزة' : 'غير منجزة'}؟`)) return;
+    if (!confirm(status === 'COMPLETED' ? 'هل تم إنجاز المهمة؟' : 'هل لم تنجز المهمة؟')) return;
     showSavingModal('جاري التحديث...');
     try {
         await api('updateTaskStatus', { 
@@ -2491,7 +2088,6 @@ window.updateTaskStatusAction = async function(taskId, status) {
     }
 };
 
-
 // ========================================================================
 // المتواجدين حاليا - مع الخريطة
 // ========================================================================
@@ -2505,19 +2101,20 @@ function normalizeDriveThumbnail(url) {
 }
 
 async function updateCurrentLocation() {
-    if (!CURRENT_USER) { showToast('يرجى تسجيل الدخول أولاً', 'err'); return; }
-    showSavingModal('جارِ تحديث الموقع...');
+    if (!CURRENT_USER) { showToast('يرجى تسجيل الدخول اولا', 'err'); return; }
+    showSavingModal('جاري تحديث الموقع...');
     try {
         const position = await getCurrentPositionSafe(10000);
-        if (!position) { hideSavingModal(); showToast('تعذر الحصول على الموقع، تأكد من تفعيل GPS', 'err'); return; }
-        const lat = position.coords.latitude, lng = position.coords.longitude;
-        const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+        if (!position) { hideSavingModal(); showToast('تعذر الحصول على الموقع', 'err'); return; }
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const mapsLink = 'https://www.google.com/maps?q=' + lat + ',' + lng;
         let locationName = await getLocationNameOSM(lat, lng);
-        await api('updateUserLocation', { userId: CURRENT_USER.id, lat, lng, mapsLink, locationName });
-        hideSavingModal(); showToast('✅ تم تحديث موقعك بنجاح', 'ok');
+        await api('updateUserLocation', { userId: CURRENT_USER.id, lat: lat, lng: lng, mapsLink: mapsLink, locationName: locationName });
+        hideSavingModal(); showToast('تم تحديث موقعك بنجاح', 'ok');
         const content = document.getElementById('pageContent');
         await renderPresentNow(content);
-    } catch(e) { hideSavingModal(); showToast('❌ فشل تحديث الموقع: ' + e.message, 'err'); }
+    } catch(e) { hideSavingModal(); showToast('فشل تحديث الموقع: ' + e.message, 'err'); }
 }
 
 function zoomToUser(userId, lat, lng) {
