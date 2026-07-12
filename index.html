@@ -1325,8 +1325,8 @@ window.confirmReject = async function(id) { const reason = val('rejReason'); clo
 async function renderAssignments(root) {
     const isSystemAdmin = CURRENT_USER.role === 'SYSTEM_ADMIN';
     const isCenterAdmin = CURRENT_USER.role === 'CENTER_ADMIN';
-    const [users, tasks, assignments] = await Promise.all([
-        api('listUsers', {}), api('listTasks', {}), api('listAssignments', {})
+    const [users, workLogAll, assignments] = await Promise.all([
+        api('listUsers', {}), api('listWorkReports', isSystemAdmin ? {} : (isCenterAdmin ? { center: CURRENT_USER.center } : { userId: CURRENT_USER.id })), api('listAssignments', {})
     ]);
     // === تم التصحيح: كانت هذه الشاشة تقرأ من جدول Missions غير المستخدم بينما "إضافة تكليف" ===
     // === تكتب فعليًا في جدول Assignments -> فكانت التكليفات المُرسلة لا تظهر أبدًا           ===
@@ -1335,16 +1335,10 @@ async function renderAssignments(root) {
     // الشخصية فقط، مدير المركز يرى كل ما يخص مركزه، مدير النظام يرى الكل) - هنا فقط نقسمها للعرض
     adminAssignments = assignments.filter(a => a.sourceType === 'SYSTEM_ADMIN');
     centerAssignments = assignments.filter(a => a.sourceType === 'CENTER_ADMIN');
-    if (isSystemAdmin) {
-        userTasks = tasks.filter(t => t.assignedTo === CURRENT_USER.fullName || t.engineerName === CURRENT_USER.fullName);
-        allCompletedTasks = tasks.filter(t => t.status === 'DONE' || t.status === 'COMPLETED' || t.status === 'CLOSED');
-    } else if (isCenterAdmin) {
-        userTasks = tasks.filter(t => t.center === CURRENT_USER.center && (t.assignedTo === CURRENT_USER.fullName || t.engineerName === CURRENT_USER.fullName));
-        allCompletedTasks = tasks.filter(t => t.center === CURRENT_USER.center && (t.status === 'DONE' || t.status === 'COMPLETED' || t.status === 'CLOSED'));
-    } else {
-        userTasks = tasks.filter(t => t.engineerName === CURRENT_USER.fullName || t.assignedTo === CURRENT_USER.fullName);
-        allCompletedTasks = tasks.filter(t => (t.engineerName === CURRENT_USER.fullName || t.assignedTo === CURRENT_USER.fullName) && (t.status === 'DONE' || t.status === 'COMPLETED' || t.status === 'CLOSED'));
-    }
+    // "المهام" هنا = ما سجّله كل مستخدم فعليًا أثناء الانصراف (workType/casesCount/tasksNote)، وليست
+    // مهام تُضاف يدويًا، لضمان عدم وجود أرقام عشوائية غير مرتبطة بعملية انصراف موثقة
+    userTasks = isSystemAdmin || isCenterAdmin ? workLogAll.filter(w => w.userId === CURRENT_USER.id) : workLogAll;
+    allCompletedTasks = workLogAll;
 
     function groupAssignmentsByBatch(list) {
         const batches = {};
@@ -1381,8 +1375,8 @@ async function renderAssignments(root) {
     const adminTotal = Object.values(adminBatches).length;
     const centerTotal = Object.values(centerBatches).length;
     const tasksTotal = userTasks.length;
-    const tasksCompleted = userTasks.filter(t => t.status === 'DONE' || t.status === 'COMPLETED' || t.status === 'CLOSED').length;
-    const tasksPending = tasksTotal - tasksCompleted;
+    const tasksCasesTotal = userTasks.reduce((s,t) => s + (t.casesCount || 0), 0);
+    const teamCasesTotal = allCompletedTasks.reduce((s,t) => s + (t.casesCount || 0), 0);
     const topTechnicians = await getTopTechnicians(users);
     const centersList = [...new Set(users.filter(u => u.center && u.status === 'APPROVED').map(u => u.center))];
     
@@ -1411,24 +1405,42 @@ async function renderAssignments(root) {
             .top-tech-item .info{flex:1}
             .top-tech-item .info .name{font-weight:700;font-size:14px}
             .top-tech-item .info .count{font-size:12px;color:var(--ink-600)}
+            /* ===== بطاقات التكليفات الملونة حسب الحالة ===== */
+            .assign-cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+            .assign-card{background:var(--card);border:1px solid var(--line);border-right:6px solid var(--ink-400);border-radius:14px;padding:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px}
+            .assign-card.new{border-right-color:#1e88e5;background:linear-gradient(180deg,#f4f9ff,#fff 40%)}
+            .assign-card.received{border-right-color:#fb8c00;background:linear-gradient(180deg,#fff8ef,#fff 40%)}
+            .assign-card.in_progress{border-right-color:#00897b;background:linear-gradient(180deg,#f0faf8,#fff 40%)}
+            .assign-card.completed{border-right-color:#43a047;background:linear-gradient(180deg,#f2faf3,#fff 40%)}
+            .assign-card.not_done{border-right-color:#e53935;background:linear-gradient(180deg,#fff4f3,#fff 40%)}
+            .assign-card.admin-source{box-shadow:0 4px 18px rgba(201,162,39,.25)}
+            .assign-card-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
+            .assign-card-title{font-weight:800;font-size:14.5px;color:var(--navy-950);line-height:1.5}
+            .assign-card-meta{display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;color:var(--ink-600)}
+            .assign-card-progress{font-size:12.5px;color:var(--ink-600);background:#f4f6f8;border-radius:8px;padding:6px 10px}
+            .assign-card-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
+            .worklog-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+            .worklog-card .wt-badge{font-size:11px;padding:3px 10px;border-radius:10px;font-weight:700}
+            .worklog-card .wt-badge.field{background:#eaf1fb;color:var(--navy-700)}
+            .worklog-card .wt-badge.office{background:#f3e5f5;color:#4a148c}
         </style>
         <div class="stats-cards">
             ${isSystemAdmin ? `<div class="stats-card"><div class="num">${adminTotal}</div><div class="label">📋 تكليفات الإدارة</div></div>` : ''}
             ${(isSystemAdmin || isCenterAdmin) ? `<div class="stats-card"><div class="num">${centerTotal}</div><div class="label">📋 تكليفات المركز</div></div>` : ''}
-            <div class="stats-card"><div class="num">${tasksTotal}</div><div class="label">📝 مهامي</div></div>
-            <div class="stats-card"><div class="num">${tasksCompleted}</div><div class="label">✅ منفذة</div></div>
-            <div class="stats-card"><div class="num">${tasksPending}</div><div class="label">⏳ قيد التنفيذ</div></div>
+            <div class="stats-card"><div class="num">${tasksTotal}</div><div class="label">📝 أيام مسجّلة</div></div>
+            <div class="stats-card"><div class="num">${tasksCasesTotal}</div><div class="label">✅ إجمالي طلباتي</div></div>
+            ${(isSystemAdmin || isCenterAdmin) ? `<div class="stats-card"><div class="num">${teamCasesTotal}</div><div class="label">👥 إجمالي طلبات الفريق</div></div>` : ''}
         </div>
         <div style="margin-bottom:16px">
             <h4 style="margin:0 0 8px;font-size:14px;color:var(--ink-600)">🏆 أفضل 5 فنيين هذا الشهر</h4>
             <div class="top-tech-list">${topTechnicians.length ? topTechnicians.map((t, i) => `<div class="top-tech-item"><div class="rank">${i+1}</div><div class="info"><div class="name">${t.fullName}</div><div class="count">📋 ${t.count} طلب منجز${t.center ? ' — ' + t.center : ''}</div></div></div>`).join('') : '<div style="color:var(--ink-400);font-size:13px">لا توجد بيانات كافية بعد (تُحسب من بيانات الانصراف اليومية)</div>'}</div>
         </div>
-        <div class="panel"><div class="panel-head"><h3>التكليفات والمهام</h3><div style="display:flex;gap:8px;flex-wrap:wrap">${(isSystemAdmin || isCenterAdmin) ? `<button class="btn btn-primary btn-sm" onclick="openAddMissionModal()">➕ إضافة تكليف</button><button class="btn btn-gold btn-sm" onclick="openAddTaskModal()">➕ إضافة مهمة</button>` : ''}<button class="btn btn-outline btn-sm" onclick="refreshAssignments()">⟳ تحديث</button></div></div></div>
+        <div class="panel"><div class="panel-head"><h3>التكليفات والمهام</h3><div style="display:flex;gap:8px;flex-wrap:wrap">${(isSystemAdmin || isCenterAdmin) ? `<button class="btn btn-primary btn-sm" onclick="openAddMissionModal()">➕ إضافة تكليف</button>` : ''}<button class="btn btn-outline btn-sm" onclick="refreshAssignments()">⟳ تحديث</button></div></div></div>
         <div class="tabs">
             ${isSystemAdmin ? `<button class="tab-btn active" data-tab="adminMissions">📋 تكليفات الإدارة (${adminTotal})</button>` : ''}
             ${(isSystemAdmin || isCenterAdmin) ? `<button class="tab-btn" data-tab="centerMissions">📋 تكليفات المركز (${centerTotal})</button>` : ''}
-            <button class="tab-btn" data-tab="myTasks">📝 مهامي (${tasksTotal})</button>
-            <button class="tab-btn" data-tab="completedTasks">✅ المهام المنفذة (${tasksCompleted})</button>
+            <button class="tab-btn" data-tab="myTasks">📝 سجل أعمالي (${tasksTotal})</button>
+            ${(isSystemAdmin || isCenterAdmin) ? `<button class="tab-btn" data-tab="completedTasks">👥 سجل أعمال الفريق (${allCompletedTasks.length})</button>` : ''}
         </div>
         <div id="tabAdminMissions" style="display:${isSystemAdmin ? 'block' : 'none'}"></div>
         <div id="tabCenterMissions" style="display:none"></div>
@@ -1444,13 +1456,27 @@ async function renderAssignments(root) {
         if (!batches.length) { container.innerHTML = `<div class="empty-state">لا توجد تكليفات إدارة</div>`; return; }
         container.innerHTML = `
             <div class="filter-bar">
-                <select id="filterAdminStatus"><option value="ALL">كل الحالات</option><option value="NEW">جديد</option><option value="RECEIVED">تم الاستلام</option><option value="IN_PROGRESS">قيد التنفيذ</option><option value="COMPLETED">منفذ</option><option value="NOT_DONE">غير منفذ</option></select>
+                <select id="filterAdminStatus"><option value="ALL">كل الحالات</option><option value="NEW">جديد</option><option value="IN_PROGRESS">قيد التنفيذ</option><option value="COMPLETED">منفذ</option></select>
                 <select id="filterAdminCenter"><option value="ALL">كل المراكز</option>${centersList.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
                 <input type="date" id="filterAdminDate" placeholder="التاريخ">
                 <button class="btn btn-outline btn-sm" onclick="applyAdminFilters()">🔍 بحث</button>
                 <button class="btn btn-outline btn-sm" onclick="clearAdminFilters()">✖ إلغاء</button>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>#</th><th>التفاصيل</th><th>المركز</th><th>نوع العمل</th><th>المستلمون</th><th>الحالة</th><th>التاريخ</th><th>إجراء</th></tr></thead><tbody id="adminMissionsBody">${batches.map((b, idx) => `<tr class="${b.isAdminSource ? 'admin-mission-row' : ''}" data-status="${b.status}" data-date="${b.createdAt?.slice(0,10) || ''}" data-center="${b.center}"><td>${idx+1}</td><td><strong>${b.details}</strong>${b.isAdminSource ? '<span class="admin-badge">الإدارة</span>' : ''}</td><td>${b.center}</td><td>${b.workType || '-'}</td><td>${b.recipientCount} مستلم (${b.receivedCount} استلم، ${b.completedCount} أنجز)</td><td><span class="assignment-status ${b.status.toLowerCase()}">${getStatusLabel(b.status)}</span></td><td>${fmtDate(b.createdAt)}</td><td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="updateAdminMissionStatus('${b.batchId}')">📊 حالة</button><button class="btn btn-warning btn-sm" onclick="resendAdminMission('${b.batchId}')">🔄 إعادة</button><button class="btn btn-danger btn-sm" onclick="deleteAdminMission('${b.batchId}')">🗑️ حذف</button></td></tr>`).join('')}</tbody></table></div>
+            <div class="assign-cards-grid" id="adminMissionsBody">${batches.map(b => `
+                <div class="assign-card ${b.status.toLowerCase()} ${b.isAdminSource ? 'admin-source' : ''}" data-status="${b.status}" data-date="${b.createdAt?.slice(0,10) || ''}" data-center="${b.center}">
+                    <div class="assign-card-head">
+                        <span class="assignment-status ${b.status.toLowerCase().replace('_','')}">${getStatusLabel(b.status)}</span>
+                        ${b.isAdminSource ? '<span class="admin-badge">🏛️ الإدارة العامة</span>' : ''}
+                    </div>
+                    <div class="assign-card-title">${b.details || 'تكليف'}</div>
+                    <div class="assign-card-meta"><span>🏢 ${b.center}</span><span>🛠️ ${b.workType || '-'}</span><span>📅 ${fmtDate(b.createdAt)}</span></div>
+                    <div class="assign-card-progress">👥 ${b.recipientCount} مستلم — ✅ ${b.receivedCount} استلم — 🏁 ${b.completedCount} أنجز${b.notDoneCount ? ` — ⚠️ ${b.notDoneCount} لم يُنجز` : ''}</div>
+                    <div class="assign-card-actions">
+                        <button class="btn btn-outline btn-sm" onclick="updateAdminMissionStatus('${b.batchId}')">📊 حالة</button>
+                        <button class="btn btn-warning btn-sm" onclick="resendAdminMission('${b.batchId}')">🔄 إعادة</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteAdminMission('${b.batchId}')">🗑️ حذف</button>
+                    </div>
+                </div>`).join('')}</div>
         `;
     }
     
@@ -1460,58 +1486,72 @@ async function renderAssignments(root) {
         if (!batches.length) { container.innerHTML = `<div class="empty-state">لا توجد تكليفات مركز</div>`; return; }
         container.innerHTML = `
             <div class="filter-bar">
-                <select id="filterCenterStatus"><option value="ALL">كل الحالات</option><option value="NEW">جديد</option><option value="RECEIVED">تم الاستلام</option><option value="IN_PROGRESS">قيد التنفيذ</option><option value="COMPLETED">منفذ</option><option value="NOT_DONE">غير منفذ</option></select>
+                <select id="filterCenterStatus"><option value="ALL">كل الحالات</option><option value="NEW">جديد</option><option value="IN_PROGRESS">قيد التنفيذ</option><option value="COMPLETED">منفذ</option></select>
                 <select id="filterCenterCenter"><option value="ALL">كل المراكز</option>${centersList.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
                 <input type="date" id="filterCenterDate" placeholder="التاريخ">
                 <button class="btn btn-outline btn-sm" onclick="applyCenterFilters()">🔍 بحث</button>
                 <button class="btn btn-outline btn-sm" onclick="clearCenterFilters()">✖ إلغاء</button>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>#</th><th>التفاصيل</th><th>المركز</th><th>نوع العمل</th><th>المستلمون</th><th>الحالة</th><th>التاريخ</th><th>إجراء</th></tr></thead><tbody id="centerMissionsBody">${batches.map((b, idx) => `<tr data-status="${b.status}" data-date="${b.createdAt?.slice(0,10) || ''}" data-center="${b.center}"><td>${idx+1}</td><td><strong>${b.details}</strong></td><td>${b.center}</td><td>${b.workType || '-'}</td><td>${b.recipientCount} مستلم (${b.receivedCount} استلم، ${b.completedCount} أنجز)</td><td><span class="assignment-status ${b.status.toLowerCase()}">${getStatusLabel(b.status)}</span></td><td>${fmtDate(b.createdAt)}</td><td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="updateCenterMissionStatus('${b.batchId}')">📊 حالة</button><button class="btn btn-warning btn-sm" onclick="resendCenterMission('${b.batchId}')">🔄 إعادة</button><button class="btn btn-danger btn-sm" onclick="deleteCenterMission('${b.batchId}')">🗑️ حذف</button></td></tr>`).join('')}</tbody></table></div>
+            <div class="assign-cards-grid" id="centerMissionsBody">${batches.map(b => `
+                <div class="assign-card ${b.status.toLowerCase()}" data-status="${b.status}" data-date="${b.createdAt?.slice(0,10) || ''}" data-center="${b.center}">
+                    <div class="assign-card-head"><span class="assignment-status ${b.status.toLowerCase().replace('_','')}">${getStatusLabel(b.status)}</span></div>
+                    <div class="assign-card-title">${b.details || 'تكليف'}</div>
+                    <div class="assign-card-meta"><span>🏢 ${b.center}</span><span>🛠️ ${b.workType || '-'}</span><span>📅 ${fmtDate(b.createdAt)}</span></div>
+                    <div class="assign-card-progress">👥 ${b.recipientCount} مستلم — ✅ ${b.receivedCount} استلم — 🏁 ${b.completedCount} أنجز${b.notDoneCount ? ` — ⚠️ ${b.notDoneCount} لم يُنجز` : ''}</div>
+                    <div class="assign-card-actions">
+                        <button class="btn btn-outline btn-sm" onclick="updateCenterMissionStatus('${b.batchId}')">📊 حالة</button>
+                        <button class="btn btn-warning btn-sm" onclick="resendCenterMission('${b.batchId}')">🔄 إعادة</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteCenterMission('${b.batchId}')">🗑️ حذف</button>
+                    </div>
+                </div>`).join('')}</div>
         `;
     }
     
     function renderMyTasks() {
         const container = document.getElementById('tabMyTasks');
-        const pending = userTasks.filter(t => t.status !== 'DONE' && t.status !== 'COMPLETED' && t.status !== 'CLOSED');
         container.innerHTML = `
             <div class="filter-bar">
-                <select id="filterTaskType"><option value="ALL">كل الأنواع</option><option value="رفع مساحي">رفع مساحي</option><option value="معاينة">معاينة</option><option value="تحديد منسوب">تحديد منسوب</option><option value="مراجعة">مراجعة</option><option value="أخرى">أخرى</option></select>
-                <select id="filterTaskSource"><option value="ALL">كل المصادر</option><option value="GENERAL">الإدارة العامة</option><option value="CENTER">مدير المركز</option></select>
+                <select id="filterTaskWorkType"><option value="ALL">كل الأنواع</option><option value="FIELD">ميداني</option><option value="OFFICE">مكتبي</option></select>
                 <input type="date" id="filterTaskDate" placeholder="التاريخ">
                 <button class="btn btn-outline btn-sm" onclick="applyTaskFilters()">🔍 بحث</button>
                 <button class="btn btn-outline btn-sm" onclick="clearTaskFilters()">✖ إلغاء</button>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>#</th><th>المهمة</th><th>المصدر</th><th>النوع</th><th>الموقع</th><th>الحالات</th><th>الحالة</th><th>التاريخ</th><th>إجراء</th></tr></thead><tbody>${pending.length ? pending.map((t, idx) => {
-                const isAdmin = t.source === 'GENERAL' || t.sourceType === 'SYSTEM_ADMIN';
-                return `<tr class="${isAdmin ? 'admin-mission-row' : ''}" data-type="${t.taskType || ''}" data-date="${t.startTime?.slice(0,10) || ''}" data-source="${t.source || t.sourceType || ''}">
-                    <td>${idx+1}</td><td>${t.notes || t.taskType || 'مهمة'}${isAdmin ? '<span class="admin-badge">الإدارة</span>' : ''}</td>
-                    <td>${isAdmin ? 'الإدارة' : 'المركز'}</td><td>${t.taskType || '-'}</td><td>${t.location || '-'}</td>
-                    <td>${t.casesCount || 0}</td><td><span class="assignment-status ${t.status?.toLowerCase() || 'pending'}">${getStatusLabel(t.status || 'PENDING')}</span></td>
-                    <td>${fmtDate(t.startTime)}</td><td><button class="btn btn-outline btn-sm" onclick="updateTaskStatusAction('${t.id}')">تحديث</button></td>
-                </tr>`;
-            }).join('') : '<tr><td colspan="9"><div class="empty-state">لا توجد مهام</div></td></tr>'}</tbody></table></div>
+            <div id="myTasksBody">${userTasks.length ? userTasks.map(t => `
+                <div class="worklog-card" data-worktype="${t.workType || ''}" data-date="${t.date || ''}">
+                    <div>
+                        <div style="font-weight:700;font-size:13.5px">${fmtDate(t.timestamp)} ${isSystemAdmin || isCenterAdmin ? '— ' + (t.userName || '') : ''}</div>
+                        <div style="font-size:12.5px;color:var(--ink-600);margin-top:3px">${t.tasksNote || 'لا توجد ملاحظات'}</div>
+                    </div>
+                    <div style="text-align:left;flex-shrink:0">
+                        <span class="wt-badge ${t.workType === 'FIELD' ? 'field' : 'office'}">${t.workType === 'FIELD' ? 'ميداني' : 'مكتبي'}</span>
+                        <div style="font-weight:800;font-size:18px;color:var(--navy-900);margin-top:4px">${t.casesCount} طلب</div>
+                    </div>
+                </div>`).join('') : '<div class="empty-state">لا توجد سجلات بعد — تُسجَّل تلقائيًا عند تسجيل الانصراف يوميًا</div>'}</div>
         `;
     }
     
     function renderCompletedTasks() {
         const container = document.getElementById('tabCompletedTasks');
-        const completed = userTasks.filter(t => t.status === 'DONE' || t.status === 'COMPLETED' || t.status === 'CLOSED');
         container.innerHTML = `
             <div class="filter-bar">
-                <select id="filterCompletedType"><option value="ALL">كل الأنواع</option><option value="رفع مساحي">رفع مساحي</option><option value="معاينة">معاينة</option><option value="تحديد منسوب">تحديد منسوب</option><option value="مراجعة">مراجعة</option></select>
-                <select id="filterCompletedSource"><option value="ALL">كل المصادر</option><option value="GENERAL">الإدارة العامة</option><option value="CENTER">مدير المركز</option></select>
+                <select id="filterCompletedWorkType"><option value="ALL">كل الأنواع</option><option value="FIELD">ميداني</option><option value="OFFICE">مكتبي</option></select>
+                <select id="filterCompletedCenter"><option value="ALL">كل المراكز</option>${centersList.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
                 <input type="date" id="filterCompletedDate" placeholder="التاريخ">
                 <button class="btn btn-outline btn-sm" onclick="applyCompletedFilters()">🔍 بحث</button>
                 <button class="btn btn-outline btn-sm" onclick="clearCompletedFilters()">✖ إلغاء</button>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>#</th><th>المهمة</th><th>المصدر</th><th>النوع</th><th>الموقع</th><th>الحالات</th><th>تاريخ التنفيذ</th><th>النتيجة</th></tr></thead><tbody>${completed.length ? completed.map((t, idx) => {
-                const isAdmin = t.source === 'GENERAL' || t.sourceType === 'SYSTEM_ADMIN';
-                return `<tr class="${isAdmin ? 'admin-mission-row' : ''}" data-type="${t.taskType || ''}" data-date="${t.startTime?.slice(0,10) || ''}" data-source="${t.source || t.sourceType || ''}">
-                    <td>${idx+1}</td><td>${t.notes || t.taskType || 'مهمة'}${isAdmin ? '<span class="admin-badge">الإدارة</span>' : ''}</td>
-                    <td>${isAdmin ? 'الإدارة' : 'المركز'}</td><td>${t.taskType || '-'}</td><td>${t.location || '-'}</td>
-                    <td>${t.casesCount || 0}</td><td>${fmtDate(t.startTime)}</td><td>${t.completionReason || t.progressNote || 'تم التنفيذ'}</td>
-                </tr>`;
-            }).join('') : '<tr><td colspan="8"><div class="empty-state">لا توجد مهام منفذة</div></td></tr>'}</tbody></table></div>
+            <div id="completedTasksBody">${allCompletedTasks.length ? allCompletedTasks.map(t => `
+                <div class="worklog-card" data-worktype="${t.workType || ''}" data-center="${t.center || ''}" data-date="${t.date || ''}">
+                    <div>
+                        <div style="font-weight:700;font-size:13.5px">${t.userName || '-'} — ${t.center || '-'}</div>
+                        <div style="font-size:12px;color:var(--ink-400)">${fmtDate(t.timestamp)}</div>
+                        <div style="font-size:12.5px;color:var(--ink-600);margin-top:3px">${t.tasksNote || 'لا توجد ملاحظات'}</div>
+                    </div>
+                    <div style="text-align:left;flex-shrink:0">
+                        <span class="wt-badge ${t.workType === 'FIELD' ? 'field' : 'office'}">${t.workType === 'FIELD' ? 'ميداني' : 'مكتبي'}</span>
+                        <div style="font-weight:800;font-size:18px;color:var(--navy-900);margin-top:4px">${t.casesCount} طلب</div>
+                    </div>
+                </div>`).join('') : '<div class="empty-state">لا توجد سجلات بعد</div>'}</div>
         `;
     }
 
@@ -1519,13 +1559,13 @@ async function renderAssignments(root) {
         const status = document.getElementById('filterAdminStatus')?.value || 'ALL';
         const center = document.getElementById('filterAdminCenter')?.value || 'ALL';
         const date = document.getElementById('filterAdminDate')?.value || '';
-        document.querySelectorAll('#adminMissionsBody tr').forEach(row => {
-            const rowStatus = row.dataset.status || ''; const rowCenter = row.dataset.center || ''; const rowDate = row.dataset.date || '';
+        document.querySelectorAll('#adminMissionsBody .assign-card').forEach(card => {
+            const rowStatus = card.dataset.status || ''; const rowCenter = card.dataset.center || ''; const rowDate = card.dataset.date || '';
             let show = true;
             if (status !== 'ALL' && rowStatus !== status) show = false;
             if (center !== 'ALL' && rowCenter !== center) show = false;
             if (date && rowDate !== date) show = false;
-            row.style.display = show ? '' : 'none';
+            card.style.display = show ? '' : 'none';
         });
     };
     window.clearAdminFilters = function() { document.getElementById('filterAdminStatus').value = 'ALL'; document.getElementById('filterAdminCenter').value = 'ALL'; document.getElementById('filterAdminDate').value = ''; applyAdminFilters(); };
@@ -1533,44 +1573,42 @@ async function renderAssignments(root) {
         const status = document.getElementById('filterCenterStatus')?.value || 'ALL';
         const center = document.getElementById('filterCenterCenter')?.value || 'ALL';
         const date = document.getElementById('filterCenterDate')?.value || '';
-        document.querySelectorAll('#centerMissionsBody tr').forEach(row => {
-            const rowStatus = row.dataset.status || ''; const rowCenter = row.dataset.center || ''; const rowDate = row.dataset.date || '';
+        document.querySelectorAll('#centerMissionsBody .assign-card').forEach(card => {
+            const rowStatus = card.dataset.status || ''; const rowCenter = card.dataset.center || ''; const rowDate = card.dataset.date || '';
             let show = true;
             if (status !== 'ALL' && rowStatus !== status) show = false;
             if (center !== 'ALL' && rowCenter !== center) show = false;
             if (date && rowDate !== date) show = false;
-            row.style.display = show ? '' : 'none';
+            card.style.display = show ? '' : 'none';
         });
     };
     window.clearCenterFilters = function() { document.getElementById('filterCenterStatus').value = 'ALL'; document.getElementById('filterCenterCenter').value = 'ALL'; document.getElementById('filterCenterDate').value = ''; applyCenterFilters(); };
     window.applyTaskFilters = function() {
-        const type = document.getElementById('filterTaskType')?.value || 'ALL';
-        const source = document.getElementById('filterTaskSource')?.value || 'ALL';
+        const wt = document.getElementById('filterTaskWorkType')?.value || 'ALL';
         const date = document.getElementById('filterTaskDate')?.value || '';
-        document.querySelectorAll('#tabMyTasks tbody tr').forEach(row => {
-            const rowType = row.dataset.type || ''; const rowSource = row.dataset.source || ''; const rowDate = row.dataset.date || '';
+        document.querySelectorAll('#myTasksBody .worklog-card').forEach(card => {
+            const rowWt = card.dataset.worktype || ''; const rowDate = card.dataset.date || '';
             let show = true;
-            if (type !== 'ALL' && rowType !== type) show = false;
-            if (source !== 'ALL' && rowSource !== source) show = false;
+            if (wt !== 'ALL' && rowWt !== wt) show = false;
             if (date && rowDate !== date) show = false;
-            row.style.display = show ? '' : 'none';
+            card.style.display = show ? '' : 'none';
         });
     };
-    window.clearTaskFilters = function() { document.getElementById('filterTaskType').value = 'ALL'; document.getElementById('filterTaskSource').value = 'ALL'; document.getElementById('filterTaskDate').value = ''; applyTaskFilters(); };
+    window.clearTaskFilters = function() { document.getElementById('filterTaskWorkType').value = 'ALL'; document.getElementById('filterTaskDate').value = ''; applyTaskFilters(); };
     window.applyCompletedFilters = function() {
-        const type = document.getElementById('filterCompletedType')?.value || 'ALL';
-        const source = document.getElementById('filterCompletedSource')?.value || 'ALL';
+        const wt = document.getElementById('filterCompletedWorkType')?.value || 'ALL';
+        const center = document.getElementById('filterCompletedCenter')?.value || 'ALL';
         const date = document.getElementById('filterCompletedDate')?.value || '';
-        document.querySelectorAll('#tabCompletedTasks tbody tr').forEach(row => {
-            const rowType = row.dataset.type || ''; const rowSource = row.dataset.source || ''; const rowDate = row.dataset.date || '';
+        document.querySelectorAll('#completedTasksBody .worklog-card').forEach(card => {
+            const rowWt = card.dataset.worktype || ''; const rowCenter = card.dataset.center || ''; const rowDate = card.dataset.date || '';
             let show = true;
-            if (type !== 'ALL' && rowType !== type) show = false;
-            if (source !== 'ALL' && rowSource !== source) show = false;
+            if (wt !== 'ALL' && rowWt !== wt) show = false;
+            if (center !== 'ALL' && rowCenter !== center) show = false;
             if (date && rowDate !== date) show = false;
-            row.style.display = show ? '' : 'none';
+            card.style.display = show ? '' : 'none';
         });
     };
-    window.clearCompletedFilters = function() { document.getElementById('filterCompletedType').value = 'ALL'; document.getElementById('filterCompletedSource').value = 'ALL'; document.getElementById('filterCompletedDate').value = ''; applyCompletedFilters(); };
+    window.clearCompletedFilters = function() { document.getElementById('filterCompletedWorkType').value = 'ALL'; document.getElementById('filterCompletedCenter').value = 'ALL'; document.getElementById('filterCompletedDate').value = ''; applyCompletedFilters(); };
 
     function activateTab(tab) {
         tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
