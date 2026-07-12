@@ -1349,6 +1349,41 @@ async function renderCoordination(root) {
             <div class="stat-box" style="border-color:var(--navy-600)"><div class="stat-number">${totalEmployees > 0 ? Math.round((totalPresent / totalEmployees) * 100) : 0}%</div><div class="stat-label">📊 نسبة الحضور</div></div>
         </div>
 
+        <!-- لوحة التحرك اليومي -->
+        <div class="panel">
+            <div class="panel-head">
+                <h3>🔄 التحرك اليومي</h3>
+                ${CURRENT_USER.role === 'ENGINEER' || CURRENT_USER.role === 'TECHNICIAN' ? `
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary btn-sm" onclick="openDailyMovementModal()">📍 تسجيل التحرك</button>
+                    </div>
+                ` : ''}
+            </div>
+            <div class="daily-board" id="dailyBoardContainer">
+                ${centerData.map(c => `
+                    <div class="daily-card">
+                        <div class="daily-card-header">🏢 ${c.center}</div>
+                        <div class="daily-item">
+                            <span class="daily-item-label">الموظفين الحاضرين</span>
+                            <span class="daily-status yes">${c.presentCount}/${c.totalEmployees}</span>
+                        </div>
+                        <div class="daily-item">
+                            <span class="daily-item-label">المتأخرين</span>
+                            <span class="daily-status ${c.lateCount > 0 ? 'no' : 'yes'}">${c.lateCount}</span>
+                        </div>
+                        <div class="daily-item">
+                            <span class="daily-item-label">العمل الميداني</span>
+                            <span style="font-size:12px;color:var(--ink-600)">${c.fieldWorkCount}</span>
+                        </div>
+                        <div class="daily-item">
+                            <span class="daily-item-label">العمل المكتبي</span>
+                            <span style="font-size:12px;color:var(--ink-600)">${c.officeWorkCount}</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+
         <!-- جدول ملخص المراكز -->
         <div style="overflow-x:auto;margin-bottom:20px">
             <table class="center-summary-table">
@@ -1669,6 +1704,33 @@ async function renderAssignments(root) {
             .assignment-status.pending{background:#f3e5f5;color:#4a148c}
             .assignment-status.done{background:#e8f5e9;color:#1b5e20}
             .assignment-status.closed{background:#eceff1;color:#37474f}
+            
+            /* -------- بطاقات التكليفات والمهام -------- */
+            .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:20px}
+            .task-card{background:var(--card);border-radius:14px;padding:16px;border-left:5px solid #999;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px}
+            .task-card.new{border-left-color:var(--navy-700)}
+            .task-card.received{border-left-color:var(--warn)}
+            .task-card.inprogress{border-left-color:var(--navy-600)}
+            .task-card.completed{border-left-color:var(--good)}
+            .task-card.notdone{border-left-color:var(--bad)}
+            .task-card-title{font-weight:700;font-size:15px;color:var(--ink-900)}
+            .task-card-meta{font-size:12px;color:var(--ink-600);display:flex;gap:8px;flex-wrap:wrap}
+            .task-card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+            .task-card-action-btn{padding:6px 12px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;flex:1;min-width:100px}
+            .btn-accept{background:var(--navy-700);color:#fff}
+            .btn-start{background:var(--navy-600);color:#fff}
+            .btn-done{background:var(--good);color:#fff}
+            .btn-fail{background:var(--bad);color:#fff}
+            
+            /* -------- لوحة التحرك اليومي -------- */
+            .daily-board{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-bottom:20px}
+            .daily-card{background:var(--card);border-radius:14px;padding:16px;border:1px solid var(--line);box-shadow:var(--shadow)}
+            .daily-card-header{font-weight:700;font-size:14px;color:var(--navy-900);margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid var(--line)}
+            .daily-item{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:6px 0}
+            .daily-item-label{color:var(--ink-600);font-weight:600}
+            .daily-status{padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
+            .daily-status.yes{background:#e8f5e9;color:var(--good)}
+            .daily-status.no{background:#ffebee;color:var(--bad)}
             .admin-mission-row{background:var(--admin-bg) !important;border-right:4px solid var(--admin-color) !important}
             .admin-mission-row .admin-badge{background:var(--admin-color);color:#fff;padding:2px 10px;border-radius:12px;font-size:10px;font-weight:700;display:inline-block}
             .stats-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
@@ -1761,6 +1823,7 @@ async function renderAssignments(root) {
             container.innerHTML = `<div class="empty-state">لا توجد تكليفات</div>`;
             return;
         }
+        // عرض البطاقات بدلاً من الجداول
         container.innerHTML = `
             <div class="filter-bar">
                 <select id="filterAssignmentStatus">
@@ -1771,59 +1834,33 @@ async function renderAssignments(root) {
                     <option value="COMPLETED">منفذ</option>
                     <option value="NOT_DONE">غير منفذ</option>
                 </select>
-                <select id="filterAssignmentSource">
-                    <option value="ALL">كل المصادر</option>
-                    <option value="SYSTEM_ADMIN">الإدارة العامة</option>
-                    <option value="CENTER_ADMIN">مدير المركز</option>
-                </select>
-                <input type="date" id="filterAssignmentDate">
                 <button class="btn btn-outline btn-sm" onclick="applyAssignmentFilters()">🔍 بحث</button>
                 <button class="btn btn-outline btn-sm" onclick="clearAssignmentFilters()">✖ إلغاء</button>
             </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>التفاصيل</th>
-                            <th>المصدر</th>
-                            <th>المركز</th>
-                            <th>المستلمون</th>
-                            <th>الحالة</th>
-                            <th>التاريخ</th>
-                            <th>إجراء</th>
-                        </tr>
-                    </thead>
-                    <tbody id="assignmentBody">
-                        ${batchList.map((b, idx) => `
-                            <tr class="${b.isAdminSource ? 'admin-mission-row' : ''}" 
-                                data-status="${b.status}" 
-                                data-date="${b.createdAt?.slice(0,10) || ''}"
-                                data-source="${b.sourceType || ''}">
-                                <td>${idx + 1}</td>
-                                <td>
-                                    <strong>${b.details}</strong>
-                                    ${b.isAdminSource ? '<span class="admin-badge">الإدارة</span>' : ''}
-                                </td>
-                                <td>${b.isAdminSource ? 'الإدارة العامة' : 'مدير المركز'}</td>
-                                <td>${b.sourceCenter}</td>
-                                <td>${b.recipientCount} مستلم (${b.receivedCount} استلم، ${b.completedCount} أنجز)</td>
-                                <td><span class="assignment-status ${b.status.toLowerCase()}">${getStatusLabel(b.status)}</span></td>
-                                <td>${fmtDate(b.createdAt)}</td>
-                                <td style="display:flex;gap:4px;flex-wrap:wrap">
-                                    ${(isSystemAdmin || isCenterAdmin) ? `
-                                        <button class="btn btn-outline btn-sm" onclick="updateAssignmentStatus('${b.batchId}')">📊 حالة</button>
-                                        <button class="btn btn-warning btn-sm" onclick="resendAssignment('${b.batchId}')">🔄 إعادة</button>
-                                        <button class="btn btn-danger btn-sm" onclick="deleteAssignment('${b.batchId}')">🗑️ حذف</button>
-                                    ` : ''}
-                                    ${!isSystemAdmin && !isCenterAdmin && b.recipients.includes(CURRENT_USER.fullName) ? `
-                                        <button class="btn btn-outline btn-sm" onclick="updateMyAssignmentStatus('${b.batchId}')">📊 تحديث</button>
-                                    ` : ''}
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+            <div class="cards-grid" id="assignmentCards">
+                ${batchList.map(b => `
+                    <div class="task-card ${b.status.toLowerCase()}" data-status="${b.status}">
+                        <div class="task-card-title">${b.details}</div>
+                        <div class="task-card-meta">
+                            <span>🏢 ${b.sourceCenter}</span>
+                            <span>👥 ${b.recipientCount} مستلم</span>
+                        </div>
+                        <div class="task-card-meta">
+                            <span>📅 ${fmtDate(b.createdAt)}</span>
+                            <span class="assignment-status ${b.status.toLowerCase()}">${getStatusLabel(b.status)}</span>
+                        </div>
+                        <div class="task-card-actions">
+                            ${(isSystemAdmin || isCenterAdmin) ? `
+                                <button class="task-card-action-btn btn-start" onclick="updateAssignmentStatus('${b.batchId}')">تحديث الحالة</button>
+                                <button class="task-card-action-btn btn-fail" onclick="deleteAssignment('${b.batchId}')">حذف</button>
+                            ` : !isSystemAdmin && !isCenterAdmin && b.recipients.includes(CURRENT_USER.fullName) ? `
+                                <button class="task-card-action-btn btn-accept" onclick="updateMyAssignmentStatus('${b.batchId}')">قبول</button>
+                                <button class="task-card-action-btn btn-done" onclick="completeMyAssignment('${b.batchId}')">منجز</button>
+                                <button class="task-card-action-btn btn-fail" onclick="failMyAssignment('${b.batchId}')">غير منجز</button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('')}
             </div>
         `;
     }
@@ -1841,26 +1878,27 @@ async function renderAssignments(root) {
                     <option value="تحديد منسوب">تحديد منسوب</option>
                     <option value="مراجعة">مراجعة</option>
                 </select>
-                <input type="date" id="filterTaskDate">
                 <button class="btn btn-outline btn-sm" onclick="applyTaskFilters()">🔍 بحث</button>
                 <button class="btn btn-outline btn-sm" onclick="clearTaskFilters()">✖ إلغاء</button>
             </div>
-            <div class="table-wrap">
-                <table>
-                    <thead><tr><th>#</th><th>المهمة</th><th>النوع</th><th>الموقع</th><th>الحالات</th><th>الحالة</th><th>التاريخ</th><th>إجراء</th></tr></thead>
-                    <tbody>${pending.length ? pending.map((t, idx) => `
-                        <tr data-type="${t.taskType || ''}" data-date="${t.startTime?.slice(0,10) || ''}">
-                            <td>${idx+1}</td>
-                            <td>${t.notes || t.taskType || 'مهمة'}</td>
-                            <td>${t.taskType || '-'}</td>
-                            <td>${t.location || '-'}</td>
-                            <td>${t.casesCount || 0}</td>
-                            <td><span class="assignment-status ${t.status?.toLowerCase() || 'pending'}">${getStatusLabel(t.status || 'PENDING')}</span></td>
-                            <td>${fmtDate(t.startTime)}</td>
-                            <td><button class="btn btn-outline btn-sm" onclick="updateTaskStatusAction('${t.id}')">تحديث</button></td>
-                        </tr>
-                    `).join('') : '<tr><td colspan="8"><div class="empty-state">لا توجد مهام</div></td></tr>'}</tbody>
-                </table>
+            <div class="cards-grid" id="taskCards">
+                ${pending.length ? pending.map(t => `
+                    <div class="task-card ${t.status?.toLowerCase() || 'pending'}" data-type="${t.taskType || ''}" data-date="${t.startTime?.slice(0,10) || ''}">
+                        <div class="task-card-title">${t.notes || t.taskType || 'مهمة'}</div>
+                        <div class="task-card-meta">
+                            <span>📍 ${t.location || '-'}</span>
+                            <span>🏢 ${t.center || '-'}</span>
+                        </div>
+                        <div class="task-card-meta">
+                            <span>📊 ${t.casesCount || 0} حالة</span>
+                            <span>📅 ${fmtDate(t.startTime)}</span>
+                        </div>
+                        <div class="task-card-actions">
+                            <button class="task-card-action-btn btn-done" onclick="updateTaskStatusAction('${t.id}', 'COMPLETED')">تم الإنجاز</button>
+                            <button class="task-card-action-btn btn-fail" onclick="updateTaskStatusAction('${t.id}', 'NOT_DONE')">لم ينجز</button>
+                        </div>
+                    </div>
+                `).join('') : '<div class="empty-state">لا توجد مهام قيد التنفيذ</div>'}
             </div>
         `;
     }
@@ -1878,85 +1916,71 @@ async function renderAssignments(root) {
                     <option value="تحديد منسوب">تحديد منسوب</option>
                     <option value="مراجعة">مراجعة</option>
                 </select>
-                <input type="date" id="filterCompletedDate">
                 <button class="btn btn-outline btn-sm" onclick="applyCompletedFilters()">🔍 بحث</button>
                 <button class="btn btn-outline btn-sm" onclick="clearCompletedFilters()">✖ إلغاء</button>
             </div>
-            <div class="table-wrap">
-                <table>
-                    <thead><tr><th>#</th><th>المهمة</th><th>النوع</th><th>الموقع</th><th>الحالات</th><th>تاريخ التنفيذ</th><th>النتيجة</th></tr></thead>
-                    <tbody>${completed.length ? completed.map((t, idx) => `
-                        <tr data-type="${t.taskType || ''}" data-date="${t.startTime?.slice(0,10) || ''}">
-                            <td>${idx+1}</td>
-                            <td>${t.notes || t.taskType || 'مهمة'}</td>
-                            <td>${t.taskType || '-'}</td>
-                            <td>${t.location || '-'}</td>
-                            <td>${t.casesCount || 0}</td>
-                            <td>${fmtDate(t.startTime)}</td>
-                            <td>${t.completionReason || t.progressNote || 'تم التنفيذ'}</td>
-                        </tr>
-                    `).join('') : '<tr><td colspan="7"><div class="empty-state">لا توجد مهام منفذة</div></td></tr>'}</tbody>
-                </table>
+            <div class="cards-grid" id="completedCards">
+                ${completed.length ? completed.map(t => `
+                    <div class="task-card completed" data-type="${t.taskType || ''}" data-date="${t.startTime?.slice(0,10) || ''}">
+                        <div class="task-card-title">${t.notes || t.taskType || 'مهمة'}</div>
+                        <div class="task-card-meta">
+                            <span>📍 ${t.location || '-'}</span>
+                            <span>🏢 ${t.center || '-'}</span>
+                        </div>
+                        <div class="task-card-meta">
+                            <span>📊 ${t.casesCount || 0} حالة</span>
+                            <span>✅ تم في ${fmtDate(t.startTime)}</span>
+                        </div>
+                        <div class="task-card-meta">
+                            <span>${t.completionReason || t.progressNote || 'تم التنفيذ بنجاح'}</span>
+                        </div>
+                    </div>
+                `).join('') : '<div class="empty-state">لا توجد مهام منفذة بعد</div>'}
             </div>
+        `;
+    }
+
         `;
     }
 
     // ==================== دوال الفلاتر ====================
     window.applyAssignmentFilters = function() {
         const status = document.getElementById('filterAssignmentStatus')?.value || 'ALL';
-        const source = document.getElementById('filterAssignmentSource')?.value || 'ALL';
-        const date = document.getElementById('filterAssignmentDate')?.value || '';
-        document.querySelectorAll('#assignmentBody tr').forEach(row => {
-            const rowStatus = row.dataset.status || '';
-            const rowSource = row.dataset.source || '';
-            const rowDate = row.dataset.date || '';
-            let show = true;
-            if (status !== 'ALL' && rowStatus !== status) show = false;
-            if (source !== 'ALL' && rowSource !== source) show = false;
-            if (date && rowDate !== date) show = false;
-            row.style.display = show ? '' : 'none';
+        document.querySelectorAll('#assignmentCards .task-card').forEach(card => {
+            const cardStatus = card.dataset.status || '';
+            const show = status === 'ALL' || cardStatus === status;
+            card.style.display = show ? '' : 'none';
         });
     };
     window.clearAssignmentFilters = function() {
         document.getElementById('filterAssignmentStatus').value = 'ALL';
-        document.getElementById('filterAssignmentSource').value = 'ALL';
-        document.getElementById('filterAssignmentDate').value = '';
         applyAssignmentFilters();
     };
     window.applyTaskFilters = function() {
         const type = document.getElementById('filterTaskType')?.value || 'ALL';
-        const date = document.getElementById('filterTaskDate')?.value || '';
-        document.querySelectorAll('#tabMyTasks tbody tr').forEach(row => {
-            const rowType = row.dataset.type || '';
-            const rowDate = row.dataset.date || '';
-            let show = true;
-            if (type !== 'ALL' && rowType !== type) show = false;
-            if (date && rowDate !== date) show = false;
-            row.style.display = show ? '' : 'none';
+        document.querySelectorAll('#taskCards .task-card').forEach(card => {
+            const cardType = card.dataset.type || '';
+            const show = type === 'ALL' || cardType === type;
+            card.style.display = show ? '' : 'none';
         });
     };
     window.clearTaskFilters = function() {
         document.getElementById('filterTaskType').value = 'ALL';
-        document.getElementById('filterTaskDate').value = '';
         applyTaskFilters();
     };
     window.applyCompletedFilters = function() {
         const type = document.getElementById('filterCompletedType')?.value || 'ALL';
-        const date = document.getElementById('filterCompletedDate')?.value || '';
-        document.querySelectorAll('#tabCompletedTasks tbody tr').forEach(row => {
-            const rowType = row.dataset.type || '';
-            const rowDate = row.dataset.date || '';
-            let show = true;
-            if (type !== 'ALL' && rowType !== type) show = false;
-            if (date && rowDate !== date) show = false;
-            row.style.display = show ? '' : 'none';
+        document.querySelectorAll('#completedCards .task-card').forEach(card => {
+            const cardType = card.dataset.type || '';
+            const show = type === 'ALL' || cardType === type;
+            card.style.display = show ? '' : 'none';
         });
     };
     window.clearCompletedFilters = function() {
         document.getElementById('filterCompletedType').value = 'ALL';
-        document.getElementById('filterCompletedDate').value = '';
         applyCompletedFilters();
     };
+
 
     // ==================== دوال التبويبات ====================
     function activateTab(tab) {
@@ -2282,31 +2306,99 @@ window.openAddTaskModal = function() {
     `);
 };
 
-window.submitNewTask = async function() {
-    const engineerName = document.getElementById('taskEngineer')?.value?.trim();
-    const center = document.getElementById('taskCenter')?.value;
-    const taskType = document.getElementById('taskType')?.value;
-    const location = document.getElementById('taskLocation')?.value?.trim();
-    const casesCount = parseInt(document.getElementById('taskCasesCount')?.value || '0');
-    const notes = document.getElementById('taskNotes')?.value?.trim();
-    if (!engineerName) { showToast('يرجى إدخال اسم المسؤول', 'err'); return; }
-    if (!center) { showToast('يرجى اختيار المركز', 'err'); return; }
-    if (!taskType) { showToast('يرجى اختيار نوع المهمة', 'err'); return; }
-    closeModal(); showSavingModal('جارى إضافة المهمة...');
-    try {
-        await api('createTask', {
-            engineerName, center, taskType, location, casesCount, notes,
-            source: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'GENERAL' : 'CENTER',
-            sourceType: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'SYSTEM_ADMIN' : 'CENTER_ADMIN',
-            assignedTo: engineerName,
-            createdBy: CURRENT_USER.id,
-            createdByName: CURRENT_USER.fullName
-        });
-        hideSavingModal(); showToast('✅ تم إضافة المهمة بنجاح', 'ok');
-        delete PAGE_CACHE['assignments'];
-        setTimeout(() => goPage('assignments', true, false), 500);
-    } catch(e) { hideSavingModal(); showToast('❌ فشل إضافة المهمة: ' + e.message, 'err'); }
+// ==================== دالة فتح نافذة التحرك اليومي ====================
+window.openDailyMovementModal = function() {
+    const workTypes = ['ميداني', 'مكتبي'];
+    const workTypeOptions = workTypes.map(wt => `<option value="${wt}">${wt}</option>`).join('');
+    
+    openModal(`
+        <h3>📍 تسجيل التحرك اليومي</h3>
+        <div class="field"><label>نوع التحرك *</label>
+            <select id="movementType">
+                <option value="">اختر نوع التحرك</option>
+                <option value="vehicleArrival">🚗 وصول السيارة</option>
+                <option value="engineerArrival">👨‍💼 وصول المهندس</option>
+                <option value="directorPresence">👔 تواجد المدير</option>
+                <option value="workStart">🎯 بدء العمل</option>
+                <option value="workEnd">⏹️ انتهاء العمل</option>
+                <option value="taskCompletion">✅ إنجاز المهام</option>
+            </select>
+        </div>
+        
+        <div id="movementDetails" style="display:none">
+            <div class="field"><label>المركز *</label>
+                <select id="movementCenter">
+                    ${CENTERS.map(c => `<option value="${c}">${c}</option>`).join('')}
+                </select>
+            </div>
+            <div class="field"><label>نوع العمل</label>
+                <select id="movementWorkType">
+                    <option value="">اختر نوع العمل</option>
+                    ${workTypeOptions}
+                </select>
+            </div>
+            <div class="field"><label>الملاحظات</label>
+                <textarea id="movementNotes" rows="3" placeholder="أضف ملاحظاتك هنا..."></textarea>
+            </div>
+        </div>
+        
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            <button class="btn btn-primary" onclick="submitDailyMovement()">💾 حفظ</button>
+        </div>
+    `);
+    
+    document.getElementById('movementType').addEventListener('change', function() {
+        document.getElementById('movementDetails').style.display = this.value ? 'block' : 'none';
+    });
 };
+
+// ==================== دالة حفظ التحرك اليومي ====================
+window.submitDailyMovement = async function() {
+    const movementType = document.getElementById('movementType')?.value;
+    const center = document.getElementById('movementCenter')?.value;
+    const workType = document.getElementById('movementWorkType')?.value;
+    const notes = document.getElementById('movementNotes')?.value?.trim();
+    
+    if (!movementType) {
+        showToast('يرجى اختيار نوع التحرك', 'err');
+        return;
+    }
+    
+    closeModal();
+    showSavingModal('جاري حفظ التحرك اليومي...');
+    
+    try {
+        const actionMap = {
+            'vehicleArrival': 'vehicleArrival',
+            'engineerArrival': 'engineerArrival',
+            'directorPresence': 'directorPresence',
+            'workStart': 'workStart',
+            'workEnd': 'workEnd',
+            'taskCompletion': 'completion'
+        };
+        
+        const payload = {
+            action: actionMap[movementType],
+            center: center || CURRENT_USER.center,
+            workType: workType,
+            notes: notes,
+            recordedBy: CURRENT_USER.id,
+            recordedByName: CURRENT_USER.fullName
+        };
+        
+        const result = await api('recordDailyMovementAction', payload);
+        hideSavingModal();
+        showToast('✅ تم حفظ التحرك اليومي بنجاح', 'ok');
+        delete PAGE_CACHE['coordination'];
+        setTimeout(() => goPage('coordination', true, false), 500);
+    } catch(e) {
+        hideSavingModal();
+        showToast('❌ فشل الحفظ: ' + e.message, 'err');
+    }
+};
+
+
 
 // ==================== دوال تحديث حالة المهمة ====================
 window.updateTaskStatusAction = function(taskId) {
@@ -2351,6 +2443,54 @@ window.refreshAssignments = function() {
     delete PAGE_CACHE['assignments'];
     goPage('assignments', true, false);
 };
+
+// ========================================================================
+// دوال تحديث حالة التكليفات والمهام من البطاقات
+// ========================================================================
+window.completeMyAssignment = async function(batchId) {
+    if (!confirm('هل تريد تأكيد إنجاز هذا التكليف؟')) return;
+    showSavingModal('جاري تحديث الحالة...');
+    try {
+        await api('updateAssignmentStatus', { batchId: batchId, status: 'COMPLETED' });
+        hideSavingModal(); showToast('✅ تم تحديث الحالة بنجاح', 'ok');
+        delete PAGE_CACHE['assignments'];
+        setTimeout(() => goPage('assignments', true, false), 500);
+    } catch(e) { 
+        hideSavingModal(); showToast('❌ فشل التحديث: ' + e.message, 'err'); 
+    }
+};
+
+window.failMyAssignment = async function(batchId) {
+    if (!confirm('هل تريد تسجيل عدم إنجاز هذا التكليف؟')) return;
+    showSavingModal('جاري تحديث الحالة...');
+    try {
+        await api('updateAssignmentStatus', { batchId: batchId, status: 'NOT_DONE' });
+        hideSavingModal(); showToast('✅ تم تحديث الحالة بنجاح', 'ok');
+        delete PAGE_CACHE['assignments'];
+        setTimeout(() => goPage('assignments', true, false), 500);
+    } catch(e) { 
+        hideSavingModal(); showToast('❌ فشل التحديث: ' + e.message, 'err'); 
+    }
+};
+
+window.updateTaskStatusAction = async function(taskId, status) {
+    if (!confirm(`هل تريد تحديث حالة المهمة إلى ${status === 'COMPLETED' ? 'منجزة' : 'غير منجزة'}؟`)) return;
+    showSavingModal('جاري التحديث...');
+    try {
+        await api('updateTaskStatus', { 
+            taskId: taskId, 
+            status: status || 'COMPLETED',
+            updatedBy: CURRENT_USER.id,
+            updatedByName: CURRENT_USER.fullName
+        });
+        hideSavingModal(); showToast('✅ تم تحديث حالة المهمة بنجاح', 'ok');
+        delete PAGE_CACHE['assignments'];
+        setTimeout(() => goPage('assignments', true, false), 500);
+    } catch(e) { 
+        hideSavingModal(); showToast('❌ فشل التحديث: ' + e.message, 'err'); 
+    }
+};
+
 
 // ========================================================================
 // المتواجدين حاليا - مع الخريطة
