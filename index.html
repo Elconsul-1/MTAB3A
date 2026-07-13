@@ -416,6 +416,7 @@ tbody tr:hover{background:#fafcfd}
       <p>الإدارة العامة للمساحة - ديوان محافظة المنيا</p>
     </div>
     <div class="login-body">
+      <!-- زر تسجيل الدخول بـ Google (Popup) -->
       <button class="google-btn" id="googleLoginBtn">
         <svg width="19" height="19" viewBox="0 0 48 48">
           <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l5.7-5.7C34.7 6 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/>
@@ -425,6 +426,12 @@ tbody tr:hover{background:#fafcfd}
         </svg>
         تسجيل الدخول بحساب Google
       </button>
+
+      <!-- 🔴 زر تسجيل الدخول البديل (Redirect) - أضفه هنا 🔴 -->
+      <button class="google-btn" id="googleRedirectBtn" style="margin-top:10px;background:#f8f9fa;border-color:#dee2e6;color:var(--ink-900);">
+        🌐 تسجيل الدخول عبر المتصفح (بديل)
+      </button>
+
       <p class="login-note">يُستخدم بريدك الإلكتروني الرسمي (Gmail) لتسجيل الدخول. عند أول دخول سيُطلب منك استكمال بيانات الحساب، وسيظل الحساب معلّقًا حتى اعتماده من مدير النظام.</p>
     </div>
   </div>
@@ -728,30 +735,112 @@ async function api(action, params) {
     } catch(e) { showToast(e.message || 'تعذر الاتصال بالخادم', 'err'); throw e; }
 }
 
-/* =====================================================================
-   دوال تسجيل الدخول والخروج
+/* /* =====================================================================
+   دوال تسجيل الدخول والخروج - محسّنة
    ===================================================================== */
-document.getElementById('googleLoginBtn').addEventListener('click', () => {
-    if (location.protocol === 'file:') { showToast('يجب فتح الموقع عبر سيرفر ويب (http/https)', 'err'); return; }
+document.getElementById('googleLoginBtn').addEventListener('click', async () => {
+    if (location.protocol === 'file:') { 
+        showToast('يجب فتح الموقع عبر سيرفر ويب (http/https)', 'err'); 
+        return; 
+    }
+    
+    const btn = document.getElementById('googleLoginBtn');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ جاري تسجيل الدخول...';
+    
+    try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        provider.setCustomParameters({
+            prompt: 'select_account'
+        });
+        
+        const result = await auth.signInWithPopup(provider);
+        console.log('✅ تم تسجيل الدخول بنجاح:', result.user);
+        
+    } catch (e) {
+        console.error('❌ خطأ تسجيل الدخول:', e);
+        
+        if (e.code === 'auth/popup-closed-by-user') {
+            showToast('❌ تم إغلاق نافذة تسجيل الدخول قبل اكتمال العملية. يرجى المحاولة مرة أخرى.', 'warn');
+            openModal(`
+                <h3>🔐 تسجيل الدخول بحساب Google</h3>
+                <p style="color:var(--ink-600);font-size:14px;line-height:1.9">
+                تم إغلاق نافذة تسجيل الدخول قبل اكتمال العملية.<br><br>
+                <strong>لحل المشكلة:</strong><br>
+                • تأكد من عدم وجود مانع إعلانات يمنع النوافذ المنبثقة<br>
+                • انتظر حتى تظهر نافذة تسجيل الدخول بالكامل<br>
+                • إذا استمرت المشكلة، استخدم زر "تسجيل الدخول عبر المتصفح" أدناه
+                </p>
+                <div class="modal-close-row">
+                    <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+                    <button class="btn btn-primary" onclick="closeModal(); document.getElementById('googleLoginBtn').click();">🔄 المحاولة مرة أخرى</button>
+                </div>
+            `);
+        } else if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') {
+            showToast('⚠️ تم حظر النافذة المنبثقة. جارٍ التحويل...', 'warn');
+            await auth.signInWithRedirect(provider);
+        } else if (e.code === 'auth/network-request-failed') {
+            showToast('❌ فشل الاتصال بالشبكة. تأكد من اتصال الإنترنت.', 'err');
+        } else if (e.code === 'auth/cancelled-popup-request') {
+            showToast('⚠️ تم إلغاء طلب تسجيل الدخول. حاول مرة أخرى.', 'warn');
+        } else {
+            showToast('❌ فشل تسجيل الدخول: ' + e.message, 'err');
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+});
+
+// تسجيل الدخول عبر Redirect (بديل)
+document.getElementById('googleRedirectBtn')?.addEventListener('click', () => {
+    if (location.protocol === 'file:') { 
+        showToast('يجب فتح الموقع عبر سيرفر ويب (http/https)', 'err'); 
+        return; 
+    }
     const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider).catch((e) => {
-        if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') {
-            auth.signInWithRedirect(provider).catch(e2 => showToast('فشل تسجيل الدخول: ' + e2.message, 'err'));
-        } else { showToast('فشل تسجيل الدخول: ' + e.message, 'err'); }
+    showToast('⏳ جاري تحويلك إلى صفحة تسجيل الدخول...', 'info');
+    auth.signInWithRedirect(provider).catch(e => {
+        showToast('❌ فشل تسجيل الدخول: ' + e.message, 'err');
     });
 });
-auth.getRedirectResult().catch(e => { if (e && e.code && e.code !== 'auth/no-current-user') showToast('فشل تسجيل الدخول: ' + e.message, 'err'); });
+
+// معالجة نتيجة Redirect
+auth.getRedirectResult()
+    .then((result) => {
+        if (result && result.user) {
+            console.log('✅ تم تسجيل الدخول عبر Redirect:', result.user);
+            // سيتم التعامل معه في onAuthStateChanged
+        }
+    })
+    .catch((e) => {
+        if (e && e.code && e.code !== 'auth/no-current-user') {
+            showToast('فشل تسجيل الدخول: ' + e.message, 'err');
+        }
+    });
+
+// مراقبة حالة المصادقة
 auth.onAuthStateChanged(async (user) => {
-    if (!user) { hideAllScreens(); document.getElementById('loginScreen').style.display = 'flex'; return; }
+    if (!user) { 
+        hideAllScreens(); 
+        document.getElementById('loginScreen').style.display = 'flex'; 
+        return; 
+    }
     FIREBASE_USER = user;
     await refreshMyStatus();
 });
 
 async function refreshMyStatus() {
+    if (!FIREBASE_USER) return;
     try {
         const existing = await api('getUserByEmail', { email: FIREBASE_USER.email });
         hideAllScreens();
-        if (!existing) { document.getElementById('regEmail').value = FIREBASE_USER.email; document.getElementById('registerScreen').style.display = 'flex'; return; }
+        if (!existing) { 
+            document.getElementById('regEmail').value = FIREBASE_USER.email; 
+            document.getElementById('registerScreen').style.display = 'flex'; 
+            return; 
+        }
         CURRENT_USER = existing;
         if (existing.status === 'APPROVED') {
             const needsNationalId = !existing.nationalId || existing.nationalId === '';
@@ -766,48 +855,32 @@ async function refreshMyStatus() {
                 return;
             }
         }
-        if (existing.status === 'PENDING') { document.getElementById('pendingScreen').style.display = 'flex'; }
-        else if (existing.status === 'REJECTED') { document.getElementById('rejectReasonTxt').textContent = 'سبب الرفض: ' + (existing.rejectReason || 'غير محدد'); document.getElementById('rejectedScreen').style.display = 'flex'; }
-        else { launchApp(); }
-    } catch(e) { showToast('فشل الاتصال بالخادم: ' + e.message, 'err'); }
-}
-
-document.getElementById('submitCompleteBtn').addEventListener('click', async function() {
-    const nationalId = document.getElementById('compNationalId').value.trim();
-    const phone = document.getElementById('compPhone').value.trim();
-    const fileInput = document.getElementById('compPhotoFile');
-    const hasPhoto = !!(fileInput.files && fileInput.files[0]);
-    const needsNationalId = !CURRENT_USER.nationalId || CURRENT_USER.nationalId === '';
-    if (needsNationalId && (!nationalId || nationalId.length < 14)) { showToast('الرجاء إدخال الرقم القومي كاملاً (14 رقم)', 'err'); return; }
-    if (nationalId && !/^[0-9]{14}$/.test(nationalId)) { showToast('الرقم القومي يجب أن يتكون من 14 رقم فقط', 'err'); return; }
-    const needsPhoto = !CURRENT_USER.photoUrl || CURRENT_USER.photoUrl === '';
-    if (needsPhoto && !hasPhoto) { showToast('الرجاء اختيار صورة شخصية', 'err'); return; }
-    this.disabled = true; this.textContent = 'جارى الحفظ...'; showSavingModal('جارى حفظ البيانات...');
-    try {
-        let photoUrl = CURRENT_USER.photoUrl || '';
-        if (hasPhoto) {
-            const file = fileInput.files[0];
-            if (file.size > 5 * 1024 * 1024) { showToast('حجم الصورة كبير جداً (الحد الأقصى 5 ميجابايت)', 'err'); this.disabled = false; this.textContent = 'حفظ البيانات'; hideSavingModal(); return; }
-            const base64 = await fileToBase64(file);
-            const uploadRes = await api('uploadPhotoToDrive', { imageData: base64, fileName: file.name, mimeType: file.type });
-            if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
+        if (existing.status === 'PENDING') { 
+            document.getElementById('pendingScreen').style.display = 'flex'; 
+        } else if (existing.status === 'REJECTED') { 
+            document.getElementById('rejectReasonTxt').textContent = 'سبب الرفض: ' + (existing.rejectReason || 'غير محدد'); 
+            document.getElementById('rejectedScreen').style.display = 'flex'; 
+        } else { 
+            launchApp(); 
         }
-        await api('updateMyProfile', { userId: CURRENT_USER.id, nationalId: nationalId || CURRENT_USER.nationalId || '', phone: phone || CURRENT_USER.phone || '', photoUrl: photoUrl });
-        CURRENT_USER.nationalId = nationalId || CURRENT_USER.nationalId || '';
-        CURRENT_USER.phone = phone || CURRENT_USER.phone || '';
-        CURRENT_USER.photoUrl = photoUrl;
-        hideSavingModal(); showToast('✅ تم حفظ البيانات بنجاح', 'ok');
-        document.getElementById('completeProfileScreen').style.display = 'none';
-        launchApp();
-    } catch(e) { hideSavingModal(); showToast('فشل الحفظ: ' + e.message, 'err'); }
-    finally { this.disabled = false; this.textContent = 'حفظ البيانات'; }
-});
+    } catch(e) { 
+        showToast('فشل الاتصال بالخادم: ' + e.message, 'err'); 
+    }
+}
 
 function hideAllScreens() {
     ['loginScreen','registerScreen','pendingScreen','rejectedScreen','completeProfileScreen'].forEach(id => document.getElementById(id).style.display = 'none');
     document.getElementById('app').style.display = 'none';
 }
-function doLogout() { hideAllScreens(); CURRENT_USER = null; auth.signOut().finally(() => { document.getElementById('loginScreen').style.display = 'flex'; }); }
+
+function doLogout() { 
+    hideAllScreens(); 
+    CURRENT_USER = null; 
+    FIREBASE_USER = null;
+    auth.signOut().finally(() => { 
+        document.getElementById('loginScreen').style.display = 'flex'; 
+    }); 
+}
 
 /* =====================================================================
    إطلاق التطبيق وبناء القائمة
@@ -987,111 +1060,27 @@ async function todayAttendanceStatus(p) {
 // دوال محسّنة للحصول على الموقع
 // =====================================================================
 
-/**
  * فحص حالة إذن الموقع
  */
 async function checkGeolocationPermission() {
     try {
         if (!navigator.permissions || !navigator.permissions.query) {
-            return 'unknown'; // المتصفح لا يدعم Permissions API
+            return 'unknown';
         }
         const result = await navigator.permissions.query({ name: 'geolocation' });
-        return result.state; // 'granted', 'denied', 'prompt'
+        return result.state;
     } catch (e) {
         return 'unknown';
     }
 }
 
 /**
-/**
  * الحصول على الموقع مع إعادة المحاولة - بدون استخدام Permissions API
- * (لتجنب مشكلة "فحص الإذن" التي تظهر لبعض المستخدمين)
  */
 async function getCurrentPositionWithRetryDirect(maxAttempts = 3, timeoutMs = 15000) {
-    let lastError = null;
-    
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            console.log(`محاولة الحصول على الموقع #${attempt}...`);
-            
-            const position = await new Promise((resolve, reject) => {
-                if (!navigator.geolocation) {
-                    reject(new Error('NO_GEOLOCATION'));
-                    return;
-                }
-                
-                let settled = false;
-                const timer = setTimeout(() => {
-                    if (!settled) {
-                        settled = true;
-                        reject(new Error('GEO_TIMEOUT'));
-                    }
-                }, timeoutMs);
-                
-                navigator.geolocation.getCurrentPosition(
-                    pos => {
-                        if (!settled) {
-                            settled = true;
-                            clearTimeout(timer);
-                            resolve(pos);
-                        }
-                    },
-                    err => {
-                        if (!settled) {
-                            settled = true;
-                            clearTimeout(timer);
-                            // نمرر كود الخطأ مع الرسالة
-                            err.code = err.code || 0;
-                            reject(err);
-                        }
-                    },
-                    {
-                        enableHighAccuracy: attempt === 1,
-                        timeout: timeoutMs,
-                        maximumAge: 0
-                    }
-                );
-            });
-            
-            console.log('تم الحصول على الموقع بنجاح');
-            return position;
-            
-        } catch (err) {
-            lastError = err;
-            console.warn(`محاولة ${attempt}/${maxAttempts} فشلت:`, err.message || err);
-            
-            // إذا كان الخطأ بسبب رفض الإذن، لا نعيد المحاولة
-            if (err.code === 1 || err.message === 'PERMISSION_DENIED' || 
-                err.message === 'User denied Geolocation') {
-                throw err;
-            }
-            
-            // انتظر قبل المحاولة التالية (مع زيادة الوقت بين المحاولات)
-            if (attempt < maxAttempts) {
-                const waitTime = attempt * 1000; // 1s, 2s, 3s
-                await new Promise(r => setTimeout(r, waitTime));
-            }
-        }
-    }
-    
+    // ...
     throw lastError || new Error('GEO_ALL_ATTEMPTS_FAILED');
 }
-
-    
-    // إذا كان الخطأ كائناً (GeolocationPositionError)
-    if (error.code !== undefined) {
-        const codeMap = {
-            1: '🚫 تم رفض إذن الوصول إلى الموقع. يرجى السماح بالوصول من إعدادات المتصفح.',
-            2: '📡 تعذر تحديد الموقع. تأكد من تفعيل GPS واتصال الإنترنت.',
-            3: '⏱️ انتهت مهلة تحديد الموقع. حاول مرة أخرى في مكان مكشوف.'
-        };
-        return codeMap[error.code] || '❌ فشل تحديد الموقع: ' + (error.message || 'يرجى المحاولة مرة أخرى');
-    }
-    
-    // رسالة عامة
-    return '❌ فشل تحديد الموقع: ' + (error.message || 'يرجى المحاولة مرة أخرى');
-}
-
 
 /**
  * الحصول على رسالة خطأ مفهومة للمستخدم
