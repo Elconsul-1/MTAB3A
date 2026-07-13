@@ -1175,20 +1175,23 @@ function getGeolocationErrorMessage(error) {
 }
 
 // =====================================================================
-// دالة تسجيل الانصراف مع نافذة إدخال ما تم تنفيذه
+// دالة تسجيل الحضور والانصراف المحسّنة - مع خيار بدون موقع
 // =====================================================================
-async function doAttendanceEnhanced(action, extra = {}) {    if (attendanceLock.processing) { showToast('جاري معالجة طلب سابق...', 'err'); return; }
+async function doAttendanceEnhanced(action, extra = {}) {
+    if (attendanceLock.processing) { showToast('جاري معالجة طلب سابق...', 'err'); return; }
     
     const today = getEgyptDateKey(getEgyptNow());
     const checkInKey = 'attendance_checkin_' + CURRENT_USER.id + '_' + today;
     const checkOutKey = 'attendance_checkout_' + CURRENT_USER.id + '_' + today;
     
+    // التحقق من تسجيل الحضور مسبقاً
     if (action === 'checkIn') {
         if (localStorage.getItem(checkInKey) === '1') { showToast('تم تسجيل حضورك اليوم بالفعل', 'ok'); return; }
         const serverCheck = await hasCheckedInToday(CURRENT_USER.id);
         if (serverCheck) { localStorage.setItem(checkInKey, '1'); showToast('تم تسجيل حضورك اليوم بالفعل', 'ok'); updateAttendanceUI(true, false); setTimeout(() => { delete PAGE_CACHE['attendance']; goPage('attendance', true, false); }, 500); return; }
     }
     
+    // التحقق من تسجيل الانصراف مسبقاً
     if (action === 'checkOut') {
         const hasCheckIn = localStorage.getItem(checkInKey) === '1' || await hasCheckedInToday(CURRENT_USER.id);
         if (!hasCheckIn) { showToast('⚠️ يجب تسجيل الحضور أولاً قبل الانصراف', 'err'); return; }
@@ -1211,109 +1214,144 @@ async function doAttendanceEnhanced(action, extra = {}) {    if (attendanceLock.
     }
     
     // ================================================================
-    // 🔴 الجزء المهم: الحصول على الموقع مع معالجة جميع الحالات
+    // 🔴 نافذة اختيار طريقة تسجيل الحضور (مع أو بدون موقع)
     // ================================================================
     let checkInPosition = null;
+    let useLocation = false;
+    
     if (action === 'checkIn') {
-        const geoBtnEl = document.getElementById('checkInBtn');
-        const geoBtnOriginalText = geoBtnEl ? geoBtnEl.textContent : '';
-        const geoBtnOriginalClass = geoBtnEl ? geoBtnEl.className : '';
+        // عرض نافذة اختيار للمستخدم
+        const userChoice = await new Promise((resolve) => {
+            openModal(`
+                <h3>📍 تسجيل الحضور</h3>
+                <p style="color:var(--ink-600);font-size:14px;line-height:1.9">
+                اختر طريقة تسجيل الحضور:
+                </p>
+                <div style="display:flex;flex-direction:column;gap:12px;margin:16px 0">
+                    <button class="btn btn-primary" id="attendanceWithLocation" style="width:100%;padding:14px;font-size:15px">
+                        📍 تسجيل الحضور مع الموقع (مفضل)
+                    </button>
+                    <button class="btn btn-outline" id="attendanceWithoutLocation" style="width:100%;padding:14px;font-size:15px;border-color:var(--warn);color:var(--warn)">
+                        ⚠️ تسجيل الحضور بدون موقع (في حال تعذر تحديد الموقع)
+                    </button>
+                </div>
+                <div style="font-size:12px;color:var(--ink-400);text-align:center;padding:8px;background:#f8f9fa;border-radius:8px">
+                    ℹ️ تسجيل الحضور مع الموقع يضمن دقة تحديد مكان التواجد<br>
+                    يمكنك التسجيل بدون موقع إذا واجهت مشكلة في GPS
+                </div>
+                <div class="modal-close-row">
+                    <button class="btn btn-outline" onclick="closeModal(); resolve(null);">إلغاء</button>
+                </div>
+            `);
+            
+            // معالجة اختيار المستخدم
+            document.getElementById('attendanceWithLocation')?.addEventListener('click', function() {
+                closeModal();
+                resolve('withLocation');
+            });
+            document.getElementById('attendanceWithoutLocation')?.addEventListener('click', function() {
+                closeModal();
+                resolve('withoutLocation');
+            });
+        });
         
-        if (geoBtnEl) {
-            geoBtnEl.disabled = true;
-            geoBtnEl.textContent = '📍 جارِ الحصول على الموقع...';
+        // إذا ألغى المستخدم
+        if (userChoice === null) {
+            showToast('تم إلغاء تسجيل الحضور', 'info');
+            return;
         }
         
-        try {
-            // محاولة الحصول على الموقع - بدون فحص الإذن المسبق (الذي يسبب المشكلة)
-            checkInPosition = await getCurrentPositionWithRetryDirect(3, 15000);
+        // إذا اختار التسجيل بدون موقع
+        if (userChoice === 'withoutLocation') {
+            useLocation = false;
+            // ننتقل مباشرة لتسجيل الحضور بدون موقع
+            checkInPosition = null;
+        } else {
+            // محاولة الحصول على الموقع
+            useLocation = true;
+            const geoBtnEl = document.getElementById('checkInBtn');
+            const geoBtnOriginalText = geoBtnEl ? geoBtnEl.textContent : '';
+            const geoBtnOriginalClass = geoBtnEl ? geoBtnEl.className : '';
             
-        } catch(geoError) {
+            if (geoBtnEl) {
+                geoBtnEl.disabled = true;
+                geoBtnEl.textContent = '📍 جارِ الحصول على الموقع...';
+            }
+            
+            try {
+                checkInPosition = await getCurrentPositionWithRetryDirect(3, 15000);
+                showToast('✅ تم تحديد موقعك بنجاح', 'ok');
+            } catch(geoError) {
+                console.warn('فشل تحديد الموقع:', geoError);
+                // نعرض للمستخدم خيار التسجيل بدون موقع
+                const retryChoice = await new Promise((resolve) => {
+                    openModal(`
+                        <h3>📍 فشل تحديد الموقع</h3>
+                        <p style="color:var(--ink-600);font-size:14px;line-height:1.9">
+                        ${getGeolocationErrorMessage(geoError)}
+                        </p>
+                        <div style="display:flex;flex-direction:column;gap:12px;margin:16px 0">
+                            <button class="btn btn-primary" id="retryLocation" style="width:100%;padding:14px;font-size:15px">
+                                🔄 المحاولة مرة أخرى
+                            </button>
+                            <button class="btn btn-warning" id="skipLocation" style="width:100%;padding:14px;font-size:15px">
+                                ⚠️ تسجيل الحضور بدون موقع
+                            </button>
+                        </div>
+                        <div class="modal-close-row">
+                            <button class="btn btn-outline" onclick="closeModal(); resolve(null);">إلغاء</button>
+                        </div>
+                    `);
+                    
+                    document.getElementById('retryLocation')?.addEventListener('click', function() {
+                        closeModal();
+                        resolve('retry');
+                    });
+                    document.getElementById('skipLocation')?.addEventListener('click', function() {
+                        closeModal();
+                        resolve('skip');
+                    });
+                });
+                
+                if (retryChoice === null) {
+                    if (geoBtnEl) {
+                        geoBtnEl.disabled = false;
+                        geoBtnEl.textContent = geoBtnOriginalText;
+                        geoBtnEl.className = geoBtnOriginalClass;
+                    }
+                    showToast('تم إلغاء تسجيل الحضور', 'info');
+                    return;
+                }
+                
+                if (retryChoice === 'retry') {
+                    // إعادة المحاولة
+                    try {
+                        checkInPosition = await getCurrentPositionWithRetryDirect(3, 15000);
+                        showToast('✅ تم تحديد موقعك بنجاح', 'ok');
+                    } catch(e) {
+                        // فشل مرة أخرى - نستخدم بدون موقع
+                        useLocation = false;
+                        checkInPosition = null;
+                        showToast('⚠️ سيتم تسجيل الحضور بدون موقع', 'warn');
+                    }
+                } else {
+                    // اختار التسجيل بدون موقع
+                    useLocation = false;
+                    checkInPosition = null;
+                    showToast('⚠️ سيتم تسجيل الحضور بدون موقع', 'warn');
+                }
+            }
+            
             if (geoBtnEl) {
                 geoBtnEl.disabled = false;
                 geoBtnEl.textContent = geoBtnOriginalText;
                 geoBtnEl.className = geoBtnOriginalClass;
             }
-            
-            // معالجة جميع أنواع الأخطاء
-            const errorMsg = getGeolocationErrorMessage(geoError);
-            
-            // إذا كان الخطأ بسبب رفض الإذن (PERMISSION_DENIED)
-            if (geoError.code === 1 || geoError.message === 'PERMISSION_DENIED' || geoError.message === 'User denied Geolocation') {
-                // نعرض للمستخدم كيفية تفعيل الموقع يدوياً
-                const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-                let instructions = '';
-                
-                if (isMobile) {
-                    instructions = `
-                        <strong>📱 لحل المشكلة على الهاتف:</strong><br><br>
-                        <strong>Android (Chrome):</strong><br>
-                        1. اضغط مع الاستمرار على أيقونة المتصفح<br>
-                        2. اختر "معلومات التطبيق" أو (i)<br>
-                        3. اختر "الأذونات" → "الموقع" → "السماح"<br>
-                        4. أعد فتح التطبيق وحاول مرة أخرى<br><br>
-                        <strong>iPhone (Safari):</strong><br>
-                        1. الإعدادات → الخصوصية والأمان → خدمات الموقع<br>
-                        2. تأكد أن "Safari" مفعّل<br>
-                        3. اختر "أثناء استخدام التطبيق"<br>
-                        4. أعد فتح التطبيق وحاول مرة أخرى
-                    `;
-                } else {
-                    instructions = `
-                        <strong>💻 لحل المشكلة على الكمبيوتر:</strong><br><br>
-                        <strong>Chrome/Edge:</strong><br>
-                        1. اضغط على أيقونة القفل 🔒 في شريط العنوان<br>
-                        2. اختر "إعدادات الموقع" → "الموقع" → "السماح"<br>
-                        3. أعد تحميل الصفحة (F5) وحاول مرة أخرى<br><br>
-                        <strong>Firefox:</strong><br>
-                        1. اضغط على أيقونة الدرع 🛡️ في شريط العنوان<br>
-                        2. اختر "تعطيل الحماية المؤقتة"<br>
-                        3. أعد تحميل الصفحة وحاول مرة أخرى
-                    `;
-                }
-                
-                openModal(`
-                    <h3>📍 الإذن ممنوع</h3>
-                    <p style="color:var(--ink-600);font-size:14px;line-height:1.9">
-                    تم رفض إذن الوصول إلى الموقع مسبقاً.<br><br>
-                    ${instructions}
-                    </p>
-                    <div class="modal-close-row">
-                        <button class="btn btn-primary" onclick="closeModal(); window.location.reload();">🔄 تحديث الصفحة وحاول مرة أخرى</button>
-                        <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-                    </div>
-                `);
-                return;
-            }
-            
-            // أخطاء أخرى (توقيت، إشارة ضعيفة، الخ)
-            openModal(`
-                <h3>📍 فشل تحديد الموقع</h3>
-                <p style="color:var(--ink-600);font-size:14px;line-height:1.9">${errorMsg}</p>
-                <p style="color:var(--ink-400);font-size:13px;line-height:1.9">
-                <strong>نصائح:</strong><br>
-                • تأكد من تفعيل GPS في الجهاز<br>
-                • اخرج إلى مكان مكشوف (بعيداً عن المباني العالية)<br>
-                • تأكد من اتصال الإنترنت<br>
-                • حاول مرة أخرى بعد بضع ثوان
-                </p>
-                <div class="modal-close-row">
-                    <button class="btn btn-primary" onclick="closeModal()">🔄 حاول مرة أخرى</button>
-                    <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
-                </div>
-            `);
-            return;
-        }
-        
-        if (geoBtnEl) {
-            geoBtnEl.disabled = false;
-            geoBtnEl.textContent = geoBtnOriginalText;
-            geoBtnEl.className = geoBtnOriginalClass;
         }
     }
     
     // ================================================================
-    // باقي الكود (تسجيل الحضور/الانصراف)
+    // تسجيل الحضور/الانصراف
     // ================================================================
     
     attendanceLock.processing = true;
@@ -1325,7 +1363,7 @@ async function doAttendanceEnhanced(action, extra = {}) {    if (attendanceLock.
     
     try {
         let position = checkInPosition;
-        if (!position) { 
+        if (!position && useLocation) { 
             try { 
                 position = await getCurrentPositionWithRetryDirect(2, 10000); 
             } catch(geoError) { 
@@ -1333,12 +1371,13 @@ async function doAttendanceEnhanced(action, extra = {}) {    if (attendanceLock.
             } 
         }
         
-        let locationName = 'موقع غير معروف';
+        let locationName = 'لم يتم تحديد الموقع';
         if (position) { 
             try { 
                 locationName = await getLocationNameFast(position.coords.latitude, position.coords.longitude); 
             } catch(e) { 
                 console.warn('فشل في جلب اسم الموقع:', e); 
+                locationName = 'موقع غير معروف';
             } 
         }
         
@@ -1350,9 +1389,9 @@ async function doAttendanceEnhanced(action, extra = {}) {    if (attendanceLock.
             center: extra.center || CURRENT_USER.center, 
             lat: position ? position.coords.latitude : null, 
             lng: position ? position.coords.longitude : null, 
-            locationName, 
+            locationName: locationName || 'لم يتم تحديد الموقع', 
             workType: extra.workType || 'FIELD', 
-            isLate 
+            isLate: isLate
         };
         if (extra.tasks) payload.tasks = extra.tasks;
         if (extra.casesCount) payload.casesCount = extra.casesCount;
@@ -1364,7 +1403,8 @@ async function doAttendanceEnhanced(action, extra = {}) {    if (attendanceLock.
             localStorage.setItem(checkInKey, '1');
             localStorage.setItem('attendance_checkin_time_' + CURRENT_USER.id + '_' + today, new Date().toISOString());
             if (btn) { btn.disabled = true; btn.textContent = '✅ تم تسجيل الحضور اليوم'; btn.className = 'btn btn-done-checkin'; btn.style.background = '#1f8a55'; btn.style.color = '#fff'; btn.style.opacity = '1'; }
-            showToast(isLate ? '✅ تم تسجيل الحضور (متأخر)' : '✅ تم تسجيل الحضور في الموعد', isLate ? 'warn' : 'ok');
+            const locationMsg = position ? 'مع تحديد الموقع' : 'بدون تحديد الموقع';
+            showToast(isLate ? `✅ تم تسجيل الحضور (متأخر - ${locationMsg})` : `✅ تم تسجيل الحضور في الموعد (${locationMsg})`, isLate ? 'warn' : 'ok');
         } else {
             localStorage.setItem(checkOutKey, '1');
             if (btn) { btn.disabled = true; btn.textContent = '✅ تم تسجيل الانصراف اليوم'; btn.className = 'btn btn-done-checkout'; btn.style.background = '#c23a3a'; btn.style.color = '#fff'; btn.style.opacity = '1'; }
@@ -1408,6 +1448,52 @@ window.submitCheckoutWithDetails = function() {
     window.__pendingCheckout = null;
 };
 
+// =====================================================================
+// دالة تفعيل الموقع يدوياً
+// =====================================================================
+async function enableLocationManually() {
+    showSavingModal('جارِ محاولة تفعيل الموقع...');
+    try {
+        const position = await getCurrentPositionWithRetryDirect(2, 10000);
+        if (position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const locationName = await getLocationNameFast(lat, lng);
+            await api('updateUserLocation', { 
+                userId: CURRENT_USER.id, 
+                lat, lng, 
+                mapsLink: `https://www.google.com/maps?q=${lat},${lng}`,
+                locationName 
+            });
+            hideSavingModal();
+            showToast('✅ تم تفعيل الموقع بنجاح', 'ok');
+            delete PAGE_CACHE['attendance'];
+            goPage('attendance', true, false);
+        } else {
+            hideSavingModal();
+            showToast('⚠️ تعذر تفعيل الموقع، يمكنك التسجيل بدون موقع', 'warn');
+        }
+    } catch(e) {
+        hideSavingModal();
+        showToast('⚠️ تعذر تفعيل الموقع: ' + e.message, 'warn');
+        openModal(`
+            <h3>📍 تعذر تفعيل الموقع</h3>
+            <p style="color:var(--ink-600);font-size:14px;line-height:1.9">
+            لم يتمكن الجهاز من تحديد موقعك.<br><br>
+            يمكنك تسجيل الحضور بدون موقع باستخدام الزر أدناه.
+            </p>
+            <div style="display:flex;flex-direction:column;gap:12px;margin:16px 0">
+                <button class="btn btn-warning" onclick="closeModal(); doAttendanceEnhanced('checkIn', { withoutLocation: true });" style="width:100%;padding:14px;font-size:15px">
+                    ⚠️ تسجيل حضور بدون موقع
+                </button>
+                <button class="btn btn-outline" onclick="closeModal();" style="width:100%;padding:14px;font-size:15px">
+                    إلغاء
+                </button>
+            </div>
+        `);
+    }
+}
+
 /* =====================================================================
    شاشة الحضور والانصراف
    ===================================================================== */
@@ -1437,23 +1523,25 @@ async function renderAttendance(root) {
     else if (checkInLat && checkInLng) locationLink = `<a href="https://www.google.com/maps?q=${checkInLat},${checkInLng}" target="_blank" class="location-link">📍 ${locationDisplay}</a>`;
     root.innerHTML = `
         <div class="panel" style="text-align:center;padding:24px 20px">
-            <div style="font-size:15px;color:var(--ink-600);margin-bottom:4px">${getEgyptNow().toLocaleDateString('ar-EG', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</div>
-            <div style="font-size:32px;font-weight:800;margin-bottom:12px" id="clockNow"></div>
-            <div class="attendance-status-box">
-                <div class="status-icon-large">${hasCheckIn ? '✅' : '⏳'}</div>
-                <div class="status-text-large">${hasCheckIn ? 'تم تسجيل الحضور اليوم' : 'لم يتم تسجيل الحضور بعد'}</div>
-                ${checkInTime ? `<div class="status-sub">⏰ وقت الحضور: ${fmtDate(checkInTime)}</div>` : ''}
-                ${checkInTime ? `<div class="status-sub">📍 ${locationLink}</div>` : ''}
-                ${checkInTime ? `<div class="status-sub" style="color:${isLate ? 'var(--bad)' : 'var(--good)'}">${isLate ? '⚠️ متأخر عن الموعد المحدد' : '✅ في الموعد المحدد'}</div>` : ''}
-                ${hasCheckOut && checkOutTime ? `<div class="status-sub">⏹ وقت الانصراف: ${fmtDate(checkOutTime)}</div>` : ''}
-            </div>
+            <!-- ... -->
             <div class="attendance-buttons-row">
                 <button class="btn btn-primary" id="checkInBtn" ${hasCheckIn ? 'disabled' : ''}>${hasCheckIn ? '✅ تم تسجيل الحضور اليوم' : '✅ تسجيل حضور'}</button>
                 <button class="btn btn-danger" id="checkOutBtn" ${(!hasCheckIn || hasCheckOut) ? 'disabled' : ''}>${hasCheckOut ? '✅ تم تسجيل الانصراف اليوم' : (hasCheckIn ? '⏹ تسجيل انصراف' : '⏹ انصراف (يجب الحضور أولاً)')}</button>
             </div>
+            
+            <!-- 🔴 أضف هذا القسم هنا 🔴 -->
+            <div class="gps-box" style="justify-content:center;margin-top:12px;flex-wrap:wrap;gap:10px">
+                <button class="btn btn-outline btn-sm" onclick="enableLocationManually()" style="gap:6px;border-color:var(--navy-600);color:var(--navy-700)">
+                    📍 تفعيل الموقع يدوياً
+                </button>
+                <span style="font-size:12px;color:var(--ink-400);">
+                    اضغط هنا لتفعيل الموقع إذا واجهت مشكلة
+                </span>
+            </div>
+            <!-- 🔴 نهاية الإضافة 🔴 -->
+            
             <div class="gps-box" style="justify-content:center;margin-top:12px">📍 سيتم تسجيل موقعك تلقائياً عند تسجيل الحضور</div>
-        </div>
-        <div class="panel"><div class="panel-head"><h3>سجل الحضور والانصراف اليوم</h3></div><div class="table-wrap"><table><thead><tr><th>النوع</th><th>التاريخ والوقت</th><th>الموقع</th><th>الحالة</th><th>ما تم تنفيذه</th></tr></thead><tbody>${myAttendance.length ? myAttendance.map(a => {
+        </div>        <div class="panel"><div class="panel-head"><h3>سجل الحضور والانصراف اليوم</h3></div><div class="table-wrap"><table><thead><tr><th>النوع</th><th>التاريخ والوقت</th><th>الموقع</th><th>الحالة</th><th>ما تم تنفيذه</th></tr></thead><tbody>${myAttendance.length ? myAttendance.map(a => {
             const isLateCheck = a.type === 'IN' ? getAttendanceWindowState(new Date(a.timestamp)).isLate : false;
             const locName = a.locationName || 'موقع غير معروف';
             let locLink = '-';
