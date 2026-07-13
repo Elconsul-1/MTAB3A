@@ -608,6 +608,37 @@ function fmtTime(iso) {
 }
 function val(id) { const el = document.getElementById(id); return el?.value?.trim ? el.value.trim() : el?.value || ''; }
 
+/**
+ * الحصول على اسم الموقع مع مهلة قصيرة (لا نريد تأخير العملية)
+ */
+async function getLocationNameFast(lat, lng) {
+    if (!lat || !lng) return 'موقع غير معروف';
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // مهلة 3 ثوان فقط
+        
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1&accept-language=ar&countrycodes=eg`;
+        const response = await fetch(url, {
+            signal: controller.signal,
+            headers: { 'User-Agent': 'MTAB3A-App/1.0' }
+        });
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) return 'موقع غير معروف';
+        const data = await response.json();
+        
+        if (data && data.address) {
+            const addr = data.address;
+            return addr.village || addr.hamlet || addr.neighbourhood || 
+                   addr.suburb || addr.town || addr.city || addr.district || 
+                   data.display_name?.split(',').slice(0, 2).join(', ') || 'موقع غير معروف';
+        }
+        return 'موقع غير معروف';
+    } catch (e) {
+        return 'موقع غير معروف (تعذر التحديد)';
+    }
+}
+
 function showSavingModal(message = 'جارى الحفظ...') {
     const overlay = document.getElementById('savingOverlay');
     const title = document.getElementById('savingTitle');
@@ -951,6 +982,133 @@ async function todayAttendanceStatus(p) {
     } catch(e) { return { hasCheckedIn: false, hasCheckedOut: false, lastIn: null, lastOut: null, isLate: false }; }
 }
 
+// =====================================================================
+// دوال محسّنة للحصول على الموقع
+// =====================================================================
+
+/**
+ * فحص حالة إذن الموقع
+ */
+async function checkGeolocationPermission() {
+    try {
+        if (!navigator.permissions || !navigator.permissions.query) {
+            return 'unknown'; // المتصفح لا يدعم Permissions API
+        }
+        const result = await navigator.permissions.query({ name: 'geolocation' });
+        return result.state; // 'granted', 'denied', 'prompt'
+    } catch (e) {
+        return 'unknown';
+    }
+}
+
+/**
+ * الحصول على الموقع مع إعادة المحاولة التلقائية
+ * @param {number} maxAttempts - عدد محاولات إعادة المحاولة
+ * @param {number} timeoutMs - المهلة لكل محاولة بالمللي ثانية
+ */
+async function getCurrentPositionWithRetry(maxAttempts = 3, timeoutMs = 15000) {
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            // المحاولة الأولى بدقة عالية، ثم دقة منخفضة إذا فشلت
+            const useHighAccuracy = attempt === 1;
+            const position = await getCurrentPositionSafe(timeoutMs, useHighAccuracy);
+            return position;
+        } catch (err) {
+            lastError = err;
+            console.warn(`محاولة ${attempt}/${maxAttempts} فشلت:`, err.message);
+            
+            // إذا كان الخطأ بسبب رفض الإذن، لا نعيد المحاولة
+            if (err.code === 1 || err.message === 'PERMISSION_DENIED') {
+                throw err;
+            }
+            
+            // انتظر قبل المحاولة التالية
+            if (attempt < maxAttempts) {
+                await new Promise(r => setTimeout(r, 800));
+            }
+        }
+    }
+    
+    throw lastError || new Error('GEO_ALL_ATTEMPTS_FAILED');
+}
+
+/**
+ * الحصول على الموقع (دالة أساسية معدّلة)
+ */
+function getCurrentPositionSafe(timeoutMs, highAccuracy = true) {
+    const limit = timeoutMs || 15000;
+    
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('NO_GEOLOCATION'));
+            return;
+        }
+        
+        let settled = false;
+        const timer = setTimeout(() => {
+            if (!settled) {
+                settled = true;
+                reject(new Error('GEO_TIMEOUT'));
+            }
+        }, limit);
+        
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                if (!settled) {
+                    settled = true;
+                    clearTimeout(timer);
+                    resolve(pos);
+                }
+            },
+            err => {
+                if (!settled) {
+                    settled = true;
+                    clearTimeout(timer);
+                    // نمرر كود الخطأ مع الرسالة
+                    err.code = err.code || 0;
+                    reject(err);
+                }
+            },
+            {
+                enableHighAccuracy: highAccuracy,
+                timeout: limit,
+                maximumAge: 0
+            }
+        );
+    });
+}
+
+/**
+ * الحصول على رسالة خطأ مفهومة للمستخدم
+ */
+function getGeolocationErrorMessage(error) {
+    if (typeof error === 'string') {
+        const msgs = {
+            'NO_GEOLOCATION': 'المتصفح لا يدعم خدمة تحديد الموقع',
+            'GEO_TIMEOUT': 'انتهت مهلة تحديد الموقع، تأكد من أن GPS مفعّل وأنت في منطقة مكشوفة',
+            'GEO_ALL_ATTEMPTS_FAILED': 'فشلت جميع محاولات تحديد الموقع'
+        };
+        return msgs[error] || error;
+    }
+    
+    if (error.code === 1 || error.message === 'PERMISSION_DENIED') {
+        return '🚫 تم رفض إذن الوصول إلى الموقع. يرجى السماح بالوصول من إعدادات المتصفح.';
+    }
+    if (error.code === 2) {
+        return '📡 تعذر تحديد الموقع. تأكد من تفعيل GPS واتصال الإنترنت.';
+    }
+    if (error.code === 3 || error.message === 'GEO_TIMEOUT') {
+        return '⏱️ انتهت مهلة تحديد الموقع. حاول مرة أخرى في مكان مكشوف.';
+    }
+    if (error.message === 'NO_GEOLOCATION') {
+        return 'المتصفح لا يدعم خدمة تحديد الموقع. استخدم متصفحاً حديثاً.';
+    }
+    
+    return '❌ فشل تحديد الموقع: ' + (error.message || 'يرجى المحاولة مرة أخرى');
+}
+
 /* =====================================================================
    دالة تسجيل الانصراف مع نافذة إدخال ما تم تنفيذه
    ===================================================================== */
@@ -983,19 +1141,98 @@ async function doAttendanceEnhanced(action, extra = {}) {
             return;
         }
     }
-    let checkInPosition = null;
-    if (action === 'checkIn') {
-        const geoBtnEl = document.getElementById('checkInBtn');
-        const geoBtnOriginalText = geoBtnEl ? geoBtnEl.textContent : '';
-        const geoBtnOriginalClass = geoBtnEl ? geoBtnEl.className : '';
-        if (geoBtnEl) { geoBtnEl.disabled = true; geoBtnEl.textContent = '📍 جارِ التحقق من تفعيل الموقع...'; }
-        try { checkInPosition = await getCurrentPositionSafe(12000); } catch(geoError) {
-            if (geoBtnEl) { geoBtnEl.disabled = false; geoBtnEl.textContent = geoBtnOriginalText; geoBtnEl.className = geoBtnOriginalClass; }
-            openModal(`<h3>📍 يجب تفعيل خدمة الموقع</h3><p style="color:var(--ink-600);font-size:14px;line-height:1.9">لا يمكن تسجيل الحضور بدون تفعيل خدمة تحديد الموقع (GPS) والسماح للمتصفح بالوصول إلى موقعك.</p><p style="color:var(--ink-600);font-size:13px;line-height:1.9">يرجى تفعيل خدمة الموقع من إعدادات الجهاز أو المتصفح، ثم اضغط "تسجيل حضور" مرة أخرى.</p><div class="modal-close-row"><button class="btn btn-primary" onclick="closeModal()">حسنًا</button></div>`);
+let checkInPosition = null;
+if (action === 'checkIn') {
+    const geoBtnEl = document.getElementById('checkInBtn');
+    const geoBtnOriginalText = geoBtnEl ? geoBtnEl.textContent : '';
+    const geoBtnOriginalClass = geoBtnEl ? geoBtnEl.className : '';
+    
+    if (geoBtnEl) {
+        geoBtnEl.disabled = true;
+        geoBtnEl.textContent = '📍 جارِ التحقق من الموقع...';
+    }
+    
+    try {
+        // 1. فحص إذن الموقع أولاً
+        const permState = await checkGeolocationPermission();
+        
+        if (permState === 'denied') {
+            if (geoBtnEl) {
+                geoBtnEl.disabled = false;
+                geoBtnEl.textContent = geoBtnOriginalText;
+                geoBtnEl.className = geoBtnOriginalClass;
+            }
+            openModal(`
+                <h3>📍 الإذن ممنوع</h3>
+                <p style="color:var(--ink-600);font-size:14px;line-height:1.9">
+                تم رفض إذن الوصول إلى الموقع مسبقاً.<br><br>
+                <strong>لحل المشكلة:</strong><br>
+                • <strong>على Android:</strong> اضغط مع الاستمرار على أيقونة المتصفح ← معلومات التطبيق ← الأذونات ← السماح بالموقع<br>
+                • <strong>على iPhone:</strong> الإعدادات ← الخصوصية ← خدمات الموقع ← المتصفح ← السماح<br>
+                • <strong>على الكمبيوتر:</strong> اضغط على أيقونة القفل 🔒 في شريط العنوان ← إعدادات الموقع ← السماح بالموقع
+                </p>
+                <div class="modal-close-row">
+                    <button class="btn btn-primary" onclick="closeModal(); location.reload();">🔄 تحديث الصفحة وحاول مرة أخرى</button>
+                </div>
+            `);
             return;
         }
-        if (geoBtnEl) { geoBtnEl.disabled = false; geoBtnEl.textContent = geoBtnOriginalText; geoBtnEl.className = geoBtnOriginalClass; }
+        
+        // 2. محاولة الحصول على الموقع مع إعادة المحاولة
+        checkInPosition = await getCurrentPositionWithRetry(3, 15000);
+        
+    } catch(geoError) {
+        if (geoBtnEl) {
+            geoBtnEl.disabled = false;
+            geoBtnEl.textContent = geoBtnOriginalText;
+            geoBtnEl.className = geoBtnOriginalClass;
+        }
+        
+        const userMsg = getGeolocationErrorMessage(geoError);
+        
+        // إذا كان الخطأ بسبب رفض الإذن، نعرض رسالة مختلفة
+        if (geoError.code === 1 || geoError.message === 'PERMISSION_DENIED') {
+            openModal(`
+                <h3>📍 الإذن ممنوع</h3>
+                <p style="color:var(--ink-600);font-size:14px;line-height:1.9">
+                ${userMsg}<br><br>
+                <strong>لحل المشكلة:</strong><br>
+                • <strong>على Android:</strong> اضغط مع الاستمرار على أيقونة المتصفح ← معلومات التطبيق ← الأذونات ← السماح بالموقع<br>
+                • <strong>على iPhone:</strong> الإعدادات ← الخصوصية ← خدمات الموقع ← المتصفح ← السماح<br>
+                • <strong>على الكمبيوتر:</strong> اضغط على أيقونة القفل 🔒 في شريط العنوان ← إعدادات الموقع ← السماح بالموقع
+                </p>
+                <div class="modal-close-row">
+                    <button class="btn btn-primary" onclick="closeModal()">حسنًا</button>
+                </div>
+            `);
+            return;
+        }
+        
+        // رسالة عامة مع توجيهات
+        openModal(`
+            <h3>📍 فشل تحديد الموقع</h3>
+            <p style="color:var(--ink-600);font-size:14px;line-height:1.9">${userMsg}</p>
+            <p style="color:var(--ink-400);font-size:13px;line-height:1.9">
+            <strong>نصائح:</strong><br>
+            • تأكد من تفعيل GPS في الجهاز<br>
+            • اخرج إلى مكان مكشوف (بعيداً عن المباني العالية)<br>
+            • تأكد من اتصال الإنترنت<br>
+            • حاول تحديث الصفحة ثم اضغط "تسجيل حضور" مرة أخرى
+            </p>
+            <div class="modal-close-row">
+                <button class="btn btn-primary" onclick="closeModal(); location.reload();">🔄 تحديث الصفحة وحاول مرة أخرى</button>
+                <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
+            </div>
+        `);
+        return;
     }
+    
+    if (geoBtnEl) {
+        geoBtnEl.disabled = false;
+        geoBtnEl.textContent = geoBtnOriginalText;
+        geoBtnEl.className = geoBtnOriginalClass;
+    }
+}
     attendanceLock.processing = true;
     const btn = document.getElementById(action === 'checkIn' ? 'checkInBtn' : 'checkOutBtn');
     const originalText = btn ? btn.textContent : '';
