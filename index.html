@@ -976,12 +976,15 @@ window.addEventListener('popstate', (e) => {
 window.addEventListener('beforeunload', (e) => { if (!CURRENT_USER) return; e.preventDefault(); e.returnValue = 'هل أنت متأكد من رغبتك في الخروج؟'; return e.returnValue; });
 function confirmExitApp() { openModal(`<h3>تأكيد تسجيل الخروج</h3><p style="color:var(--ink-600);font-size:14px">هل أنت متأكد من رغبتك في تسجيل الخروج من المنظومة؟</p><div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">تراجع</button><button class="btn btn-danger" onclick="closeModal();doLogout()">تأكيد الخروج</button></div>`); }
 
-/* =====================================================================
-   دوال التنقل بين الصفحات
-   ===================================================================== */
 async function goPage(key, skipHistory, useCache = true) {
     if (isProcessing) return;
     isProcessing = true;
+    
+    // 🔴 إذا كنا نغادر صفحة presentNow، ندمر الخريطة
+    if (currentPage === 'presentNow' && key !== 'presentNow') {
+        destroyMap();
+    }
+    
     currentPage = key;
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     const navEl = document.getElementById('nav-' + key);
@@ -994,9 +997,21 @@ async function goPage(key, skipHistory, useCache = true) {
     const content = document.getElementById('pageContent');
     content.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
     try {
-        if (renderers[key]) { await renderers[key](content); PAGE_CACHE[key] = content.innerHTML; }
+        if (renderers[key]) { 
+            // 🔴 إذا كنا ندخل إلى presentNow، ننتظر قليلاً ثم ننشئ الخريطة
+            if (key === 'presentNow') {
+                await renderers[key](content); 
+                PAGE_CACHE[key] = content.innerHTML;
+                // سيتم تهيئة الخريطة داخل renderPresentNow
+            } else {
+                await renderers[key](content); 
+                PAGE_CACHE[key] = content.innerHTML;
+            }
+        }
         else { content.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>الصفحة قيد التطوير</div>`; }
-    } catch(e) { content.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>تعذر تحميل بيانات هذا القسم.<br><span style="font-size:12.5px;color:var(--ink-600)">${e.message || 'خطأ غير معروف'}</span><div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="goPage('${key}', true, false)">إعادة المحاولة</button></div></div>`; }
+    } catch(e) { 
+        content.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>تعذر تحميل بيانات هذا القسم.<br><span style="font-size:12.5px;color:var(--ink-600)">${e.message || 'خطأ غير معروف'}</span><div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="goPage('${key}', true, false)">إعادة المحاولة</button></div></div>`; 
+    }
     isProcessing = false;
 }
 
@@ -1032,19 +1047,7 @@ function updateDashboardClock() { const el = document.getElementById('dashboardC
 async function hasCheckedInToday(userId) { try { const today = getEgyptDateKey(getEgyptNow()); const result = await api('listAttendance', { userId, date: today }); return Array.isArray(result) && result.some(a => a.type === 'IN'); } catch(e) { return false; } }
 async function hasCheckedOutToday(userId) { try { const today = getEgyptDateKey(getEgyptNow()); const result = await api('listAttendance', { userId, date: today }); return Array.isArray(result) && result.some(a => a.type === 'OUT'); } catch(e) { return false; } }
 
-function getCurrentPositionSafe(timeoutMs) {
-    const limit = timeoutMs || 12000;
-    return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) { reject(new Error('NO_GEOLOCATION')); return; }
-        let settled = false;
-        const timer = setTimeout(() => { if (!settled) { settled = true; reject(new Error('GEO_TIMEOUT')); } }, limit);
-        navigator.geolocation.getCurrentPosition(
-            pos => { if (!settled) { settled = true; clearTimeout(timer); resolve(pos); } },
-            err => { if (!settled) { settled = true; clearTimeout(timer); reject(err); } },
-            { enableHighAccuracy: true, timeout: limit, maximumAge: 0 }
-        );
-    });
-}
+
 async function todayAttendanceStatus(p) {
     try {
         const today = getEgyptDateKey(getEgyptNow());
@@ -1056,24 +1059,6 @@ async function todayAttendanceStatus(p) {
     } catch(e) { return { hasCheckedIn: false, hasCheckedOut: false, lastIn: null, lastOut: null, isLate: false }; }
 }
 
-// =====================================================================
-// دوال محسّنة للحصول على الموقع
-// =====================================================================
-
-/**
- * فحص حالة إذن الموقع
- */
-async function checkGeolocationPermission() {
-    try {
-        if (!navigator.permissions || !navigator.permissions.query) {
-            return 'unknown';
-        }
-        const result = await navigator.permissions.query({ name: 'geolocation' });
-        return result.state;
-    } catch (e) {
-        return 'unknown';
-    }
-}
 
 /**
  * الحصول على الموقع مع إعادة المحاولة - بدون استخدام Permissions API
@@ -2312,7 +2297,7 @@ async function updateCurrentLocation() {
     if (!CURRENT_USER) { showToast('يرجى تسجيل الدخول أولاً', 'err'); return; }
     showSavingModal('جارِ تحديث الموقع...');
     try {
-        const position = await getCurrentPositionSafe(10000);
+        const position = await getCurrentPositionWithRetryDirect(2, 10000);
         if (!position) { hideSavingModal(); showToast('تعذر الحصول على الموقع، تأكد من تفعيل GPS', 'err'); return; }
         const lat = position.coords.latitude, lng = position.coords.longitude;
         const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
@@ -2364,8 +2349,8 @@ async function renderPresentNow(root) {
     const attendance = await api('listAttendance', { date: today });
     const locations = await api('getCurrentLocations', { date: today });
     const userMap = {};
-    // نبني لكل مستخدم: هل سجل حضور اليوم، هل سجل انصراف، وآخر IN/OUT بالوقت -> عشان نعرف
-    // هل هو "شغال دلوقتي" فعلا (حاضر ولسه ماخرجش) وليس مجرد آخر سجل ظهر في القائمة
+    
+    // بناء خريطة المستخدمين من سجلات الحضور
     attendance.forEach(a => {
         if (!userMap[a.userId]) {
             userMap[a.userId] = {
@@ -2385,6 +2370,8 @@ async function renderPresentNow(root) {
             u.checkOutTime = a.timestamp;
         }
     });
+    
+    // إضافة بيانات المواقع
     locations.forEach(loc => {
         if (!userMap[loc.userId]) {
             userMap[loc.userId] = {
@@ -2398,17 +2385,21 @@ async function renderPresentNow(root) {
         u.locationName = loc.locationName || u.locationName;
         if (!u.lastUpdate || new Date(loc.updatedAt) > new Date(u.lastUpdate)) u.lastUpdate = loc.updatedAt;
     });
+    
+    // تحديد حالة المستخدمين
     Object.values(userMap).forEach(u => {
-        // شغال الآن = سجل حضور اليوم ولسه ماسجلش انصراف بعد آخر حضور
         u.isWorkingNow = !!u.checkInTime && (!u.checkOutTime || new Date(u.checkOutTime) < new Date(u.checkInTime));
         u.statusLabel = u.isWorkingNow ? 'يعمل الآن' : (u.checkOutTime ? 'انصرف' : 'لم يسجل حضور');
         u.statusClass = u.isWorkingNow ? 'approved' : (u.checkOutTime ? 'closed' : 'pending');
         const lastSeen = u.lastUpdate || u.checkInTime;
         u.staleMinutes = lastSeen ? Math.round((Date.now() - new Date(lastSeen).getTime()) / 60000) : null;
     });
+    
     let present = Object.values(userMap);
     present.sort((a,b) => (b.isWorkingNow - a.isWorkingNow) || (a.userName || '').localeCompare(b.userName || ''));
     const workingNowCount = present.filter(p => p.isWorkingNow).length;
+    
+    // جلب أسماء المواقع
     for (const p of present) {
         if (!p.locationName || p.locationName === '' || p.locationName === 'موقع غير معروف') {
             if (p.lat && p.lng) {
@@ -2416,6 +2407,7 @@ async function renderPresentNow(root) {
             }
         }
     }
+    
     root.innerHTML = `
         <div class="panel">
             <div class="panel-head">
@@ -2464,6 +2456,8 @@ async function renderPresentNow(root) {
             </div>
         </div>
     `;
+    
+    // تطبيق الفلاتر
     function applyPresentNowFilters() {
         const st = document.getElementById('presentNowStatusFilter')?.value || 'ALL';
         const ct = document.getElementById('presentNowCenterFilter')?.value || 'ALL';
@@ -2478,44 +2472,127 @@ async function renderPresentNow(root) {
     document.getElementById('presentNowStatusFilter')?.addEventListener('change', applyPresentNowFilters);
     document.getElementById('presentNowCenterFilter')?.addEventListener('change', applyPresentNowFilters);
     
-    // تهيئة الخريطة
-    setTimeout(() => {
+    // ================================================================
+    // 🔴 تهيئة الخريطة المحسّنة - المكان الذي نعدله
+    // ================================================================
+    
+    // دالة تهيئة الخريطة
+    function initMap() {
+        // تدمير أي خريطة موجودة مسبقاً
+        if (mapInstance) {
+            try {
+                mapInstance.remove();
+            } catch(e) {}
+            mapInstance = null;
+        }
+        
         const mapContainer = document.getElementById('mapContainer');
-        if (!mapContainer) return;
-        if (mapInstance) { mapInstance.remove(); mapInstance = null; }
-        mapInstance = L.map('mapContainer', { center: [28.0, 30.5], zoom: 7, zoomControl: true });
-        L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], maxZoom: 20, minZoom: 1, attribution: '© Google Maps'
-        }).addTo(mapInstance);
-        const validUsers = present.filter(p => p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng));
-        if (validUsers.length) {
-            const bounds = [];
-            validUsers.forEach(p => {
-                const lat = parseFloat(p.lat), lng = parseFloat(p.lng);
-                if (!isNaN(lat) && !isNaN(lng)) {
-                    bounds.push([lat, lng]);
-                    const popupContent = `<div style="text-align:right"><strong>${p.userName}</strong><br><span class="popup-location">📍 ${p.locationName || 'موقع غير معروف'}</span><br><span class="popup-location">🏢 ${p.center || '-'}</span><br><a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" style="color:#215f8f;text-decoration:underline;font-size:12px">عرض على الخريطة</a></div>`;
-                    const marker = L.marker([lat, lng]).bindPopup(popupContent, { maxWidth: 250 }).addTo(mapInstance);
-                    if (p.userPhoto) {
-                        const photoUrl = normalizeDriveThumbnail(p.userPhoto);
-                        if (photoUrl) {
-                            const icon = L.divIcon({
-                                html: `<img src="${photoUrl}" style="width:40px;height:40px;border-radius:50%;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">`,
-                                className: 'custom-marker', iconSize: [40, 40], iconAnchor: [20, 40]
-                            });
-                            marker.setIcon(icon);
+        if (!mapContainer) return false;
+        
+        // التأكد من أن الحاوية مرئية
+        if (mapContainer.offsetParent === null) {
+            setTimeout(() => initMap(), 200);
+            return false;
+        }
+        
+        try {
+            // إنشاء خريطة جديدة
+            mapInstance = L.map('mapContainer', { 
+                center: [28.0, 30.5], 
+                zoom: 7, 
+                zoomControl: true 
+            });
+            
+            L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+                subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+                maxZoom: 20,
+                minZoom: 1,
+                attribution: '© Google Maps'
+            }).addTo(mapInstance);
+            
+            // إضافة الماركرات
+            const validUsers = present.filter(p => p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng));
+            if (validUsers.length) {
+                const bounds = [];
+                validUsers.forEach(p => {
+                    const lat = parseFloat(p.lat);
+                    const lng = parseFloat(p.lng);
+                    if (!isNaN(lat) && !isNaN(lng)) {
+                        bounds.push([lat, lng]);
+                        const popupContent = `
+                            <div style="text-align:right">
+                                <strong>${p.userName}</strong><br>
+                                <span class="popup-location">📍 ${p.locationName || 'موقع غير معروف'}</span><br>
+                                <span class="popup-location">🏢 ${p.center || '-'}</span><br>
+                                <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" style="color:#215f8f;text-decoration:underline;font-size:12px">عرض على الخريطة</a>
+                            </div>
+                        `;
+                        const marker = L.marker([lat, lng]).bindPopup(popupContent, { maxWidth: 250 }).addTo(mapInstance);
+                        
+                        if (p.userPhoto) {
+                            const photoUrl = normalizeDriveThumbnail(p.userPhoto);
+                            if (photoUrl) {
+                                const icon = L.divIcon({
+                                    html: `<img src="${photoUrl}" style="width:40px;height:40px;border-radius:50%;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">`,
+                                    className: 'custom-marker',
+                                    iconSize: [40, 40],
+                                    iconAnchor: [20, 40]
+                                });
+                                marker.setIcon(icon);
+                            }
                         }
                     }
+                });
+                
+                if (bounds.length > 1) {
+                    const group = L.featureGroup(bounds.map(b => L.marker(b)));
+                    mapInstance.fitBounds(group.getBounds(), { padding: [50, 50] });
+                } else if (bounds.length === 1) {
+                    mapInstance.setView(bounds[0], 13);
                 }
-            });
-            if (bounds.length > 1) { const group = L.featureGroup(bounds.map(b => L.marker(b))); mapInstance.fitBounds(group.getBounds(), { padding: [50, 50] }); }
-            else if (bounds.length === 1) mapInstance.setView(bounds[0], 13);
+            }
+            
+            // تحديث حجم الخريطة بعد الإنشاء
+            setTimeout(() => {
+                if (mapInstance) {
+                    mapInstance.invalidateSize();
+                }
+            }, 300);
+            
+            return true;
+            
+        } catch(e) {
+            console.error('خطأ في إنشاء الخريطة:', e);
+            return false;
         }
-        setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 300);
+    }
+    
+    // إزالة مستمع resize القديم
+    window.removeEventListener('resize', window._mapResizeHandler);
+    window._mapResizeHandler = function() {
+        if (mapInstance) {
+            mapInstance.invalidateSize();
+        }
+    };
+    window.addEventListener('resize', window._mapResizeHandler);
+    
+    // محاولة تهيئة الخريطة
+    setTimeout(() => {
+        initMap();
     }, 200);
     
+    // محاولة ثانية للتأكد
+    setTimeout(() => {
+        if (!mapInstance) {
+            initMap();
+        }
+    }, 600);
+    
+    // زر التحديث
     const refreshBtn = document.getElementById('presentNowRefreshBtn');
     if (refreshBtn) refreshBtn.onclick = () => renderPresentNow(root);
+    
+    // التحكم في التحديث التلقائي
     const toggle = document.getElementById('presentNowAutoRefreshToggle');
     const saved = localStorage.getItem('presentNowAutoRefresh') === '1';
     if (toggle) {
