@@ -1060,6 +1060,7 @@ async function todayAttendanceStatus(p) {
 // دوال محسّنة للحصول على الموقع
 // =====================================================================
 
+/**
  * فحص حالة إذن الموقع
  */
 async function checkGeolocationPermission() {
@@ -1078,7 +1079,69 @@ async function checkGeolocationPermission() {
  * الحصول على الموقع مع إعادة المحاولة - بدون استخدام Permissions API
  */
 async function getCurrentPositionWithRetryDirect(maxAttempts = 3, timeoutMs = 15000) {
-    // ...
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            console.log(`محاولة الحصول على الموقع #${attempt}...`);
+            
+            const position = await new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error('NO_GEOLOCATION'));
+                    return;
+                }
+                
+                let settled = false;
+                const timer = setTimeout(() => {
+                    if (!settled) {
+                        settled = true;
+                        reject(new Error('GEO_TIMEOUT'));
+                    }
+                }, timeoutMs);
+                
+                navigator.geolocation.getCurrentPosition(
+                    pos => {
+                        if (!settled) {
+                            settled = true;
+                            clearTimeout(timer);
+                            resolve(pos);
+                        }
+                    },
+                    err => {
+                        if (!settled) {
+                            settled = true;
+                            clearTimeout(timer);
+                            err.code = err.code || 0;
+                            reject(err);
+                        }
+                    },
+                    {
+                        enableHighAccuracy: attempt === 1,
+                        timeout: timeoutMs,
+                        maximumAge: 0
+                    }
+                );
+            });
+            
+            console.log('تم الحصول على الموقع بنجاح');
+            return position;
+            
+        } catch (err) {
+            lastError = err;
+            console.warn(`محاولة ${attempt}/${maxAttempts} فشلت:`, err.message || err);
+            
+            if (err.code === 1 || err.message === 'PERMISSION_DENIED' || 
+                err.message === 'User denied Geolocation') {
+                throw err;
+            }
+            
+            if (attempt < maxAttempts) {
+                const waitTime = attempt * 1000;
+                await new Promise(r => setTimeout(r, waitTime));
+            }
+        }
+    }
+    
     throw lastError || new Error('GEO_ALL_ATTEMPTS_FAILED');
 }
 
@@ -1111,11 +1174,10 @@ function getGeolocationErrorMessage(error) {
     return '❌ فشل تحديد الموقع: ' + (error.message || 'يرجى المحاولة مرة أخرى');
 }
 
-/* =====================================================================
-   دالة تسجيل الانصراف مع نافذة إدخال ما تم تنفيذه
-   ===================================================================== */
-async function doAttendanceEnhanced(action, extra = {}) {
-    if (attendanceLock.processing) { showToast('جاري معالجة طلب سابق...', 'err'); return; }
+// =====================================================================
+// دالة تسجيل الانصراف مع نافذة إدخال ما تم تنفيذه
+// =====================================================================
+async function doAttendanceEnhanced(action, extra = {}) {    if (attendanceLock.processing) { showToast('جاري معالجة طلب سابق...', 'err'); return; }
     
     const today = getEgyptDateKey(getEgyptNow());
     const checkInKey = 'attendance_checkin_' + CURRENT_USER.id + '_' + today;
