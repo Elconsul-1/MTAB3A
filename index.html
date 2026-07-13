@@ -1163,11 +1163,11 @@ if (action === 'checkIn') {
                 geoBtnEl.className = geoBtnOriginalClass;
             }
             openModal(`
-                <h3>📍 الإذن ممنوع</h3>
+                <h3>📍يرجى تفعيل الموقع اولا</h3>
                 <p style="color:var(--ink-600);font-size:14px;line-height:1.9">
-                تم رفض إذن الوصول إلى الموقع مسبقاً.<br><br>
-                <strong>لحل المشكلة:</strong><br>
-                • <strong>على Android:</strong> اضغط مع الاستمرار على أيقونة المتصفح ← معلومات التطبيق ← الأذونات ← السماح بالموقع<br>
+                قم بتنزيل شريط الاشعارات وفعل زرار الموقع.<br><br>
+                <strong>او اتباع الاتى :</strong><br>
+                • <strong>على Android:</strong> افتح صفحة الاعدادات على الهاتف ابحث عن ( الموقع ) وقم بتفعيله او اضغط مع الاستمرار على أيقونة المتصفح ← معلومات التطبيق ← الأذونات ← السماح بالموقع<br>
                 • <strong>على iPhone:</strong> الإعدادات ← الخصوصية ← خدمات الموقع ← المتصفح ← السماح<br>
                 • <strong>على الكمبيوتر:</strong> اضغط على أيقونة القفل 🔒 في شريط العنوان ← إعدادات الموقع ← السماح بالموقع
                 </p>
@@ -1193,7 +1193,7 @@ if (action === 'checkIn') {
         // إذا كان الخطأ بسبب رفض الإذن، نعرض رسالة مختلفة
         if (geoError.code === 1 || geoError.message === 'PERMISSION_DENIED') {
             openModal(`
-                <h3>📍 الإذن ممنوع</h3>
+                <h3>📍قمت من قبل برفض اذن الموقع يجب تفعيل الموقع اولا</h3>
                 <p style="color:var(--ink-600);font-size:14px;line-height:1.9">
                 ${userMsg}<br><br>
                 <strong>لحل المشكلة:</strong><br>
