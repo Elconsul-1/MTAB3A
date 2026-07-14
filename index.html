@@ -668,7 +668,12 @@ function fmtDate(iso) {
     if (Number.isNaN(d.getTime())) return '-';
     const egypt = toEgyptTime(d);
     if (!egypt) return '-';
-    return `${egypt.getHours()}.${egypt.getMinutes().toString().padStart(2,'0')} ${egypt.getDate()}/${egypt.getMonth()+1}/${egypt.getFullYear()}`;
+    // 12-hour time with Arabic AM/PM marker
+    const hours = egypt.getHours();
+    const minutes = egypt.getMinutes().toString().padStart(2, '0');
+    const period = hours >= 12 ? 'م' : 'ص';
+    const hours12 = (hours % 12) === 0 ? 12 : (hours % 12);
+    return `${hours12}:${minutes} ${period} ${egypt.getDate()}/${egypt.getMonth()+1}/${egypt.getFullYear()}`;
 }
 function fmtTime(iso) {
     if (!iso) return '';
@@ -676,7 +681,11 @@ function fmtTime(iso) {
     if (Number.isNaN(d.getTime())) return '';
     const egypt = toEgyptTime(d);
     if (!egypt) return '';
-    return `${egypt.getHours()}.${egypt.getMinutes().toString().padStart(2,'0')}`;
+    const hours = egypt.getHours();
+    const minutes = egypt.getMinutes().toString().padStart(2, '0');
+    const period = hours >= 12 ? 'م' : 'ص';
+    const hours12 = (hours % 12) === 0 ? 12 : (hours % 12);
+    return `${hours12}:${minutes} ${period}`;
 }
 function val(id) { const el = document.getElementById(id); return el?.value?.trim ? el.value.trim() : el?.value || ''; }
 
@@ -1473,66 +1482,26 @@ async function doAttendanceEnhanced(action, extra = {}) {
     let useLocation = false;
     
     if (action === 'checkIn') {
-        const userChoice = await new Promise((resolve) => {
-            openModal(`
-                <h3>📍 تسجيل الحضور</h3>
-                <div style="background:linear-gradient(135deg,#f8fbff,#eef4ff);border:2px solid var(--navy-700);border-radius:12px;padding:14px 14px 12px;margin:10px 0 14px">
-                    <p style="margin:0 0 6px;font-weight:800;color:var(--navy-950)">إذا كان الموقع غير مفعل، يمكنك تفعيله الآن أو المتابعة بدون موقع.</p>
-                    <p style="margin:0;font-size:13px;color:var(--ink-600)">سيتم تسجيل الحضور تلقائيًا بدون موقع عند تعذر تحديد الموقع.</p>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:12px;margin:16px 0">
-                    <button class="btn btn-primary" id="attendanceWithLocation" style="width:100%;padding:14px;font-size:15px">
-                        📍 تفعيل الموقع الآن
-                    </button>
-                    <button class="btn btn-warning" id="attendanceWithoutLocation" style="width:100%;padding:14px;font-size:15px">
-                        ✅ المتابعة بدون موقع
-                    </button>
-                </div>
-                <div class="modal-close-row">
-                    <button class="btn btn-outline" onclick="closeModal(); resolve(null);">إلغاء</button>
-                </div>
-            `);
-            
-            document.getElementById('attendanceWithLocation')?.addEventListener('click', function() {
-                closeModal();
-                resolve('withLocation');
-            });
-            document.getElementById('attendanceWithoutLocation')?.addEventListener('click', function() {
-                closeModal();
-                resolve('withoutLocation');
-            });
-        });
-        
-        if (userChoice === null) {
-            showToast('تم إلغاء تسجيل الحضور', 'info');
-            return;
+        const geoBtnEl = document.getElementById('checkInBtn');
+        const geoBtnOriginalText = geoBtnEl ? geoBtnEl.textContent : '';
+        const geoBtnOriginalClass = geoBtnEl ? geoBtnEl.className : '';
+
+        if (geoBtnEl) {
+            geoBtnEl.disabled = true;
+            geoBtnEl.textContent = '📍 جارِ طلب الموقع...';
         }
-        
-        if (userChoice === 'withoutLocation') {
+
+        try {
+            checkInPosition = await getCurrentPositionWithRetryDirect(2, 12000);
+            useLocation = true;
+            showToast('✅ تم تحديد موقعك بنجاح', 'ok');
+        } catch (geoError) {
+            const systemMessage = getGeolocationErrorMessage(geoError);
+            console.warn('فشل تحديد الموقع، سيتم التسجيل بدون موقع:', geoError);
             useLocation = false;
             checkInPosition = null;
-            showToast('سيتم تسجيل الحضور بدون موقع', 'info');
-        } else {
-            useLocation = true;
-            const geoBtnEl = document.getElementById('checkInBtn');
-            const geoBtnOriginalText = geoBtnEl ? geoBtnEl.textContent : '';
-            const geoBtnOriginalClass = geoBtnEl ? geoBtnEl.className : '';
-            
-            if (geoBtnEl) {
-                geoBtnEl.disabled = true;
-                geoBtnEl.textContent = '📍 جارِ تفعيل الموقع...';
-            }
-            
-            try {
-                checkInPosition = await getCurrentPositionWithRetryDirect(2, 12000);
-                showToast('✅ تم تحديد موقعك بنجاح', 'ok');
-            } catch (geoError) {
-                console.warn('فشل تحديد الموقع، سيتم التسجيل بدون موقع:', geoError);
-                useLocation = false;
-                checkInPosition = null;
-                showToast('⚠️ سيتم تسجيل الحضور بدون موقع', 'warn');
-            }
-            
+            showToast(systemMessage + ' — سيتم التسجيل بدون موقع', 'warn');
+        } finally {
             if (geoBtnEl) {
                 geoBtnEl.disabled = false;
                 geoBtnEl.textContent = geoBtnOriginalText;
@@ -1751,6 +1720,8 @@ async function renderAttendance(root) {
     for (let cursor = new Date(monthStart); cursor <= monthEnd; cursor.setDate(cursor.getDate() + 1)) {
         monthDates.push(getEgyptDateKey(cursor));
     }
+    // show latest day first
+    monthDates.reverse();
     const monthlyAttendanceData = await Promise.all(monthDates.map(async (dateKey) => {
         try {
             const records = await api('listAttendance', { userId: CURRENT_USER.id, date: dateKey });
@@ -1779,8 +1750,9 @@ async function renderAttendance(root) {
         const tasksText = outRecord && outRecord.tasks ? outRecord.tasks.replace(/\s+/g, ' ').trim() : '-';
         const tasksSummary = tasksText !== '-' ? (tasksText.length > 70 ? tasksText.substring(0, 70) + '...' : tasksText) : '-';
         const statusLabel = isAbsent ? '<span class="chip rejected">❌ غياب</span>' : (isLate ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">✅ حاضر</span>');
-        const todayMarker = dateKey === today ? 'style="background:rgba(201,162,39,.12);"' : '';
-        return `<tr ${todayMarker}><td>${dayLabel}</td><td>${inTime}</td><td>${outTime}</td><td>${tasksSummary}</td><td>${statusLabel}</td></tr>`;
+        const todayMarker = dateKey === today ? 'style="background:linear-gradient(90deg, rgba(201,162,39,0.12), rgba(201,162,39,0.06));font-weight:700"' : '';
+        const todayBadge = dateKey === today ? ' <span style="background:var(--gold-500);color:#071b2e;border-radius:8px;padding:2px 8px;font-size:12px;margin-left:8px">اليوم</span>' : '';
+        return `<tr ${todayMarker}><td>${dayLabel}${todayBadge}</td><td>${inTime}</td><td>${outTime}</td><td>${tasksSummary}</td><td>${statusLabel}</td></tr>`;
     });
 
     root.innerHTML = `
@@ -1814,17 +1786,9 @@ async function renderAttendance(root) {
             </div>
             <div class="table-wrap"><table><thead><tr><th>اليوم</th><th>حضور</th><th>انصراف</th><th>المهام</th><th>الحالة</th></tr></thead><tbody>${monthRows.join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد سجل لهذا الشهر</div></td></tr>'}</tbody></table></div>
         </div>
-        <div class="panel"><div class="panel-head"><h3>سجل الحضور والانصراف اليوم</h3></div><div class="table-wrap"><table><thead><tr><th>النوع</th><th>التاريخ والوقت</th><th>الموقع</th><th>الحالة</th><th>ما تم تنفيذه</th></tr></thead><tbody>${myAttendance.length ? myAttendance.map(a => {
-            const isLateCheck = a.type === 'IN' ? getAttendanceWindowState(new Date(a.timestamp)).isLate : false;
-            const locName = a.locationName || 'موقع غير معروف';
-            let locLink = '-';
-            if (a.mapsLink && a.mapsLink.trim().startsWith('http')) locLink = `<a href="${a.mapsLink}" target="_blank" class="location-link">📍 ${locName}</a>`;
-            else if (a.lat && a.lng) locLink = `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" class="location-link">📍 ${locName}</a>`;
-            const tasksSummary = a.tasks ? `<div style="font-size:11px;color:var(--ink-600);max-width:200px;white-space:normal;word-wrap:break-word">${a.tasks.substring(0, 100)}${a.tasks.length > 100 ? '...' : ''}</div>` : '-';
-            return `<tr><td><span class="chip ${a.type === 'IN' ? 'approved' : 'rejected'}">${a.type === 'IN' ? '✅ حضور' : (a.autoCheckout === 'true' || a.autoCheckout === true ? '⏹ انصراف تلقائي' : '⏹ انصراف')}</span></td><td>${fmtDate(a.timestamp)}</td><td>${locLink}</td><td>${a.type === 'IN' ? (isLateCheck ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">في الموعد</span>') : '-'}</td><td>${a.type === 'OUT' ? tasksSummary : '-'}</td></tr>`;
-        }).join('') : `<tr><td colspan="5"><div class="empty-state">لا يوجد سجل حضور اليوم</div></td></tr>`}</tbody></table></div></div>
+        <!-- daily panel removed as requested -->
     `;
-    setInterval(() => { const c = document.getElementById('clockNow'); if (c) c.textContent = getEgyptNow().toLocaleTimeString('ar-EG'); }, 1000);
+    setInterval(() => { const c = document.getElementById('clockNow'); if (c) c.textContent = fmtTime(getEgyptNow()); }, 1000);
     updateAttendanceUI(hasCheckIn, hasCheckOut);
     const checkInBtn = document.getElementById('checkInBtn');
     const checkOutBtn = document.getElementById('checkOutBtn');
