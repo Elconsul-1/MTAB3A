@@ -241,7 +241,7 @@ tbody tr:hover{background:#fafcfd}
 .tab-btn.active{color:var(--navy-900);border-color:var(--gold-500)}
 
 .toast-wrap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:1200;display:flex;flex-direction:column;gap:8px;align-items:center}
-.toast{background:var(--navy-950);color:#fff;padding:11px 20px;border-radius:10px;font-size:13.5px;box-shadow:0 8px 20px rgba(0,0,0,.3);animation:toastIn .25s ease}
+.toast{background:var(--navy-950);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:700;line-height:1.6;box-shadow:0 8px 20px rgba(0,0,0,.3);animation:toastIn .25s ease;max-width:min(92vw,420px);text-align:center}
 .toast.err{background:var(--bad)}
 .toast.ok{background:var(--good)}
 .toast.warn{background:var(--warn)}
@@ -549,6 +549,11 @@ tbody tr:hover{background:#fafcfd}
 <div id="printArea"></div>
 
 <div class="toast-wrap" id="toastWrap"></div>
+<div id="appLoadingOverlay" style="position:fixed;inset:0;z-index:1300;background:linear-gradient(135deg,var(--navy-950),var(--navy-800));display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:#fff;font-family:var(--font-display);">
+  <div style="width:56px;height:56px;border:4px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite"></div>
+  <div style="font-size:18px;font-weight:800">جارِ تحميل المنظومة…</div>
+  <div style="font-size:13px;opacity:.85">يرجى الانتظار قليلاً</div>
+</div>
 <div id="installBanner" style="display:none;position:fixed;left:16px;right:16px;bottom:16px;z-index:1220;background:linear-gradient(135deg,var(--navy-900),var(--navy-700));color:#fff;padding:14px 16px;border-radius:14px;box-shadow:0 12px 28px rgba(0,0,0,.28);max-width:420px;margin:auto">
   <div style="font-size:14px;font-weight:800;margin-bottom:6px">تثبيت المنظومة كتطبيق</div>
   <div style="font-size:13px;line-height:1.7;color:rgba(255,255,255,.88)">يمكنك تثبيت المنظومة على الشاشة الرئيسية للوصول إليها بسرعة كأيقونة تطبيق.</div>
@@ -630,6 +635,10 @@ function getCachedAppUser() { try { const raw = localStorage.getItem('cachedAppU
     }
 })();
 function removeAutoLoginBoot() { const b = document.getElementById('autoLoginBoot'); if (b) b.remove(); }
+function hideAppLoadingOverlay() {
+    const overlay = document.getElementById('appLoadingOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
 
 /* =====================================================================
    دوال مساعدة عامة
@@ -708,6 +717,25 @@ function hideSavingModal() {
     if (overlay) { overlay.classList.remove('show'); overlay.style.display = 'none'; }
     isProcessing = false;
 }
+function playNotificationSound() {
+    try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        const audioContext = new AudioContextClass();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(1320, audioContext.currentTime + 0.15);
+        gainNode.gain.setValueAtTime(0.03, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.25);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.25);
+    } catch (e) {}
+}
+
 function showToast(msg, type) {
     hideSavingModal();
     const wrap = document.getElementById('toastWrap');
@@ -715,6 +743,9 @@ function showToast(msg, type) {
     el.className = 'toast' + (type === 'err' ? ' err' : type === 'ok' ? ' ok' : type === 'warn' ? ' warn' : type === 'info' ? ' info' : '');
     el.textContent = msg;
     wrap.appendChild(el);
+    if (type === 'ok' || type === 'warn' || type === 'info') {
+        playNotificationSound();
+    }
     setTimeout(() => el.remove(), 4000);
 }
 function openModal(html) { document.getElementById('modalBox').innerHTML = html; document.getElementById('modalOverlay').classList.add('show'); }
@@ -943,6 +974,10 @@ function hideAllScreens() {
     document.getElementById('app').style.display = 'none';
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(hideAppLoadingOverlay, 1400);
+});
+
 function doLogout() { 
     hideAllScreens(); 
     removeAutoLoginBoot();
@@ -994,6 +1029,7 @@ function buildNav() {
     });
 }
 function launchApp() {
+    hideAppLoadingOverlay();
     hideAllScreens();
     removeAutoLoginBoot();
     cacheAppUser(CURRENT_USER);
@@ -1349,12 +1385,25 @@ async function doAttendanceEnhanced(action, extra = {}) {
     const today = getEgyptDateKey(getEgyptNow());
     const checkInKey = 'attendance_checkin_' + CURRENT_USER.id + '_' + today;
     const checkOutKey = 'attendance_checkout_' + CURRENT_USER.id + '_' + today;
+    const storedCheckInTime = localStorage.getItem('attendance_checkin_time_' + CURRENT_USER.id + '_' + today);
     
     // التحقق من تسجيل الحضور مسبقاً
     if (action === 'checkIn') {
-        if (localStorage.getItem(checkInKey) === '1') { showToast('تم تسجيل حضورك اليوم بالفعل', 'ok'); return; }
+        if (localStorage.getItem(checkInKey) === '1') {
+            const timeText = storedCheckInTime ? fmtTime(storedCheckInTime) : 'هذا اليوم';
+            showToast(`تم تسجيل حضورك بالفعل في الساعة ${timeText}`, 'ok');
+            return;
+        }
         const serverCheck = await hasCheckedInToday(CURRENT_USER.id);
-        if (serverCheck) { localStorage.setItem(checkInKey, '1'); showToast('تم تسجيل حضورك اليوم بالفعل', 'ok'); updateAttendanceUI(true, false); setTimeout(() => { delete PAGE_CACHE['attendance']; goPage('attendance', true, false); }, 500); return; }
+        if (serverCheck) {
+            localStorage.setItem(checkInKey, '1');
+            localStorage.setItem('attendance_checkin_time_' + CURRENT_USER.id + '_' + today, new Date().toISOString());
+            const timeText = fmtTime(new Date());
+            showToast(`تم تسجيل حضورك بالفعل في الساعة ${timeText}`, 'ok');
+            updateAttendanceUI(true, false);
+            setTimeout(() => { delete PAGE_CACHE['attendance']; goPage('attendance', true, false); }, 500);
+            return;
+        }
     }
     
     // التحقق من تسجيل الانصراف مسبقاً
@@ -1394,37 +1443,32 @@ async function doAttendanceEnhanced(action, extra = {}) {
     }
     
     // ================================================================
-    // 🔴 نافذة اختيار طريقة تسجيل الحضور (مع أو بدون موقع)
+    // نافذة تسجيل الحضور مع محاولة تلقائية لتحديد الموقع
     // ================================================================
     let checkInPosition = null;
     let useLocation = false;
     
     if (action === 'checkIn') {
-        // عرض نافذة اختيار للمستخدم
         const userChoice = await new Promise((resolve) => {
             openModal(`
                 <h3>📍 تسجيل الحضور</h3>
-                <p style="color:var(--ink-600);font-size:14px;line-height:1.9">
-                اختر طريقة تسجيل الحضور:
-                </p>
+                <div style="background:linear-gradient(135deg,#f8fbff,#eef4ff);border:2px solid var(--navy-700);border-radius:12px;padding:14px 14px 12px;margin:10px 0 14px">
+                    <p style="margin:0 0 6px;font-weight:800;color:var(--navy-950)">إذا كان الموقع غير مفعل، يمكنك تفعيله الآن أو المتابعة بدون موقع.</p>
+                    <p style="margin:0;font-size:13px;color:var(--ink-600)">سيتم تسجيل الحضور تلقائيًا بدون موقع عند تعذر تحديد الموقع.</p>
+                </div>
                 <div style="display:flex;flex-direction:column;gap:12px;margin:16px 0">
                     <button class="btn btn-primary" id="attendanceWithLocation" style="width:100%;padding:14px;font-size:15px">
-                        📍 تسجيل الحضور مع الموقع (مفضل)
+                        📍 تفعيل الموقع الآن
                     </button>
-                    <button class="btn btn-outline" id="attendanceWithoutLocation" style="width:100%;padding:14px;font-size:15px;border-color:var(--warn);color:var(--warn)">
-                        ⚠️ تسجيل الحضور بدون موقع (في حال تعذر تحديد الموقع)
+                    <button class="btn btn-warning" id="attendanceWithoutLocation" style="width:100%;padding:14px;font-size:15px">
+                        ✅ المتابعة بدون موقع
                     </button>
-                </div>
-                <div style="font-size:12px;color:var(--ink-400);text-align:center;padding:8px;background:#f8f9fa;border-radius:8px">
-                    ℹ️ تسجيل الحضور مع الموقع يضمن دقة تحديد مكان التواجد<br>
-                    يمكنك التسجيل بدون موقع إذا واجهت مشكلة في GPS
                 </div>
                 <div class="modal-close-row">
                     <button class="btn btn-outline" onclick="closeModal(); resolve(null);">إلغاء</button>
                 </div>
             `);
             
-            // معالجة اختيار المستخدم
             document.getElementById('attendanceWithLocation')?.addEventListener('click', function() {
                 closeModal();
                 resolve('withLocation');
@@ -1435,19 +1479,16 @@ async function doAttendanceEnhanced(action, extra = {}) {
             });
         });
         
-        // إذا ألغى المستخدم
         if (userChoice === null) {
             showToast('تم إلغاء تسجيل الحضور', 'info');
             return;
         }
         
-        // إذا اختار التسجيل بدون موقع
         if (userChoice === 'withoutLocation') {
             useLocation = false;
-            // ننتقل مباشرة لتسجيل الحضور بدون موقع
             checkInPosition = null;
+            showToast('سيتم تسجيل الحضور بدون موقع', 'info');
         } else {
-            // محاولة الحصول على الموقع
             useLocation = true;
             const geoBtnEl = document.getElementById('checkInBtn');
             const geoBtnOriginalText = geoBtnEl ? geoBtnEl.textContent : '';
@@ -1455,71 +1496,17 @@ async function doAttendanceEnhanced(action, extra = {}) {
             
             if (geoBtnEl) {
                 geoBtnEl.disabled = true;
-                geoBtnEl.textContent = '📍 جارِ الحصول على الموقع...';
+                geoBtnEl.textContent = '📍 جارِ تفعيل الموقع...';
             }
             
             try {
-                checkInPosition = await getCurrentPositionWithRetryDirect(3, 15000);
+                checkInPosition = await getCurrentPositionWithRetryDirect(2, 12000);
                 showToast('✅ تم تحديد موقعك بنجاح', 'ok');
-            } catch(geoError) {
-                console.warn('فشل تحديد الموقع:', geoError);
-                // نعرض للمستخدم خيار التسجيل بدون موقع
-                const retryChoice = await new Promise((resolve) => {
-                    openModal(`
-                        <h3>📍 فشل تحديد الموقع</h3>
-                        <p style="color:var(--ink-600);font-size:14px;line-height:1.9">
-                        ${getGeolocationErrorMessage(geoError)}
-                        </p>
-                        <div style="display:flex;flex-direction:column;gap:12px;margin:16px 0">
-                            <button class="btn btn-primary" id="retryLocation" style="width:100%;padding:14px;font-size:15px">
-                                🔄 المحاولة مرة أخرى
-                            </button>
-                            <button class="btn btn-warning" id="skipLocation" style="width:100%;padding:14px;font-size:15px">
-                                ⚠️ تسجيل الحضور بدون موقع
-                            </button>
-                        </div>
-                        <div class="modal-close-row">
-                            <button class="btn btn-outline" onclick="closeModal(); resolve(null);">إلغاء</button>
-                        </div>
-                    `);
-                    
-                    document.getElementById('retryLocation')?.addEventListener('click', function() {
-                        closeModal();
-                        resolve('retry');
-                    });
-                    document.getElementById('skipLocation')?.addEventListener('click', function() {
-                        closeModal();
-                        resolve('skip');
-                    });
-                });
-                
-                if (retryChoice === null) {
-                    if (geoBtnEl) {
-                        geoBtnEl.disabled = false;
-                        geoBtnEl.textContent = geoBtnOriginalText;
-                        geoBtnEl.className = geoBtnOriginalClass;
-                    }
-                    showToast('تم إلغاء تسجيل الحضور', 'info');
-                    return;
-                }
-                
-                if (retryChoice === 'retry') {
-                    // إعادة المحاولة
-                    try {
-                        checkInPosition = await getCurrentPositionWithRetryDirect(3, 15000);
-                        showToast('✅ تم تحديد موقعك بنجاح', 'ok');
-                    } catch(e) {
-                        // فشل مرة أخرى - نستخدم بدون موقع
-                        useLocation = false;
-                        checkInPosition = null;
-                        showToast('⚠️ سيتم تسجيل الحضور بدون موقع', 'warn');
-                    }
-                } else {
-                    // اختار التسجيل بدون موقع
-                    useLocation = false;
-                    checkInPosition = null;
-                    showToast('⚠️ سيتم تسجيل الحضور بدون موقع', 'warn');
-                }
+            } catch (geoError) {
+                console.warn('فشل تحديد الموقع، سيتم التسجيل بدون موقع:', geoError);
+                useLocation = false;
+                checkInPosition = null;
+                showToast('⚠️ سيتم تسجيل الحضور بدون موقع', 'warn');
             }
             
             if (geoBtnEl) {
@@ -1551,7 +1538,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             } 
         }
         
-        let locationName = 'لم يتم تحديد الموقع';
+        let locationName = 'تم التسجيل بدون موقع';
         if (position) { 
             try { 
                 locationName = await getLocationNameFast(position.coords.latitude, position.coords.longitude); 
@@ -1569,7 +1556,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
             center: extra.center || CURRENT_USER.center, 
             lat: position ? position.coords.latitude : null, 
             lng: position ? position.coords.longitude : null, 
-            locationName: locationName || 'لم يتم تحديد الموقع', 
+            locationName: locationName || 'تم التسجيل بدون موقع', 
             workType: extra.workType || 'FIELD', 
             isLate: isLate
         };
@@ -1586,7 +1573,8 @@ async function doAttendanceEnhanced(action, extra = {}) {
             localStorage.setItem('attendance_checkin_time_' + CURRENT_USER.id + '_' + today, new Date().toISOString());
             if (btn) { btn.disabled = true; btn.textContent = '✅ تم تسجيل الحضور اليوم'; btn.className = 'btn btn-done-checkin'; btn.style.background = '#1f8a55'; btn.style.color = '#fff'; btn.style.opacity = '1'; }
             const locationMsg = position ? 'مع تحديد الموقع' : 'بدون تحديد الموقع';
-            showToast(isLate ? `✅ تم تسجيل الحضور (متأخر - ${locationMsg})` : `✅ تم تسجيل الحضور في الموعد (${locationMsg})`, isLate ? 'warn' : 'ok');
+            const checkInTimeText = fmtTime(new Date());
+            showToast(`✅ تم تسجيل حضورك في الساعة ${checkInTimeText} (${locationMsg})`, isLate ? 'warn' : 'ok');
         } else {
             localStorage.setItem(checkOutKey, '1');
             if (btn) { btn.disabled = true; btn.textContent = '✅ تم تسجيل الانصراف اليوم'; btn.className = 'btn btn-done-checkout'; btn.style.background = '#c23a3a'; btn.style.color = '#fff'; btn.style.opacity = '1'; }
@@ -1738,18 +1726,9 @@ async function renderAttendance(root) {
             </div>
             
             <!-- 🔴 أضف هذا القسم هنا 🔴 -->
-            <div class="gps-box" style="justify-content:center;margin-top:12px;flex-wrap:wrap;gap:10px">
-                <button class="btn btn-outline btn-sm" onclick="enableLocationManually()" style="gap:6px;border-color:var(--navy-600);color:var(--navy-700)">
-                    📍 تفعيل الموقع يدوياً
-                </button>
-                <span style="font-size:12px;color:var(--ink-400);">
-                    اضغط هنا لتفعيل الموقع إذا واجهت مشكلة
-                </span>
-            </div>
-            <!-- 🔴 نهاية الإضافة 🔴 -->
-            
-            <div class="gps-box" style="justify-content:center;margin-top:12px">📍 سيتم تسجيل موقعك تلقائياً عند تسجيل الحضور</div>
-        </div>        <div class="panel"><div class="panel-head"><h3>سجل الحضور والانصراف اليوم</h3></div><div class="table-wrap"><table><thead><tr><th>النوع</th><th>التاريخ والوقت</th><th>الموقع</th><th>الحالة</th><th>ما تم تنفيذه</th></tr></thead><tbody>${myAttendance.length ? myAttendance.map(a => {
+            <div class="gps-box" style="justify-content:center;margin-top:12px">📍 سيُحاول النظام تحديد موقعك تلقائيًا عند تسجيل الحضور، وفي حال تعذر ذلك سيتم التسجيل بدون موقع.</div>
+        </div>
+        <div class="panel"><div class="panel-head"><h3>سجل الحضور والانصراف اليوم</h3></div><div class="table-wrap"><table><thead><tr><th>النوع</th><th>التاريخ والوقت</th><th>الموقع</th><th>الحالة</th><th>ما تم تنفيذه</th></tr></thead><tbody>${myAttendance.length ? myAttendance.map(a => {
             const isLateCheck = a.type === 'IN' ? getAttendanceWindowState(new Date(a.timestamp)).isLate : false;
             const locName = a.locationName || 'موقع غير معروف';
             let locLink = '-';
@@ -1970,9 +1949,12 @@ window.confirmReject = async function(id) { const reason = val('rejReason'); clo
 async function renderAssignments(root) {
     const isSystemAdmin = CURRENT_USER.role === 'SYSTEM_ADMIN';
     const isCenterAdmin = CURRENT_USER.role === 'CENTER_ADMIN';
-    const [users, workLogAll, assignments] = await Promise.all([
-        api('listUsers', {}), api('listWorkReports', isSystemAdmin ? {} : (isCenterAdmin ? { center: CURRENT_USER.center } : { userId: CURRENT_USER.id })), api('listAssignments', {})
-    ]);
+    let users = [];
+    let workLogAll = [];
+    let assignments = [];
+    try { users = await api('listUsers', {}); } catch (e) { console.error('فشل تحميل المستخدمين:', e); users = []; }
+    try { workLogAll = await api('listWorkReports', isSystemAdmin ? {} : (isCenterAdmin ? { center: CURRENT_USER.center } : { userId: CURRENT_USER.id })); } catch (e) { console.error('فشل تحميل سجلات العمل:', e); workLogAll = []; }
+    try { assignments = await api('listAssignments', {}); } catch (e) { console.error('فشل تحميل التكليفات:', e); assignments = []; }
     // === تم التصحيح: كانت هذه الشاشة تقرأ من جدول Missions غير المستخدم بينما "إضافة تكليف" ===
     // === تكتب فعليًا في جدول Assignments -> فكانت التكليفات المُرسلة لا تظهر أبدًا           ===
     let adminAssignments = [], centerAssignments = [], userTasks = [], allCompletedTasks = [];
@@ -2017,6 +1999,7 @@ async function renderAssignments(root) {
 
     const adminBatches = groupAssignmentsByBatch(adminAssignments);
     const centerBatches = groupAssignmentsByBatch(centerAssignments);
+    window.__assignBatchesLookup = Object.assign({}, adminBatches, centerBatches);
     const adminTotal = Object.values(adminBatches).length;
     const centerTotal = Object.values(centerBatches).length;
     const tasksTotal = userTasks.length;
@@ -2112,7 +2095,7 @@ async function renderAssignments(root) {
                     </div>
                     <div class="assign-card-title">${b.details || 'تكليف'}</div>
                     <div class="assign-card-meta"><span>🏢 ${b.center}</span><span>🛠️ ${b.workType || '-'}</span><span>📅 ${fmtDate(b.createdAt)}</span></div>
-                    <div class="assign-card-meta" style="font-size:11.5px">👤 ${b.recipients.join('، ')}</div>
+                    <div class="assign-card-meta" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${b.recipients.join('، ')}">👤 ${b.recipients.slice(0,3).join('، ')}${b.recipients.length > 3 ? ` <span style="color:var(--gold-500);font-weight:700;cursor:pointer" onclick="event.stopPropagation();showRecipientsList('${b.batchId}')">و${b.recipients.length - 3} آخرين</span>` : ''}</div>
                     <div class="assign-card-progress">👥 ${b.recipientCount} مستلم — ✅ ${b.receivedCount} استلم — 🏁 ${b.completedCount} أنجز${b.notDoneCount ? ` — ⚠️ ${b.notDoneCount} لم يُنجز` : ''}</div>
                     <div class="assign-card-actions">
                         <button class="btn btn-outline btn-sm" onclick="updateAdminMissionStatus('${b.batchId}')">📊 حالة</button>
@@ -2198,6 +2181,18 @@ async function renderAssignments(root) {
         `;
     }
 
+    window.showRecipientsList = function(batchId) {
+        const b = (window.__assignBatchesLookup || {})[batchId];
+        if (!b) return;
+        openModal(`
+            <h3>👥 مستلمو التكليف (${b.recipients.length})</h3>
+            <div class="assign-card-title" style="margin-bottom:10px">${b.details || 'تكليف'}</div>
+            <div style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+                ${b.recipients.map(n => `<div style="background:#f4f6f8;border-radius:8px;padding:8px 12px;font-size:13px">👤 ${n}</div>`).join('')}
+            </div>
+            <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إغلاق</button></div>
+        `);
+    };
     window.applyAdminFilters = function() {
         const status = document.getElementById('filterAdminStatus')?.value || 'ALL';
         const center = document.getElementById('filterAdminCenter')?.value || 'ALL';
