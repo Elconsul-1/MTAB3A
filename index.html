@@ -1747,7 +1747,7 @@ async function renderAttendance(root) {
         const dayLabel = displayDate.toLocaleDateString('ar-EG', { weekday: 'short', day: 'numeric', month: 'numeric' });
         const inTime = inRecord ? fmtTime(inRecord.timestamp) : '-';
         const outTime = outRecord ? fmtTime(outRecord.timestamp) : '-';
-        const tasksText = outRecord && outRecord.tasks ? outRecord.tasks.replace(/\s+/g, ' ').trim() : '-';
+        const tasksText = outRecord && outRecord.tasksNote ? outRecord.tasksNote.replace(/\s+/g, ' ').trim() : '-';
         const tasksSummary = tasksText !== '-' ? (tasksText.length > 70 ? tasksText.substring(0, 70) + '...' : tasksText) : '-';
         const statusLabel = isAbsent ? '<span class="chip rejected">❌ غياب</span>' : (isLate ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">✅ حاضر</span>');
         const todayMarker = dateKey === today ? 'style="background:linear-gradient(90deg, rgba(201,162,39,0.12), rgba(201,162,39,0.06));font-weight:700"' : '';
@@ -2459,7 +2459,28 @@ window.submitNewMission = async function() {
     if (!targetScope && recipientIds.length === 0) { showToast('يرجى تحديد المستلمين', 'err'); return; }
     closeModal(); showSavingModal('جارى إضافة التكليف...');
     try {
-        const payload = { center, localUnit, village, workType, requestingEntity, details: description, source: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'GENERAL' : 'CENTER', sourceType: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'SYSTEM_ADMIN' : 'CENTER_ADMIN', createdBy: CURRENT_USER.id, createdByName: CURRENT_USER.fullName, targetScope, targetCenters, recipientIds, engineerName, technicianName };
+        const payload = {
+            center,
+            localUnit,
+            village,
+            workType,
+            requestingEntity,
+            details: description,
+            source: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'GENERAL' : 'CENTER',
+            sourceType: CURRENT_USER.role === 'SYSTEM_ADMIN' ? 'SYSTEM_ADMIN' : 'CENTER_ADMIN',
+            createdBy: CURRENT_USER.id,
+            createdByName: CURRENT_USER.fullName,
+            requesterId: CURRENT_USER.id,
+            requesterRole: CURRENT_USER.role,
+            targetScope,
+            targetCenters,
+            recipientIds,
+            recipientId: recipientIds[0] || '',
+            engineerName,
+            technicianName,
+            hasDeadline: false,
+            deadlineAt: ''
+        };
         const result = await api('createAssignment', payload);
         hideSavingModal(); showToast(`✅ تم إضافة التكليف بنجاح (${result.count || 1} مستلم)`, 'ok'); refreshAssignments();
     } catch(e) { hideSavingModal(); showToast('❌ فشل إضافة التكليف: ' + e.message, 'err'); }
@@ -3262,6 +3283,45 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async fun
         showToast('تم إرسال طلبك بنجاح', 'ok'); refreshMyStatus();
     } catch(e) { showToast('حدث خطأ: ' + e.message, 'err'); } finally { this.disabled = false; this.textContent = 'إرسال طلب الاعتماد'; }
 });
+
+const submitCompleteBtn = document.getElementById('submitCompleteBtn');
+if (submitCompleteBtn) {
+    submitCompleteBtn.addEventListener('click', async function() {
+        const nationalId = document.getElementById('compNationalId')?.value?.trim() || '';
+        const phone = document.getElementById('compPhone')?.value?.trim() || '';
+        const fileInput = document.getElementById('compPhotoFile');
+        const photoFile = fileInput?.files?.[0];
+        if (!nationalId || !photoFile) {
+            showToast('يرجى إدخال الرقم القومي واختيار الصورة الشخصية', 'err');
+            return;
+        }
+        this.disabled = true;
+        this.textContent = 'جارى الحفظ...';
+        try {
+            let photoUrl = CURRENT_USER?.photoUrl || '';
+            if (photoFile) {
+                if (photoFile.size > 5 * 1024 * 1024) {
+                    showToast('حجم الصورة كبير جدًا (الحد الأقصى 5 ميجابايت)', 'err');
+                    return;
+                }
+                const base64 = await fileToBase64(photoFile);
+                const uploadRes = await api('uploadPhotoToDrive', { imageData: base64, fileName: photoFile.name, mimeType: photoFile.type });
+                if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
+            }
+            await api('updateMyProfile', { userId: CURRENT_USER.id, fullName: CURRENT_USER.fullName || '', nationalId, phone, photoUrl });
+            CURRENT_USER = { ...CURRENT_USER, nationalId, phone, photoUrl };
+            showToast('✅ تم حفظ البيانات بنجاح', 'ok');
+            hideAllScreens();
+            launchApp();
+        } catch (e) {
+            showToast('❌ فشل حفظ البيانات: ' + (e.message || 'خطأ غير معروف'), 'err');
+        } finally {
+            this.disabled = false;
+            this.textContent = 'حفظ البيانات';
+        }
+    });
+}
+
 const JOB_ROLE_MAP = { 'محافظة': 'SYSTEM_ADMIN', 'مدير إدارة': 'CENTER_ADMIN', 'فني': 'TECHNICIAN', 'مهندس': 'ENGINEER' };
 
 /* =====================================================================
