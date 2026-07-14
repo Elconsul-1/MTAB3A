@@ -613,10 +613,16 @@ let PRESENT_NOW_INTERVAL_ID = null;
    كانت هناك جلسة محفوظة لدى Firebase نُخفى شاشة تسجيل الدخول فورًا (بدلاً من
    ظهورها للحظة) وننتظر تأكيد Firebase فى الخلفية بدل مطالبة المستخدم بالدخول يدويًا. */
 function cacheAppUser(u) {
-    try { localStorage.setItem('cachedAppUser', JSON.stringify({ id:u.id, email:u.email, fullName:u.fullName, role:u.role, center:u.center, status:u.status })); } catch(e) {}
+    try { localStorage.setItem('cachedAppUser', JSON.stringify({ id:u.id, email:u.email, fullName:u.fullName, role:u.role, center:u.center, status:u.status, nationalId:u.nationalId || '', photoUrl:u.photoUrl || '' })); } catch(e) {}
 }
 function clearCachedAppUser() { try { localStorage.removeItem('cachedAppUser'); } catch(e) {} }
 function getCachedAppUser() { try { const raw = localStorage.getItem('cachedAppUser'); return raw ? JSON.parse(raw) : null; } catch(e) { return null; } }
+function hasRequiredProfileData(user) {
+    if (!user) return false;
+    const nationalId = (user.nationalId || '').toString().trim();
+    const photoUrl = (user.photoUrl || '').toString().trim();
+    return !!nationalId && !!photoUrl;
+}
 (function tryAutoLoginFastPath() {
     const cached = getCachedAppUser();
     if (cached && cached.status === 'APPROVED') {
@@ -944,17 +950,35 @@ async function refreshMyStatus() {
         }
         CURRENT_USER = existing;
         if (existing.status === 'APPROVED') {
-            const needsNationalId = !existing.nationalId || existing.nationalId === '';
-            const needsPhoto = !existing.photoUrl || existing.photoUrl === '';
-            if (needsNationalId || needsPhoto) {
-                document.getElementById('completeProfileScreen').style.display = 'flex';
-                document.getElementById('compFullName').value = existing.fullName || '';
-                let msg = '⚠️ يرجى استكمال البيانات التالية لإكمال ملفك الشخصي:\n';
-                if (needsNationalId) msg += '• الرقم القومي (مطلوب)\n';
-                if (needsPhoto) msg += '• الصورة الشخصية (مطلوبة)\n';
-                document.querySelector('#completeProfileScreen .reg-card p').textContent = msg;
+            const normalizedNationalId = (existing.nationalId || '').toString().trim();
+            const normalizedPhotoUrl = (existing.photoUrl || '').toString().trim();
+            const cachedHasProfileData = hasRequiredProfileData(CURRENT_USER);
+            const serverHasProfileData = !!normalizedNationalId && !!normalizedPhotoUrl;
+            if (serverHasProfileData || cachedHasProfileData) {
+                CURRENT_USER = {
+                    ...CURRENT_USER,
+                    nationalId: normalizedNationalId || (CURRENT_USER.nationalId || ''),
+                    photoUrl: normalizedPhotoUrl || (CURRENT_USER.photoUrl || '')
+                };
+                launchApp();
                 return;
             }
+            setTimeout(() => {
+                if (!FIREBASE_USER || !CURRENT_USER || CURRENT_USER.id !== existing.id) return;
+                const latestNationalId = (CURRENT_USER.nationalId || '').toString().trim();
+                const latestPhotoUrl = (CURRENT_USER.photoUrl || '').toString().trim();
+                if (latestNationalId && latestPhotoUrl) {
+                    launchApp();
+                    return;
+                }
+                document.getElementById('completeProfileScreen').style.display = 'flex';
+                document.getElementById('compFullName').value = CURRENT_USER.fullName || '';
+                let msg = '⚠️ يرجى استكمال البيانات التالية لإكمال ملفك الشخصي:\n';
+                if (!latestNationalId) msg += '• الرقم القومي (مطلوب)\n';
+                if (!latestPhotoUrl) msg += '• الصورة الشخصية (مطلوبة)\n';
+                document.querySelector('#completeProfileScreen .reg-card p').textContent = msg;
+            }, 400);
+            return;
         }
         if (existing.status === 'PENDING') { 
             document.getElementById('pendingScreen').style.display = 'flex'; 
@@ -1717,16 +1741,78 @@ async function renderAttendance(root) {
     let locationLink = '-';
     if (checkInMapsLink && checkInMapsLink.trim().startsWith('http')) locationLink = `<a href="${checkInMapsLink}" target="_blank" class="location-link">📍 ${locationDisplay}</a>`;
     else if (checkInLat && checkInLng) locationLink = `<a href="https://www.google.com/maps?q=${checkInLat},${checkInLng}" target="_blank" class="location-link">📍 ${locationDisplay}</a>`;
+
+    const monthStart = new Date(getEgyptNow());
+    monthStart.setHours(0,0,0,0);
+    monthStart.setDate(1);
+    const monthEnd = new Date(getEgyptNow());
+    monthEnd.setHours(0,0,0,0);
+    const monthDates = [];
+    for (let cursor = new Date(monthStart); cursor <= monthEnd; cursor.setDate(cursor.getDate() + 1)) {
+        monthDates.push(getEgyptDateKey(cursor));
+    }
+    const monthlyAttendanceData = await Promise.all(monthDates.map(async (dateKey) => {
+        try {
+            const records = await api('listAttendance', { userId: CURRENT_USER.id, date: dateKey });
+            return { dateKey, records: Array.isArray(records) ? records : [] };
+        } catch (e) {
+            return { dateKey, records: [] };
+        }
+    }));
+
+    let presentDays = 0;
+    let absentDays = 0;
+    let lateDays = 0;
+    const monthRows = monthlyAttendanceData.map(({ dateKey, records }) => {
+        const inRecord = records.find(a => a.type === 'IN');
+        const outRecord = records.find(a => a.type === 'OUT');
+        const isLate = !!(inRecord && getAttendanceWindowState(new Date(inRecord.timestamp)).isLate);
+        const isPresent = !!inRecord;
+        const isAbsent = !inRecord;
+        if (isPresent) presentDays += 1;
+        if (isAbsent) absentDays += 1;
+        if (isLate) lateDays += 1;
+        const displayDate = new Date(dateKey + 'T00:00:00');
+        const dayLabel = displayDate.toLocaleDateString('ar-EG', { weekday: 'short', day: 'numeric', month: 'numeric' });
+        const inTime = inRecord ? fmtTime(inRecord.timestamp) : '-';
+        const outTime = outRecord ? fmtTime(outRecord.timestamp) : '-';
+        const tasksText = outRecord && outRecord.tasks ? outRecord.tasks.replace(/\s+/g, ' ').trim() : '-';
+        const tasksSummary = tasksText !== '-' ? (tasksText.length > 70 ? tasksText.substring(0, 70) + '...' : tasksText) : '-';
+        const statusLabel = isAbsent ? '<span class="chip rejected">❌ غياب</span>' : (isLate ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">✅ حاضر</span>');
+        const todayMarker = dateKey === today ? 'style="background:rgba(201,162,39,.12);"' : '';
+        return `<tr ${todayMarker}><td>${dayLabel}</td><td>${inTime}</td><td>${outTime}</td><td>${tasksSummary}</td><td>${statusLabel}</td></tr>`;
+    });
+
     root.innerHTML = `
         <div class="panel" style="text-align:center;padding:24px 20px">
-            <!-- ... -->
+            <div class="attendance-status-box" style="margin-bottom:0">
+                <div class="status-icon-large">🕒</div>
+                <div class="status-text-large">${hasCheckIn ? 'تم تسجيل الحضور اليوم' : 'لم يتم تسجيل الحضور بعد'}</div>
+                <div class="status-sub">${checkInTime ? `آخر حضور: ${fmtDate(checkInTime)}` : 'لم يتم تسجيل حضور اليوم بعد'}</div>
+            </div>
             <div class="attendance-buttons-row">
                 <button class="btn btn-primary" id="checkInBtn" ${hasCheckIn ? 'disabled' : ''}>${hasCheckIn ? '✅ تم تسجيل الحضور اليوم' : '✅ تسجيل حضور'}</button>
                 <button class="btn btn-danger" id="checkOutBtn" ${(!hasCheckIn || hasCheckOut) ? 'disabled' : ''}>${hasCheckOut ? '✅ تم تسجيل الانصراف اليوم' : (hasCheckIn ? '⏹ تسجيل انصراف' : '⏹ انصراف (يجب الحضور أولاً)')}</button>
             </div>
-            
-            <!-- 🔴 أضف هذا القسم هنا 🔴 -->
             <div class="gps-box" style="justify-content:center;margin-top:12px">📍 سيُحاول النظام تحديد موقعك تلقائيًا عند تسجيل الحضور، وفي حال تعذر ذلك سيتم التسجيل بدون موقع.</div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+            <div class="panel-head"><h3>📅 سجل الشهر الحالي من أول الشهر حتى اليوم</h3></div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:10px 0 14px">
+                <div style="background:linear-gradient(135deg,var(--good),#2aa56a);color:#fff;padding:12px;border-radius:12px;text-align:center">
+                    <div style="font-size:20px;font-weight:800">${presentDays}</div>
+                    <div style="font-size:12px;opacity:.95">عدد أيام الحضور</div>
+                </div>
+                <div style="background:linear-gradient(135deg,var(--bad),#e24f4f);color:#fff;padding:12px;border-radius:12px;text-align:center">
+                    <div style="font-size:20px;font-weight:800">${absentDays}</div>
+                    <div style="font-size:12px;opacity:.95">عدد أيام الغياب</div>
+                </div>
+                <div style="background:linear-gradient(135deg,var(--warn),#e39a22);color:#fff;padding:12px;border-radius:12px;text-align:center">
+                    <div style="font-size:20px;font-weight:800">${lateDays}</div>
+                    <div style="font-size:12px;opacity:.95">عدد مرات التأخير</div>
+                </div>
+            </div>
+            <div class="table-wrap"><table><thead><tr><th>اليوم</th><th>حضور</th><th>انصراف</th><th>المهام</th><th>الحالة</th></tr></thead><tbody>${monthRows.join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد سجل لهذا الشهر</div></td></tr>'}</tbody></table></div>
         </div>
         <div class="panel"><div class="panel-head"><h3>سجل الحضور والانصراف اليوم</h3></div><div class="table-wrap"><table><thead><tr><th>النوع</th><th>التاريخ والوقت</th><th>الموقع</th><th>الحالة</th><th>ما تم تنفيذه</th></tr></thead><tbody>${myAttendance.length ? myAttendance.map(a => {
             const isLateCheck = a.type === 'IN' ? getAttendanceWindowState(new Date(a.timestamp)).isLate : false;
