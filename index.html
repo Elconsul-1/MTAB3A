@@ -20,6 +20,7 @@
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 
 <style>
 /* =====================================================================
@@ -107,7 +108,14 @@ a{color:inherit}
     background:#f4f6f8; font-size:13px; font-weight:600; color:var(--ink-600); cursor:pointer;
 }
 
-/* ---------- شاشة الدخول ---------- */
+/* ---------- شاشات ما قبل الدخول للتطبيق (دخول/تسجيل/انتظار) ----------
+   ملاحظة إصلاح: كانت هذه الشاشات عناصر عادية داخل تدفق الصفحة (min-height:100vh فقط)
+   وليست ثابتة الموضع، فإذا تغيّرت حالة العرض بينها بأى تأخير كانت تتكدّس فوق بعضها
+   ويظهر نموذج استكمال البيانات عند تمرير الشاشة لأعلى. الآن أصبحت جميعها طبقات
+   ثابتة (position:fixed) تغطى الشاشة بالكامل، بحيث يظهر واحد منها فقط دائمًا. */
+#loginScreen,#registerScreen,#pendingScreen,#rejectedScreen,#completeProfileScreen{
+    position:fixed;inset:0;z-index:60;overflow-y:auto;-webkit-overflow-scrolling:touch;
+}
 #loginScreen{
     min-height:100vh;display:flex;align-items:center;justify-content:center;
     background: radial-gradient(1200px 600px at 15% -10%, rgba(201,162,39,.18), transparent 60%),
@@ -189,7 +197,7 @@ a{color:inherit}
 .small-avatar{width:40px;height:40px;border-radius:50%;background:var(--navy-700);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;overflow:hidden;flex-shrink:0}
 .small-avatar img{width:100%;height:100%;object-fit:cover}
 .main{flex:1;min-width:0;display:flex;flex-direction:column}
-.topbar{background:#fff;border-bottom:1px solid var(--line);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20;}
+.topbar{background:#fff;border-bottom:1px solid var(--line);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1010;}
 .topbar h2{margin:0;font-size:18px}
 .topbar-actions{display:flex;align-items:center;gap:14px}
 .icon-btn{position:relative;width:38px;height:38px;border-radius:10px;border:1.5px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:center;font-size:16px}
@@ -222,7 +230,7 @@ tbody tr:hover{background:#fafcfd}
 .empty-state{text-align:center;padding:40px 20px;color:var(--ink-400)}
 .empty-state .ic{font-size:34px;margin-bottom:10px}
 
-.modal-overlay{position:fixed;inset:0;background:rgba(7,27,46,.55);display:none;align-items:center;justify-content:center;z-index:100;padding:16px;}
+.modal-overlay{position:fixed;inset:0;background:rgba(7,27,46,.55);display:none;align-items:center;justify-content:center;z-index:1150;padding:16px;}
 .modal-overlay.show{display:flex}
 .modal-box{background:#fff;border-radius:16px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:26px}
 .modal-box h3{margin:0 0 18px;font-size:17px}
@@ -232,7 +240,7 @@ tbody tr:hover{background:#fafcfd}
 .tab-btn{padding:10px 16px;border:none;background:none;font-weight:700;font-size:13.5px;color:var(--ink-400);border-bottom:3px solid transparent;white-space:nowrap}
 .tab-btn.active{color:var(--navy-900);border-color:var(--gold-500)}
 
-.toast-wrap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast-wrap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:1200;display:flex;flex-direction:column;gap:8px;align-items:center}
 .toast{background:var(--navy-950);color:#fff;padding:11px 20px;border-radius:10px;font-size:13.5px;box-shadow:0 8px 20px rgba(0,0,0,.3);animation:toastIn .25s ease}
 .toast.err{background:var(--bad)}
 .toast.ok{background:var(--good)}
@@ -333,14 +341,19 @@ tbody tr:hover{background:#fafcfd}
 .leaflet-popup-content{font-family:var(--font-body);font-size:13px;text-align:right}
 .leaflet-popup-content .popup-location{color:var(--ink-600);font-size:12px}
 .custom-marker{background:transparent;border:none}
+.map-label{background:rgba(11,44,71,.92);color:#fff;border:none;box-shadow:0 2px 8px rgba(0,0,0,.25);border-radius:8px;padding:2px 8px;font-family:var(--font-body);font-size:11.5px;font-weight:700}
+.map-label::before{border-top-color:rgba(11,44,71,.92)!important}
+.map-label-me{background:var(--gold-500);color:var(--navy-950)}
+.map-label-me::before{border-top-color:var(--gold-500)!important}
+@keyframes pulseMe{0%,100%{box-shadow:0 2px 10px rgba(0,0,0,.35),0 0 0 0 rgba(201,162,39,.55)}50%{box-shadow:0 2px 10px rgba(0,0,0,.35),0 0 0 10px rgba(201,162,39,0)}}
 .clickable-row{cursor:pointer;transition:background 0.2s}
 .clickable-row:hover{background:#e8f0fe !important}
 
 @media (max-width:900px){
-    .sidebar{position:fixed;right:0;top:0;z-index:60;transform:translateX(100%);box-shadow:none;width:min(250px,82vw)}
+    .sidebar{position:fixed;right:0;top:0;z-index:1101;transform:translateX(100%);box-shadow:none;width:min(250px,82vw)}
     .sidebar.open{transform:translateX(0);box-shadow:-20px 0 40px rgba(0,0,0,.3)}
     .menu-toggle{display:block}
-    .overlay-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:50;display:none}
+    .overlay-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1100;display:none}
     .overlay-bg.show{display:block}
     .content{padding:16px}
     .topbar{padding:12px 16px}
@@ -516,7 +529,7 @@ tbody tr:hover{background:#fafcfd}
     <div class="topbar">
       <div style="display:flex;align-items:center;gap:10px">
         <button class="menu-toggle" onclick="toggleSidebar(true)">☰</button>
-        <h2 id="pageTitle">لوحة التحكم والمؤشرات</h2>
+        <h2 id="pageTitle">مؤشرات</h2>
       </div>
       <div class="topbar-actions" style="align-items:center;gap:10px">
         <div class="topbar-user"><div class="small-avatar" id="topbarAvatar">?</div><div style="font-size:12.5px;color:var(--ink-600);text-align:left;line-height:1.3" id="topbarUserInfo"></div></div>
@@ -536,7 +549,7 @@ tbody tr:hover{background:#fafcfd}
 <div id="printArea"></div>
 
 <div class="toast-wrap" id="toastWrap"></div>
-<div id="installBanner" style="display:none;position:fixed;left:16px;right:16px;bottom:16px;z-index:220;background:linear-gradient(135deg,var(--navy-900),var(--navy-700));color:#fff;padding:14px 16px;border-radius:14px;box-shadow:0 12px 28px rgba(0,0,0,.28);max-width:420px;margin:auto">
+<div id="installBanner" style="display:none;position:fixed;left:16px;right:16px;bottom:16px;z-index:1220;background:linear-gradient(135deg,var(--navy-900),var(--navy-700));color:#fff;padding:14px 16px;border-radius:14px;box-shadow:0 12px 28px rgba(0,0,0,.28);max-width:420px;margin:auto">
   <div style="font-size:14px;font-weight:800;margin-bottom:6px">تثبيت المنظومة كتطبيق</div>
   <div style="font-size:13px;line-height:1.7;color:rgba(255,255,255,.88)">يمكنك تثبيت المنظومة على الشاشة الرئيسية للوصول إليها بسرعة كأيقونة تطبيق.</div>
   <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
@@ -553,11 +566,20 @@ const FIREBASE_CONFIG = {
   apiKey: "AIzaSyArZobSwV4zRzkkdqGeAiUb1JKjzabOXhM",
   authDomain: "mtab3a-1b478.firebaseapp.com",
   projectId: "mtab3a-1b478",
+  storageBucket: "mtab3a-1b478.firebasestorage.app",
+  // مطلوبان لتفعيل إشعارات Push (FCM)
+  messagingSenderId: "238806127152",
+  appId: "1:238806127152:web:95ae2654807e0761c553f5",
 };
+// مفتاح VAPID العام لإشعارات الويب - من Firebase Console -> Cloud Messaging -> Web Push certificates
+const FCM_VAPID_KEY = "BDf_oDRtsY7qsRr5ohNeTsa9PZBXDRqWPWO3IYSWJku52-T6pvfXM5dCB2yMQzyRPRcs6UtyBkVl1nhmcQpvRaA";
 const API_URL = "https://script.google.com/macros/s/AKfycbzvLzXmAEvDvgeYB87PTusZYO17tKLv73UeXlY9Hj28VCWquDopHS-9XoeR2VdFmDH79Q/exec";
 
 firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
+// تسجيل دخول تلقائي فى الزيارات القادمة: نفرض صراحة تخزين الجلسة محليًا (IndexedDB/localStorage)
+// حتى لا تُفقد جلسة المستخدم عند إغلاق المتصفح أو إعادة فتح التطبيق كأيقونة PWA.
+try { auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(e) {}
 
 if (location.protocol === 'file:') {
   document.addEventListener('DOMContentLoaded', () => {
@@ -580,6 +602,34 @@ let attendanceLock = { processing: false };
 let allUsersCache = [];
 let mapInstance = null;
 let PRESENT_NOW_INTERVAL_ID = null;
+
+/* ---------- تسجيل الدخول التلقائى فى الزيارات القادمة ----------
+   نخزن نسخة خفيفة من بيانات المستخدم محليًا بعد أول تسجيل دخول ناجح، حتى إذا
+   كانت هناك جلسة محفوظة لدى Firebase نُخفى شاشة تسجيل الدخول فورًا (بدلاً من
+   ظهورها للحظة) وننتظر تأكيد Firebase فى الخلفية بدل مطالبة المستخدم بالدخول يدويًا. */
+function cacheAppUser(u) {
+    try { localStorage.setItem('cachedAppUser', JSON.stringify({ id:u.id, email:u.email, fullName:u.fullName, role:u.role, center:u.center, status:u.status })); } catch(e) {}
+}
+function clearCachedAppUser() { try { localStorage.removeItem('cachedAppUser'); } catch(e) {} }
+function getCachedAppUser() { try { const raw = localStorage.getItem('cachedAppUser'); return raw ? JSON.parse(raw) : null; } catch(e) { return null; } }
+(function tryAutoLoginFastPath() {
+    const cached = getCachedAppUser();
+    if (cached && cached.status === 'APPROVED') {
+        // نخفى شاشة الدخول فورًا ونعرض مؤشر تحقق بسيط بدلاً منها ريثما يؤكد Firebase الجلسة
+        document.addEventListener('DOMContentLoaded', () => {
+            const ls = document.getElementById('loginScreen');
+            if (ls) ls.style.display = 'none';
+            const boot = document.createElement('div');
+            boot.id = 'autoLoginBoot';
+            boot.style.cssText = 'position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;background:var(--navy-950);color:#fff;font-family:Tajawal,sans-serif;flex-direction:column;gap:14px';
+            boot.innerHTML = '<div style="width:40px;height:40px;border:4px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite"></div><div style="font-size:13.5px;opacity:.85">جارِ تسجيل الدخول تلقائيًا...</div>';
+            document.body.appendChild(boot);
+            // مهلة أمان: لو لم يصل رد Firebase خلال 6 ثوانٍ نعيد إظهار شاشة الدخول العادية
+            setTimeout(() => { const b = document.getElementById('autoLoginBoot'); if (b && !CURRENT_USER) { b.remove(); if (ls) ls.style.display = 'flex'; } }, 6000);
+        });
+    }
+})();
+function removeAutoLoginBoot() { const b = document.getElementById('autoLoginBoot'); if (b) b.remove(); }
 
 /* =====================================================================
    دوال مساعدة عامة
@@ -721,6 +771,16 @@ async function getLocationNameOSM(lat, lng) {
 /* =====================================================================
    طبقة الاتصال بالـ API
    ===================================================================== */
+// إجراءات قراءة فقط لا تستوجب تحديث المحتوى المخزن مؤقتًا لبقية الأقسام
+const READ_ONLY_ACTIONS = new Set([
+    'getUserByEmail','listUsers','listPendingUsers','listAttendance','todayAttendanceStatus','centerAttendanceToday',
+    'monthlyAttendanceSummary','getAttendanceWindowSettings','listDailyCoordination','getDailyCoordinationReport',
+    'listMissions','listAssignments','listAssignmentBatches','listPendingAssignmentsForUser','listEngineers','listCenterStaff',
+    'listTasks','listEquipment','listEquipmentLog','deviceStatusToday','listNotifications','listWorkReports','workReportSummary',
+    'centerWorkSummary','centersRanking','topTechniciansGovernorate','topPerformers','centerEffortSummary','individualEffortSummary',
+    'dashboardStats','centersOverviewToday','centerDailySummary','indicatorsOverview','listAuditLog','listCenters',
+    'getCurrentLocations','recordLogin','recordAuditEvent'
+]);
 async function api(action, params) {
     const body = Object.assign({ action }, params || {});
     try {
@@ -731,6 +791,13 @@ async function api(action, params) {
         const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
         const json = await res.json();
         if (!json.success) throw new Error(json.error || 'خطأ غير معروف');
+        // تحديث تلقائى شامل: أى إجراء غير قراءة (إضافة/تعديل/حذف/تحديث حالة...) يُبطل كل المحتوى
+        // المخزن مؤقتًا لبقية الأقسام حتى تُجلب بيانات حديثة تلقائيًا عند دخولها لاحقًا
+        if (!READ_ONLY_ACTIONS.has(action)) {
+            Object.keys(PAGE_CACHE).forEach(k => { if (k !== currentPage) delete PAGE_CACHE[k]; });
+            clearTimeout(window.__refreshDebounce);
+            window.__refreshDebounce = setTimeout(prefetchAllPages, 1200);
+        }
         return json.data;
     } catch(e) { showToast(e.message || 'تعذر الاتصال بالخادم', 'err'); throw e; }
 }
@@ -823,6 +890,8 @@ auth.getRedirectResult()
 // مراقبة حالة المصادقة
 auth.onAuthStateChanged(async (user) => {
     if (!user) { 
+        removeAutoLoginBoot();
+        clearCachedAppUser();
         hideAllScreens(); 
         document.getElementById('loginScreen').style.display = 'flex'; 
         return; 
@@ -836,6 +905,7 @@ async function refreshMyStatus() {
     try {
         const existing = await api('getUserByEmail', { email: FIREBASE_USER.email });
         hideAllScreens();
+        removeAutoLoginBoot();
         if (!existing) { 
             document.getElementById('regEmail').value = FIREBASE_USER.email; 
             document.getElementById('registerScreen').style.display = 'flex'; 
@@ -875,6 +945,8 @@ function hideAllScreens() {
 
 function doLogout() { 
     hideAllScreens(); 
+    removeAutoLoginBoot();
+    clearCachedAppUser();
     CURRENT_USER = null; 
     FIREBASE_USER = null;
     auth.signOut().finally(() => { 
@@ -887,7 +959,7 @@ function doLogout() {
    ===================================================================== */
 const NAV_ITEMS = [
     { key:'home', label:'الرئيسية', icon:'🏠', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
-    { key:'dashboard', label:'لوحة التحكم', icon:'📊', roles:['SYSTEM_ADMIN'] },
+    { key:'dashboard', label:'مؤشرات', icon:'📊', roles:['SYSTEM_ADMIN'] },
     { key:'attendance', label:'الحضور والانصراف', icon:'🕒', roles:['CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
     { key:'coordination', label:'متابعة اليوم', icon:'🧭', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
     { key:'assignments', label:'التكليفات والمهام', icon:'🗂️', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
@@ -923,6 +995,8 @@ function buildNav() {
 }
 function launchApp() {
     hideAllScreens();
+    removeAutoLoginBoot();
+    cacheAppUser(CURRENT_USER);
     registerPwaFeatures();
     document.getElementById('app').style.display = 'block';
     document.getElementById('sideName').textContent = CURRENT_USER.fullName;
@@ -936,13 +1010,16 @@ function launchApp() {
     goPage(currentPage, true);
     refreshNotifCount();
     setInterval(refreshNotifCount, 60000);
+    showPendingAssignmentsPrompt();
+    setTimeout(prefetchAllPages, 2000);
+    setTimeout(setupPushNotifications, 3000);
     try { api('recordLogin', { userId: CURRENT_USER.id, userName: CURRENT_USER.fullName, email: CURRENT_USER.email }).catch(() => {}); } catch(e) {}
 }
 
 function registerPwaFeatures() {
     if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js').catch(() => {}); }
     window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredInstallPrompt = e; showInstallBanner(); });
-    window.addEventListener('appinstalled', () => { hideInstallBanner(); showToast('تم تثبيت المنظومة بنجاح', 'ok'); });
+    window.addEventListener('appinstalled', () => { hideInstallBanner(); localStorage.setItem('pwaInstalled', '1'); showToast('تم تثبيت المنظومة بنجاح', 'ok'); });
     document.getElementById('installActionBtn').addEventListener('click', async () => {
         if (!deferredInstallPrompt) { showToast('افتح القائمة واختر تثبيت التطبيق', 'ok'); hideInstallBanner(); return; }
         deferredInstallPrompt.prompt();
@@ -951,15 +1028,35 @@ function registerPwaFeatures() {
         else showToast('تم إلغاء التثبيت', 'err');
         deferredInstallPrompt = null;
     });
-    document.getElementById('installDismissBtn').addEventListener('click', () => { localStorage.setItem('pwaInstallDismissed', '1'); hideInstallBanner(); });
+    document.getElementById('installDismissBtn').addEventListener('click', () => { localStorage.setItem('pwaInstallDismissedAt', String(Date.now())); hideInstallBanner(); });
+    // iOS Safari لا يطلق حدث beforeinstallprompt إطلاقًا، فنعرض تعليمات التثبيت اليدوى بدلاً منه
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (isIOS && !isStandalone) { setTimeout(showIosInstallBanner, 1500); }
+}
+function installBannerDismissedRecently() {
+    const at = parseInt(localStorage.getItem('pwaInstallDismissedAt') || '0', 10);
+    if (!at) return false;
+    return (Date.now() - at) < (7 * 24 * 60 * 60 * 1000); // تذكير كل 7 أيام لو تم التجاهل
 }
 function showInstallBanner() {
     const banner = document.getElementById('installBanner');
     if (!banner || !deferredInstallPrompt) return;
-    if (localStorage.getItem('pwaInstallDismissed') === '1' || window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) return;
+    if (localStorage.getItem('pwaInstalled') === '1' || installBannerDismissedRecently() || window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) return;
+    banner.style.display = 'block';
+}
+function showIosInstallBanner() {
+    const banner = document.getElementById('installBanner');
+    if (!banner) return;
+    if (localStorage.getItem('pwaInstalled') === '1' || installBannerDismissedRecently()) return;
+    banner.querySelector('div[style*="font-size:14px"]').textContent = 'ثبّت المنظومة على شاشتك الرئيسية';
+    banner.querySelector('div[style*="font-size:13px"]').innerHTML = 'اضغط زر المشاركة <b>⬆️</b> أسفل الشاشة، ثم اختر <b>"إضافة إلى الشاشة الرئيسية"</b>.';
+    const actionBtn = document.getElementById('installActionBtn');
+    if (actionBtn) actionBtn.style.display = 'none';
     banner.style.display = 'block';
 }
 function hideInstallBanner() { const banner = document.getElementById('installBanner'); if (banner) banner.style.display = 'none'; }
+
 
 function centerOptions(allowInEquipment, selected) {
     if (CURRENT_USER && CURRENT_USER.role === 'SYSTEM_ADMIN') return CENTERS.map(c => `<option value="${c}" ${selected===c ? 'selected' : ''}>${c}</option>`).join('');
@@ -976,6 +1073,23 @@ window.addEventListener('popstate', (e) => {
 window.addEventListener('beforeunload', (e) => { if (!CURRENT_USER) return; e.preventDefault(); e.returnValue = 'هل أنت متأكد من رغبتك في الخروج؟'; return e.returnValue; });
 function confirmExitApp() { openModal(`<h3>تأكيد تسجيل الخروج</h3><p style="color:var(--ink-600);font-size:14px">هل أنت متأكد من رغبتك في تسجيل الخروج من المنظومة؟</p><div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">تراجع</button><button class="btn btn-danger" onclick="closeModal();doLogout()">تأكيد الخروج</button></div>`); }
 
+const PAGE_TITLES = { home:'الرئيسية', dashboard:'مؤشرات', attendance:'الحضور والانصراف', coordination:'متابعة اليوم', assignments:'التكليفات والمهام', equipment:'الأجهزة المساحية', profile:'الملف الشخصي', users:'إدارة المستخدمين', presentNow:'المتواجدين حاليا', performance:'الأداء والتميز' };
+const PAGE_RENDERERS = { home:renderHome, dashboard:renderDashboard, attendance:renderAttendance, coordination:renderCoordination, assignments:renderAssignments, equipment:renderEquipment, profile:renderProfile, users:renderUsers, presentNow:renderPresentNow, performance:renderPerformance };
+// صفحات لا يجوز تحميلها مسبقًا فى الخلفية (خارج DOM الفعلى) لأنها تعتمد على عناصر حقيقية فى الصفحة
+// مثل الخريطة (Leaflet) التى تحتاج حاوية متصلة بالمستند لتعمل بشكل صحيح
+const PREFETCH_UNSAFE_PAGES = ['presentNow', 'home', 'profile'];
+
+// تنظيف خريطة "المتواجدين الآن" عند مغادرة الصفحة (كانت هذه الدالة تُستدعى فى goPage
+// دون أن تكون معرّفة، مما يوقف التنقل بالكامل بخطأ صامت فى الخلفية عند مغادرة القسم)
+function destroyMap() {
+    try {
+        if (window.PRESENT_NOW_INTERVAL_ID) { clearInterval(window.PRESENT_NOW_INTERVAL_ID); window.PRESENT_NOW_INTERVAL_ID = null; }
+        if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+        if (window.__routeMapInstance) { window.__routeMapInstance.remove(); window.__routeMapInstance = null; }
+        if (window._mapResizeHandler) { window.removeEventListener('resize', window._mapResizeHandler); window._mapResizeHandler = null; }
+    } catch(e) {}
+}
+
 async function goPage(key, skipHistory, useCache = true) {
     if (isProcessing) return;
     isProcessing = true;
@@ -991,28 +1105,47 @@ async function goPage(key, skipHistory, useCache = true) {
     if (navEl) navEl.classList.add('active');
     toggleSidebar(false);
     if (!skipHistory) history.pushState({ page: key }, '', '');
-    const titles = { home:'الرئيسية', dashboard:'لوحة التحكم والمؤشرات', attendance:'الحضور والانصراف', coordination:'متابعة اليوم', assignments:'التكليفات والمهام', equipment:'الأجهزة المساحية', profile:'الملف الشخصي', users:'إدارة المستخدمين', presentNow:'المتواجدين حاليا', performance:'الأداء والتميز' };
-    document.getElementById('pageTitle').textContent = titles[key] || key;
-    const renderers = { home:renderHome, dashboard:renderDashboard, attendance:renderAttendance, coordination:renderCoordination, assignments:renderAssignments, equipment:renderEquipment, profile:renderProfile, users:renderUsers, presentNow:renderPresentNow, performance:renderPerformance };
+    document.getElementById('pageTitle').textContent = PAGE_TITLES[key] || key;
+    const renderers = PAGE_RENDERERS;
     const content = document.getElementById('pageContent');
-    content.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+    // تحميل فورى: لو عندنا نسخة سابقة من محتوى هذا القسم مخزّنة مؤقتًا نعرضها فورًا
+    // بدلاً من دائرة التحميل، ثم نجلب البيانات الحديثة فى الخلفية ونحدّث المحتوى بصمت
+    const hasCache = useCache && PAGE_CACHE[key];
+    if (hasCache) { content.innerHTML = PAGE_CACHE[key]; }
+    else { content.innerHTML = '<div class="loader"><div class="spinner"></div></div>'; }
     try {
         if (renderers[key]) { 
-            // 🔴 إذا كنا ندخل إلى presentNow، ننتظر قليلاً ثم ننشئ الخريطة
-            if (key === 'presentNow') {
-                await renderers[key](content); 
-                PAGE_CACHE[key] = content.innerHTML;
-                // سيتم تهيئة الخريطة داخل renderPresentNow
-            } else {
-                await renderers[key](content); 
-                PAGE_CACHE[key] = content.innerHTML;
-            }
+            await renderers[key](content); 
+            PAGE_CACHE[key] = content.innerHTML;
         }
         else { content.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>الصفحة قيد التطوير</div>`; }
     } catch(e) { 
-        content.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>تعذر تحميل بيانات هذا القسم.<br><span style="font-size:12.5px;color:var(--ink-600)">${e.message || 'خطأ غير معروف'}</span><div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="goPage('${key}', true, false)">إعادة المحاولة</button></div></div>`; 
+        if (!hasCache) content.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>تعذر تحميل بيانات هذا القسم.<br><span style="font-size:12.5px;color:var(--ink-600)">${e.message || 'خطأ غير معروف'}</span><div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="goPage('${key}', true, false)">إعادة المحاولة</button></div></div>`; 
     }
     isProcessing = false;
+}
+
+/* =====================================================================
+   تحميل مسبق لكل الأقسام فى الخلفية (Prefetch)
+   بعد دخول التطبيق نجهّز بيانات كل الأقسام المسموح بها للمستخدم فى عنصر
+   منفصل غير ظاهر، حتى يجد المستخدم المحتوى جاهزًا فور دخوله لأى قسم
+   دون انتظار، ودون التأثير على القسم المعروض حاليًا على الشاشة.
+   ===================================================================== */
+let __prefetchRunning = false;
+async function prefetchAllPages() {
+    if (!CURRENT_USER || __prefetchRunning) return;
+    __prefetchRunning = true;
+    try {
+        const keys = NAV_ITEMS.filter(i => i.roles.includes(CURRENT_USER.role) && !PREFETCH_UNSAFE_PAGES.includes(i.key)).map(i => i.key);
+        for (const key of keys) {
+            if (key === currentPage) continue; // القسم المعروض حاليًا محدَّث بالفعل
+            try {
+                const buffer = document.createElement('div');
+                await PAGE_RENDERERS[key](buffer);
+                PAGE_CACHE[key] = buffer.innerHTML;
+            } catch(e) { /* تجاهل أخطاء أى قسم بمفرده حتى لا توقف بقية التحميل المسبق */ }
+        }
+    } finally { __prefetchRunning = false; }
 }
 
 /* =====================================================================
@@ -1027,14 +1160,62 @@ async function renderHome(root) {
 }
 
 async function renderDashboard(root) {
-    const selectedDate = localStorage.getItem('dashboardDate') || getEgyptDateKey(getEgyptNow());
-    const [stats] = await Promise.all([api('dashboardStats', Object.assign(CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {}, { date: selectedDate }))]);
+    const todayKey = getEgyptDateKey(getEgyptNow());
+    const savedFrom = localStorage.getItem('indicatorsDateFrom') || todayKey;
+    const savedTo = localStorage.getItem('indicatorsDateTo') || todayKey;
+    const savedCenter = localStorage.getItem('indicatorsCenter') || '';
+
+    const [stats, indicators] = await Promise.all([
+        api('dashboardStats', Object.assign(CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {}, { date: todayKey })),
+        api('indicatorsOverview', { dateFrom: savedFrom, dateTo: savedTo, center: savedCenter })
+    ]);
+
     root.innerHTML = `
-        <div class="dashboard-topline"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px;font-weight:800;color:var(--navy-950)">لوحة التحكم والمؤشرات</span></div><div class="dashboard-controls"><label style="font-size:13px;color:var(--ink-600);">التاريخ <input id="dashboardDateFilter" type="date" value="${selectedDate}"></label><div id="dashboardClock" class="dashboard-clock"></div></div></div>
+        <div class="dashboard-topline"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px;font-weight:800;color:var(--navy-950)">مؤشرات</span></div><div id="dashboardClock" class="dashboard-clock"></div></div>
+
+        <div class="filter-bar" style="margin-bottom:16px">
+            <label style="font-size:12.5px;color:var(--ink-600);display:flex;align-items:center;gap:6px">من <input id="indFrom" type="date" value="${savedFrom}"></label>
+            <label style="font-size:12.5px;color:var(--ink-600);display:flex;align-items:center;gap:6px">إلى <input id="indTo" type="date" value="${savedTo}"></label>
+            <select id="indCenter"><option value="">كل المراكز</option>${CENTERS.map(c => `<option value="${c}" ${savedCenter===c?'selected':''}>${c}</option>`).join('')}</select>
+            <button class="btn btn-primary btn-sm" onclick="applyIndicatorsFilters()">🔍 تطبيق</button>
+            <button class="btn btn-outline btn-sm" onclick="clearIndicatorsFilters()">✖ اليوم / الكل</button>
+        </div>
+
+        <div style="font-size:13px;font-weight:700;color:var(--ink-600);margin-bottom:8px">📌 اليوم الحالى</div>
         <div class="summary-grid"><div class="summary-card"><div class="summary-label">عدد المعاينات المستهدفة</div><div class="summary-value">${stats.targetCount || 0}</div></div><div class="summary-card"><div class="summary-label">عدد ما تم إنجازه</div><div class="summary-value">${stats.completedTasks || 0}</div></div><div class="summary-card"><div class="summary-label">أول بدء عمل</div><div class="summary-value">${stats.workStart ? fmtDate(stats.workStart) : '-'}</div></div><div class="summary-card"><div class="summary-label">آخر انتهاء عمل</div><div class="summary-value">${stats.workEnd ? fmtDate(stats.workEnd) : '-'}</div></div></div>
+
+        <div style="font-size:13px;font-weight:700;color:var(--ink-600);margin:18px 0 8px">📊 إحصائيات الفترة المحددة (${indicators.dateFrom} → ${indicators.dateTo}${indicators.center ? ' — ' + indicators.center : ''})</div>
+        <div class="summary-grid">
+            <div class="summary-card"><div class="summary-label">👥 عدد الموظفين</div><div class="summary-value">${indicators.usersCount}</div></div>
+            <div class="summary-card"><div class="summary-label">✅ حضور</div><div class="summary-value">${indicators.attendanceInCount}</div></div>
+            <div class="summary-card"><div class="summary-label">⏰ تأخير</div><div class="summary-value">${indicators.lateCount}</div></div>
+            <div class="summary-card"><div class="summary-label">🗂️ مأموريات</div><div class="summary-value">${indicators.missionsCount}</div></div>
+            <div class="summary-card"><div class="summary-label">📂 مأموريات مفتوحة</div><div class="summary-value">${indicators.missionsOpenCount}</div></div>
+            <div class="summary-card"><div class="summary-label">📝 مهام</div><div class="summary-value">${indicators.tasksCount}</div></div>
+            <div class="summary-card"><div class="summary-label">📋 تكليفات</div><div class="summary-value">${indicators.assignmentsCount}</div></div>
+            <div class="summary-card"><div class="summary-label">✅ تكليفات منفذة</div><div class="summary-value">${indicators.assignmentsDoneCount}</div></div>
+            <div class="summary-card"><div class="summary-label">⏳ تكليفات قيد الانتظار</div><div class="summary-value">${indicators.assignmentsPendingCount}</div></div>
+            <div class="summary-card"><div class="summary-label">🛠️ أجهزة متاحة</div><div class="summary-value">${indicators.equipmentAvailable}</div></div>
+            <div class="summary-card"><div class="summary-label">🧑‍🔧 أجهزة مع مهندس</div><div class="summary-value">${indicators.equipmentWithEngineer}</div></div>
+            <div class="summary-card"><div class="summary-label">🚶 معاينات ميدانية</div><div class="summary-value">${indicators.fieldTotal}</div></div>
+            <div class="summary-card"><div class="summary-label">🏢 طلبات مكتبية</div><div class="summary-value">${indicators.officeTotal}</div></div>
+        </div>
     `;
-    const dateInput = document.getElementById('dashboardDateFilter');
-    if (dateInput) dateInput.onchange = () => { localStorage.setItem('dashboardDate', dateInput.value); goPage('dashboard', true, false); };
+    window.applyIndicatorsFilters = function() {
+        const from = document.getElementById('indFrom')?.value || todayKey;
+        const to = document.getElementById('indTo')?.value || todayKey;
+        const center = document.getElementById('indCenter')?.value || '';
+        localStorage.setItem('indicatorsDateFrom', from);
+        localStorage.setItem('indicatorsDateTo', to);
+        localStorage.setItem('indicatorsCenter', center);
+        delete PAGE_CACHE['dashboard'];
+        goPage('dashboard', true, false);
+    };
+    window.clearIndicatorsFilters = function() {
+        localStorage.removeItem('indicatorsDateFrom'); localStorage.removeItem('indicatorsDateTo'); localStorage.removeItem('indicatorsCenter');
+        delete PAGE_CACHE['dashboard'];
+        goPage('dashboard', true, false);
+    };
     updateDashboardClock();
     clearInterval(window.dashboardClockInterval);
     window.dashboardClockInterval = setInterval(updateDashboardClock, 1000);
@@ -1187,9 +1368,23 @@ async function doAttendanceEnhanced(action, extra = {}) {
             openModal(`
                 <h3>📋 ما تم تنفيذه اليوم</h3>
                 <p style="color:var(--ink-600);font-size:13px;margin-bottom:14px">يرجى كتابة ملخص لما تم إنجازه خلال اليوم قبل تسجيل الانصراف:</p>
-                <div class="field"><label>نوع العمل *</label><select id="checkoutWorkType" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px"><option value="FIELD">🚶 ميداني</option><option value="OFFICE">🏢 مكتبي</option></select></div>
-                <div class="field"><label>المهام المنفذة *</label><textarea id="checkoutTasks" rows="5" placeholder="مثال:&#10;1. رفع مساحي لقطعة رقم 123 بقرية كفر النيل&#10;2. تحديد منسوب بمنطقة المشتل&#10;3. معاينة أملاك دولة بمنطقة الزاوية" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px;font-family:var(--font-body)"></textarea></div>
-                <div class="field"><label>عدد الحالات المنفذة</label><input id="checkoutCasesCount" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px"></div>
+                <div class="field"><label>نوع العمل *</label><select id="checkoutWorkType" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px" onchange="toggleCheckoutWorkTypeFields()"><option value="FIELD">🚶 ميداني</option><option value="OFFICE">🏢 مكتبي</option></select></div>
+
+                <div id="checkoutFieldBlock">
+                    <div class="field"><label>عدد المعاينات الميدانية اليوم — موزّعة حسب نوع العمل *</label></div>
+                    <div class="field-row" style="gap:10px">
+                        <div class="field"><label style="font-size:12px">📐 رفع مساحي</label><input id="checkoutBreakdownSurvey" type="number" min="0" value="0" oninput="recalcCheckoutTotal()" style="width:100%;padding:9px;border-radius:8px;border:1.5px solid var(--line)"></div>
+                        <div class="field"><label style="font-size:12px">📏 تحديد منسوب</label><input id="checkoutBreakdownLevel" type="number" min="0" value="0" oninput="recalcCheckoutTotal()" style="width:100%;padding:9px;border-radius:8px;border:1.5px solid var(--line)"></div>
+                        <div class="field"><label style="font-size:12px">📌 معاينات أخرى</label><input id="checkoutBreakdownOther" type="number" min="0" value="0" oninput="recalcCheckoutTotal()" style="width:100%;padding:9px;border-radius:8px;border:1.5px solid var(--line)"></div>
+                    </div>
+                    <div style="font-size:13px;font-weight:700;color:var(--navy-900);background:#f4f6f8;border-radius:8px;padding:8px 12px;margin-bottom:14px">الإجمالي: <span id="checkoutTotalDisplay">0</span> معاينة</div>
+                </div>
+
+                <div id="checkoutOfficeBlock" style="display:none">
+                    <div class="field"><label>عدد الطلبات المدخلة على المنظومة اليوم *</label><input id="checkoutSystemEntries" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px"></div>
+                </div>
+
+                <div class="field"><label>وصف المهام المنفذة *</label><textarea id="checkoutTasks" rows="4" placeholder="مثال:&#10;1. رفع مساحي لقطعة رقم 123 بقرية كفر النيل&#10;2. تحديد منسوب بمنطقة المشتل&#10;3. معاينة أملاك دولة بمنطقة الزاوية" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px;font-family:var(--font-body)"></textarea></div>
                 <div class="field"><label>ملاحظات إضافية</label><textarea id="checkoutNotes" rows="2" placeholder="أي ملاحظات أو عقبات واجهتك..." style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:14px;font-family:var(--font-body)"></textarea></div>
                 <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إلغاء</button><button class="btn btn-primary" onclick="submitCheckoutWithDetails()">✅ تأكيد الانصراف</button></div>
             `);
@@ -1381,6 +1576,8 @@ async function doAttendanceEnhanced(action, extra = {}) {
         if (extra.tasks) payload.tasks = extra.tasks;
         if (extra.casesCount) payload.casesCount = extra.casesCount;
         if (extra.notes) payload.checkoutNotes = extra.notes;
+        if (extra.workBreakdown) payload.workBreakdown = extra.workBreakdown;
+        if (extra.systemEntriesCount) payload.systemEntriesCount = extra.systemEntriesCount;
         
         await api(action === 'checkIn' ? 'checkIn' : 'checkOut', payload);
         
@@ -1421,14 +1618,40 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
         else { checkOutBtn.disabled = true; checkOutBtn.textContent = '⏹ انصراف (يجب الحضور أولاً)'; checkOutBtn.className = 'btn btn-disabled'; checkOutBtn.style.background = '#e9ecef'; checkOutBtn.style.color = '#6c757d'; checkOutBtn.style.opacity = '0.65'; }
     }
 }
+window.toggleCheckoutWorkTypeFields = function() {
+    const wt = document.getElementById('checkoutWorkType')?.value || 'FIELD';
+    const fieldBlock = document.getElementById('checkoutFieldBlock');
+    const officeBlock = document.getElementById('checkoutOfficeBlock');
+    if (fieldBlock) fieldBlock.style.display = wt === 'FIELD' ? 'block' : 'none';
+    if (officeBlock) officeBlock.style.display = wt === 'OFFICE' ? 'block' : 'none';
+};
+window.recalcCheckoutTotal = function() {
+    const a = parseInt(document.getElementById('checkoutBreakdownSurvey')?.value || '0') || 0;
+    const b = parseInt(document.getElementById('checkoutBreakdownLevel')?.value || '0') || 0;
+    const c = parseInt(document.getElementById('checkoutBreakdownOther')?.value || '0') || 0;
+    const totalEl = document.getElementById('checkoutTotalDisplay');
+    if (totalEl) totalEl.textContent = (a + b + c);
+};
 window.submitCheckoutWithDetails = function() {
     const workType = document.getElementById('checkoutWorkType')?.value || 'FIELD';
     const tasks = document.getElementById('checkoutTasks')?.value?.trim() || '';
-    const casesCount = parseInt(document.getElementById('checkoutCasesCount')?.value || '0');
     const notes = document.getElementById('checkoutNotes')?.value?.trim() || '';
     if (!tasks) { showToast('يرجى كتابة ما تم تنفيذه خلال اليوم', 'err'); return; }
+    let casesCount = 0, workBreakdown = {}, systemEntriesCount = 0;
+    if (workType === 'FIELD') {
+        const survey = parseInt(document.getElementById('checkoutBreakdownSurvey')?.value || '0') || 0;
+        const level = parseInt(document.getElementById('checkoutBreakdownLevel')?.value || '0') || 0;
+        const other = parseInt(document.getElementById('checkoutBreakdownOther')?.value || '0') || 0;
+        casesCount = survey + level + other;
+        workBreakdown = { 'رفع مساحي': survey, 'تحديد منسوب': level, 'معاينات أخرى': other };
+        if (casesCount <= 0) { showToast('يرجى إدخال عدد المعاينات الميدانية', 'err'); return; }
+    } else {
+        systemEntriesCount = parseInt(document.getElementById('checkoutSystemEntries')?.value || '0') || 0;
+        casesCount = systemEntriesCount;
+        if (systemEntriesCount <= 0) { showToast('يرجى إدخال عدد الطلبات المدخلة على المنظومة', 'err'); return; }
+    }
     closeModal();
-    const extra = { center: window.__pendingCheckout?.center || CURRENT_USER.center, tasks, casesCount, notes, workType };
+    const extra = { center: window.__pendingCheckout?.center || CURRENT_USER.center, tasks, casesCount, notes, workType, workBreakdown: JSON.stringify(workBreakdown), systemEntriesCount };
     doAttendanceEnhanced('checkOut', extra);
     window.__pendingCheckout = null;
 };
@@ -1799,7 +2022,6 @@ async function renderAssignments(root) {
     const tasksTotal = userTasks.length;
     const tasksCasesTotal = userTasks.reduce((s,t) => s + (t.casesCount || 0), 0);
     const teamCasesTotal = allCompletedTasks.reduce((s,t) => s + (t.casesCount || 0), 0);
-    const topTechnicians = await getTopTechnicians(users);
     const centersList = [...new Set(users.filter(u => u.center && u.status === 'APPROVED').map(u => u.center))];
     
     root.innerHTML = `
@@ -1853,18 +2075,14 @@ async function renderAssignments(root) {
             <div class="stats-card"><div class="num">${tasksCasesTotal}</div><div class="label">✅ إجمالي طلباتي</div></div>
             ${(isSystemAdmin || isCenterAdmin) ? `<div class="stats-card"><div class="num">${teamCasesTotal}</div><div class="label">👥 إجمالي طلبات الفريق</div></div>` : ''}
         </div>
-        <div style="margin-bottom:16px">
-            <h4 style="margin:0 0 8px;font-size:14px;color:var(--ink-600)">🏆 أفضل 5 فنيين هذا الشهر</h4>
-            <div class="top-tech-list">${topTechnicians.length ? topTechnicians.map((t, i) => `<div class="top-tech-item"><div class="rank">${i+1}</div><div class="info"><div class="name">${t.fullName}</div><div class="count">📋 ${t.count} طلب منجز${t.center ? ' — ' + t.center : ''}</div></div></div>`).join('') : '<div style="color:var(--ink-400);font-size:13px">لا توجد بيانات كافية بعد (تُحسب من بيانات الانصراف اليومية)</div>'}</div>
-        </div>
         <div class="panel"><div class="panel-head"><h3>التكليفات والمهام</h3><div style="display:flex;gap:8px;flex-wrap:wrap">${(isSystemAdmin || isCenterAdmin) ? `<button class="btn btn-primary btn-sm" onclick="openAddMissionModal()">➕ إضافة تكليف</button>` : ''}<button class="btn btn-outline btn-sm" onclick="refreshAssignments()">⟳ تحديث</button></div></div></div>
         <div class="tabs">
-            ${isSystemAdmin ? `<button class="tab-btn active" data-tab="adminMissions">📋 تكليفات الإدارة (${adminTotal})</button>` : ''}
+            ${(isSystemAdmin || isCenterAdmin) ? `<button class="tab-btn active" data-tab="adminMissions">📋 تكليفات الإدارة العامة (${adminTotal})</button>` : ''}
             ${(isSystemAdmin || isCenterAdmin) ? `<button class="tab-btn" data-tab="centerMissions">📋 تكليفات المركز (${centerTotal})</button>` : ''}
             <button class="tab-btn" data-tab="myTasks">📝 سجل أعمالي (${tasksTotal})</button>
             ${(isSystemAdmin || isCenterAdmin) ? `<button class="tab-btn" data-tab="completedTasks">👥 سجل أعمال الفريق (${allCompletedTasks.length})</button>` : ''}
         </div>
-        <div id="tabAdminMissions" style="display:${isSystemAdmin ? 'block' : 'none'}"></div>
+        <div id="tabAdminMissions" style="display:${(isSystemAdmin || isCenterAdmin) ? 'block' : 'none'}"></div>
         <div id="tabCenterMissions" style="display:none"></div>
         <div id="tabMyTasks" style="display:none"></div>
         <div id="tabCompletedTasks" style="display:none"></div>
@@ -1875,28 +2093,31 @@ async function renderAssignments(root) {
     function renderAdminMissions() {
         const container = document.getElementById('tabAdminMissions');
         const batches = Object.values(adminBatches);
-        if (!batches.length) { container.innerHTML = `<div class="empty-state">لا توجد تكليفات إدارة</div>`; return; }
+        if (!batches.length) { container.innerHTML = `<div class="empty-state">لا توجد تكليفات إدارة عامة</div>`; return; }
+        const recipientNames = [...new Set(batches.flatMap(b => b.recipients).filter(Boolean))];
         container.innerHTML = `
             <div class="filter-bar">
                 <select id="filterAdminStatus"><option value="ALL">كل الحالات</option><option value="NEW">جديد</option><option value="IN_PROGRESS">قيد التنفيذ</option><option value="COMPLETED">منفذ</option></select>
-                <select id="filterAdminCenter"><option value="ALL">كل المراكز</option>${centersList.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
+                ${isSystemAdmin ? `<select id="filterAdminCenter"><option value="ALL">كل المراكز</option>${centersList.map(c => `<option value="${c}">${c}</option>`).join('')}</select>` : ''}
+                ${isCenterAdmin ? `<select id="filterAdminRecipient"><option value="ALL">جميع الفنيين</option>${recipientNames.map(n => `<option value="${n}">${n}</option>`).join('')}</select>` : ''}
                 <input type="date" id="filterAdminDate" placeholder="التاريخ">
                 <button class="btn btn-outline btn-sm" onclick="applyAdminFilters()">🔍 بحث</button>
                 <button class="btn btn-outline btn-sm" onclick="clearAdminFilters()">✖ إلغاء</button>
             </div>
             <div class="assign-cards-grid" id="adminMissionsBody">${batches.map(b => `
-                <div class="assign-card ${b.status.toLowerCase()} ${b.isAdminSource ? 'admin-source' : ''}" data-status="${b.status}" data-date="${b.createdAt?.slice(0,10) || ''}" data-center="${b.center}">
+                <div class="assign-card ${b.status.toLowerCase()} ${b.isAdminSource ? 'admin-source' : ''}" data-status="${b.status}" data-date="${b.createdAt?.slice(0,10) || ''}" data-center="${b.center}" data-recipients="${b.recipients.join('|')}">
                     <div class="assign-card-head">
                         <span class="assignment-status ${b.status.toLowerCase().replace('_','')}">${getStatusLabel(b.status)}</span>
                         ${b.isAdminSource ? '<span class="admin-badge">🏛️ الإدارة العامة</span>' : ''}
                     </div>
                     <div class="assign-card-title">${b.details || 'تكليف'}</div>
                     <div class="assign-card-meta"><span>🏢 ${b.center}</span><span>🛠️ ${b.workType || '-'}</span><span>📅 ${fmtDate(b.createdAt)}</span></div>
+                    <div class="assign-card-meta" style="font-size:11.5px">👤 ${b.recipients.join('، ')}</div>
                     <div class="assign-card-progress">👥 ${b.recipientCount} مستلم — ✅ ${b.receivedCount} استلم — 🏁 ${b.completedCount} أنجز${b.notDoneCount ? ` — ⚠️ ${b.notDoneCount} لم يُنجز` : ''}</div>
                     <div class="assign-card-actions">
                         <button class="btn btn-outline btn-sm" onclick="updateAdminMissionStatus('${b.batchId}')">📊 حالة</button>
-                        <button class="btn btn-warning btn-sm" onclick="resendAdminMission('${b.batchId}')">🔄 إعادة</button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteAdminMission('${b.batchId}')">🗑️ حذف</button>
+                        ${isSystemAdmin ? `<button class="btn btn-warning btn-sm" onclick="resendAdminMission('${b.batchId}')">🔄 إعادة</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteAdminMission('${b.batchId}')">🗑️ حذف</button>` : ''}
                     </div>
                 </div>`).join('')}</div>
         `;
@@ -1980,17 +2201,19 @@ async function renderAssignments(root) {
     window.applyAdminFilters = function() {
         const status = document.getElementById('filterAdminStatus')?.value || 'ALL';
         const center = document.getElementById('filterAdminCenter')?.value || 'ALL';
+        const recipient = document.getElementById('filterAdminRecipient')?.value || 'ALL';
         const date = document.getElementById('filterAdminDate')?.value || '';
         document.querySelectorAll('#adminMissionsBody .assign-card').forEach(card => {
-            const rowStatus = card.dataset.status || ''; const rowCenter = card.dataset.center || ''; const rowDate = card.dataset.date || '';
+            const rowStatus = card.dataset.status || ''; const rowCenter = card.dataset.center || ''; const rowDate = card.dataset.date || ''; const rowRecipients = card.dataset.recipients || '';
             let show = true;
             if (status !== 'ALL' && rowStatus !== status) show = false;
             if (center !== 'ALL' && rowCenter !== center) show = false;
+            if (recipient !== 'ALL' && !rowRecipients.split('|').includes(recipient)) show = false;
             if (date && rowDate !== date) show = false;
             card.style.display = show ? '' : 'none';
         });
     };
-    window.clearAdminFilters = function() { document.getElementById('filterAdminStatus').value = 'ALL'; document.getElementById('filterAdminCenter').value = 'ALL'; document.getElementById('filterAdminDate').value = ''; applyAdminFilters(); };
+    window.clearAdminFilters = function() { const s=document.getElementById('filterAdminStatus'); if(s) s.value='ALL'; const c=document.getElementById('filterAdminCenter'); if(c) c.value='ALL'; const r=document.getElementById('filterAdminRecipient'); if(r) r.value='ALL'; const d=document.getElementById('filterAdminDate'); if(d) d.value=''; applyAdminFilters(); };
     window.applyCenterFilters = function() {
         const status = document.getElementById('filterCenterStatus')?.value || 'ALL';
         const center = document.getElementById('filterCenterCenter')?.value || 'ALL';
@@ -2413,7 +2636,7 @@ async function renderPresentNow(root) {
             <div class="panel-head">
                 <h3>📍 المتواجدين حاليا (${workingNowCount} يعمل الآن من ${present.length})</h3>
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                    <button class="btn btn-primary btn-sm" onclick="updateCurrentLocation()">📍 تحديث موقعي</button>
+                    <button class="btn btn-primary btn-sm" onclick="updateCurrentLocation()">📍 تحديد موقعي الحالي</button>
                     <button class="btn btn-outline btn-sm" onclick="toggleMapFullscreen()">⛶ تكبير الخريطة</button>
                     <button class="btn btn-outline btn-sm" id="presentNowRefreshBtn">⟳ تحديث</button>
                     <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="presentNowAutoRefreshToggle"> تحديث تلقائي (30s)</label>
@@ -2440,7 +2663,7 @@ async function renderPresentNow(root) {
                         let locLink = '-';
                         if (p.mapsLink && p.mapsLink.trim().startsWith('http')) locLink = `<a href="${p.mapsLink}" target="_blank" class="location-link">📍 ${locationName}</a>`;
                         else if (p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng)) locLink = `<a href="https://www.google.com/maps?q=${p.lat},${p.lng}" target="_blank" class="location-link">📍 ${locationName}</a>`;
-                        const staleTag = (p.isWorkingNow && p.staleMinutes !== null && p.staleMinutes >= 120) ? ` <span style="color:var(--warn);font-size:11px">(لا يتحرك منذ ${Math.floor(p.staleMinutes/60)}س)</span>` : '';
+                        const staleTag = '';
                         const statusFilterKey = p.isWorkingNow ? 'WORKING' : (p.checkOutTime ? 'OUT' : 'NONE');
                         return `<tr onclick="zoomToUser('${p.userId}', ${p.lat || 0}, ${p.lng || 0})" style="cursor:pointer;" title="اضغط لتكبير الموقع" class="clickable-row" data-status="${statusFilterKey}" data-center="${p.center || ''}">
                             <td><div class="small-avatar">${imgHtml}</div></td>
@@ -2455,6 +2678,19 @@ async function renderPresentNow(root) {
                 </table>
             </div>
         </div>
+        ${(CURRENT_USER.role === 'SYSTEM_ADMIN' || CURRENT_USER.role === 'CENTER_ADMIN') ? `
+        <div class="panel">
+            <div class="panel-head"><h3>🧭 مسار اليوم (تتبّع تحركات موظف محدد)</h3></div>
+            <div class="filter-bar">
+                ${CURRENT_USER.role === 'SYSTEM_ADMIN' ? `<select id="routeCenterSelect"><option value="">اختر المركز</option>${CENTERS.map(c=>`<option value="${c}">${c}</option>`).join('')}</select>` : ''}
+                <select id="routeUserSelect"><option value="">اختر الموظف</option></select>
+                <input type="date" id="routeDateInput" value="${today}">
+                <button class="btn btn-primary btn-sm" onclick="loadDailyRoute()">🧭 عرض المسار</button>
+                <button class="btn btn-outline btn-sm" onclick="clearDailyRoute()">✖ مسح</button>
+            </div>
+            <div id="routeMapContainer" style="height:380px;border-radius:12px;border:1px solid var(--line);display:none;margin-bottom:10px"></div>
+            <div id="routeSummary"></div>
+        </div>` : ''}
     `;
     
     // تطبيق الفلاتر
@@ -2471,7 +2707,66 @@ async function renderPresentNow(root) {
     }
     document.getElementById('presentNowStatusFilter')?.addEventListener('change', applyPresentNowFilters);
     document.getElementById('presentNowCenterFilter')?.addEventListener('change', applyPresentNowFilters);
-    
+
+    // ================================================================
+    // 🧭 مسار اليوم لموظف محدد (لمدير النظام ومدير المركز)
+    // ================================================================
+    async function populateRouteUserSelect(center) {
+        const sel = document.getElementById('routeUserSelect');
+        if (!sel) return;
+        if (!center) { sel.innerHTML = '<option value="">اختر الموظف</option>'; return; }
+        sel.innerHTML = '<option value="">جارِ التحميل...</option>';
+        const staff = await api('listCenterStaff', { center });
+        sel.innerHTML = '<option value="">اختر الموظف</option>' + staff.map(u => `<option value="${u.id}">${u.fullName}</option>`).join('');
+    }
+    if (CURRENT_USER.role === 'CENTER_ADMIN') {
+        populateRouteUserSelect(CURRENT_USER.center);
+    } else if (CURRENT_USER.role === 'SYSTEM_ADMIN') {
+        document.getElementById('routeCenterSelect')?.addEventListener('change', (e) => populateRouteUserSelect(e.target.value));
+    }
+
+    window.__routeMapInstance = null;
+    window.loadDailyRoute = async function() {
+        const userId = document.getElementById('routeUserSelect')?.value;
+        const date = document.getElementById('routeDateInput')?.value || today;
+        if (!userId) { showToast('يرجى اختيار الموظف أولاً', 'err'); return; }
+        const summaryEl = document.getElementById('routeSummary');
+        summaryEl.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+        try {
+            const r = await api('dailyRouteForUser', { userId, date });
+            const mapEl = document.getElementById('routeMapContainer');
+            mapEl.style.display = 'block';
+            if (window.__routeMapInstance) { window.__routeMapInstance.remove(); window.__routeMapInstance = null; }
+            if (!r.points.length) {
+                summaryEl.innerHTML = `<div class="empty-state">لا توجد نقاط مسجلة لـ ${r.fullName} فى ${date}</div>`;
+                mapEl.style.display = 'none';
+                return;
+            }
+            const map = L.map('routeMapContainer').setView([r.points[0].lat, r.points[0].lng], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+            window.__routeMapInstance = map;
+            const latlngs = r.points.map(p => [p.lat, p.lng]);
+            L.polyline(latlngs, { color: '#215f8f', weight: 4, opacity: .8, dashArray: '6,6' }).addTo(map);
+            const typeIcon = { IN: '🟢', OUT: '🔴', LOCATION_UPDATE: '🔵' };
+            const typeLabel = { IN: 'حضور', OUT: 'انصراف', LOCATION_UPDATE: 'تحديث موقع' };
+            r.points.forEach((p, i) => {
+                const marker = L.circleMarker([p.lat, p.lng], { radius: 8, color: '#fff', weight: 2, fillColor: p.type === 'IN' ? '#1c9a5b' : (p.type === 'OUT' ? '#c0392b' : '#215f8f'), fillOpacity: 1 }).addTo(map);
+                marker.bindTooltip(String(i + 1), { permanent: true, direction: 'center', className: 'map-label' });
+                marker.bindPopup(`<div style="text-align:right"><strong>${typeIcon[p.type] || '📍'} ${typeLabel[p.type] || p.type}</strong><br>🕐 ${fmtTime(p.timestamp)}<br>📍 ${p.locationName || 'موقع غير معروف'}</div>`);
+            });
+            map.fitBounds(latlngs, { padding: [30, 30] });
+            summaryEl.innerHTML = `<div style="font-size:13px;color:var(--ink-600);margin-top:8px">🧭 مسار <b>${r.fullName}</b> يوم ${r.date} — ${r.points.length} نقطة مسجّلة، من ${fmtTime(r.points[0].timestamp)} إلى ${fmtTime(r.points[r.points.length-1].timestamp)}</div>`;
+        } catch (e) {
+            summaryEl.innerHTML = `<div class="empty-state">تعذر تحميل المسار: ${e.message}</div>`;
+        }
+    };
+    window.clearDailyRoute = function() {
+        if (window.__routeMapInstance) { window.__routeMapInstance.remove(); window.__routeMapInstance = null; }
+        const mapEl = document.getElementById('routeMapContainer'); if (mapEl) mapEl.style.display = 'none';
+        const summaryEl = document.getElementById('routeSummary'); if (summaryEl) summaryEl.innerHTML = '';
+        const sel = document.getElementById('routeUserSelect'); if (sel) sel.value = '';
+    };
+
     // ================================================================
     // 🔴 تهيئة الخريطة المحسّنة - المكان الذي نعدله
     // ================================================================
@@ -2519,28 +2814,34 @@ async function renderPresentNow(root) {
                     const lng = parseFloat(p.lng);
                     if (!isNaN(lat) && !isNaN(lng)) {
                         bounds.push([lat, lng]);
+                        const isMe = CURRENT_USER && p.userId === CURRENT_USER.id;
                         const popupContent = `
                             <div style="text-align:right">
-                                <strong>${p.userName}</strong><br>
+                                <strong>${isMe ? '📍 أنت — ' : ''}${p.userName}</strong><br>
                                 <span class="popup-location">📍 ${p.locationName || 'موقع غير معروف'}</span><br>
                                 <span class="popup-location">🏢 ${p.center || '-'}</span><br>
                                 <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" style="color:#215f8f;text-decoration:underline;font-size:12px">عرض على الخريطة</a>
                             </div>
                         `;
                         const marker = L.marker([lat, lng]).bindPopup(popupContent, { maxWidth: 250 }).addTo(mapInstance);
-                        
-                        if (p.userPhoto) {
-                            const photoUrl = normalizeDriveThumbnail(p.userPhoto);
-                            if (photoUrl) {
-                                const icon = L.divIcon({
-                                    html: `<img src="${photoUrl}" style="width:40px;height:40px;border-radius:50%;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)">`,
-                                    className: 'custom-marker',
-                                    iconSize: [40, 40],
-                                    iconAnchor: [20, 40]
-                                });
-                                marker.setIcon(icon);
-                            }
-                        }
+                        // اسم المكان يظهر كتسمية دائمة فوق العلامة مباشرة على الخريطة
+                        marker.bindTooltip(`${isMe ? '⭐ ' : ''}${p.locationName || 'موقع غير معروف'}`, { permanent: true, direction: 'top', offset: [0, -6], className: isMe ? 'map-label map-label-me' : 'map-label' });
+
+                        const photoUrl = p.userPhoto ? normalizeDriveThumbnail(p.userPhoto) : '';
+                        const size = isMe ? 50 : 40;
+                        const borderColor = isMe ? 'var(--gold-500)' : '#fff';
+                        const borderWidth = isMe ? 4 : 2;
+                        const avatarInner = photoUrl
+                            ? `<img src="${photoUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+                            : `<div style="width:100%;height:100%;border-radius:50%;background:var(--navy-700);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${isMe?15:13}px">${(p.userName||'?').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase()}</div>`;
+                        const icon = L.divIcon({
+                            html: `<div style="position:relative;width:${size}px;height:${size}px;border-radius:50%;border:${borderWidth}px solid ${borderColor};box-shadow:0 2px 10px rgba(0,0,0,.35);${isMe ? 'animation:pulseMe 1.6s ease-in-out infinite;' : ''}">${avatarInner}${isMe ? '<div style="position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);background:var(--gold-500);color:#071b2e;font-size:9px;font-weight:800;padding:1px 6px;border-radius:8px;white-space:nowrap">أنت</div>' : ''}</div>`,
+                            className: 'custom-marker',
+                            iconSize: [size, size],
+                            iconAnchor: [size/2, size]
+                        });
+                        marker.setIcon(icon);
+                        if (isMe) { marker.openTooltip(); mapInstance.setView([lat, lng], Math.max(mapInstance.getZoom(), 14)); }
                     }
                 });
                 
@@ -2621,13 +2922,14 @@ async function renderPerformance(root) {
 
     root.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
 
-    const calls = [ api('topTechniciansGovernorate', { limit: 5 }), api('centersRanking', {}) ];
+    const calls = [ api('topPerformers', { limit: 5 }), api('centerEffortSummary', {}) ];
     if (isTech) calls.push(api('workReportSummary', { userId: CURRENT_USER.id }));
     if (isCenterAdmin) calls.push(api('centerWorkSummary', { center: CURRENT_USER.center }));
 
     const results = await Promise.all(calls);
-    const topTech = results[0].top || [];
-    const ranking = results[1].ranking || [];
+    const topField = results[0].topField || [];
+    const topOffice = results[0].topOffice || [];
+    const centerEffort = results[1].centers || [];
     const myReport = isTech ? results[2] : null;
     const centerSummary = isCenterAdmin ? results[2] : null;
 
@@ -2657,9 +2959,14 @@ async function renderPerformance(root) {
                 <div class="summary-card"><div class="summary-label">مكتبي (الشهر)</div><div class="summary-value">${centerSummary.officeTotal}</div></div>
                 <div class="summary-card"><div class="summary-label">إجمالي الشهر</div><div class="summary-value">${centerSummary.monthTotal}</div></div>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>الفني/المهندس</th><th>اليوم</th><th>النوع</th><th>إجمالي الشهر</th></tr></thead>
-            <tbody>${centerSummary.perTechnician.length ? centerSummary.perTechnician.map(t => `<tr><td>${t.fullName}</td><td>${t.todayCount}</td><td>${t.todayWorkType === 'FIELD' ? 'ميداني' : (t.todayWorkType === 'OFFICE' ? 'مكتبي' : '-')}</td><td>${t.monthToDateCount}</td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state">لا توجد بيانات بعد</div></td></tr>'}</tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>الفني/المهندس</th><th>اليوم</th><th>النوع</th><th>إجمالي الشهر</th><th></th></tr></thead>
+            <tbody>${centerSummary.perTechnician.length ? centerSummary.perTechnician.map(t => `<tr><td>${t.fullName}</td><td>${t.todayCount}</td><td>${t.todayWorkType === 'FIELD' ? 'ميداني' : (t.todayWorkType === 'OFFICE' ? 'مكتبي' : '-')}</td><td>${t.monthToDateCount}</td><td><button class="btn btn-outline btn-sm" onclick="showIndividualEffort('${t.userId}')">تفاصيل</button></td></tr>`).join('') : '<tr><td colspan="5"><div class="empty-state">لا توجد بيانات بعد</div></td></tr>'}</tbody></table></div>
         </div>`;
+    }
+
+    function topList(list, unitLabel) {
+        if (!list.length) return '<div class="empty-state">لا توجد بيانات كافية بعد</div>';
+        return `<div class="top-tech-list">${list.map((t,i) => `<div class="top-tech-item"><div class="rank">${i+1}</div><div class="info"><div class="name">${t.fullName}</div><div class="count">📋 ${t.total} ${unitLabel} — ${t.center || '-'}</div></div></div>`).join('')}</div>`;
     }
 
     const myCenter = CURRENT_USER.center || '';
@@ -2667,17 +2974,60 @@ async function renderPerformance(root) {
         ${personalHtml}
         ${centerSummaryHtml}
         <div class="panel">
-            <div class="panel-head"><h3>🏆 أفضل 5 فنيين على مستوى المحافظة (هذا الشهر)</h3></div>
-            <div class="top-tech-list">${topTech.length ? topTech.map((t,i) => `<div class="top-tech-item"><div class="rank">${i+1}</div><div class="info"><div class="name">${t.fullName}</div><div class="count">📋 ${t.total} طلب — ${t.center || '-'}</div></div></div>`).join('') : '<div class="empty-state">لا توجد بيانات كافية بعد</div>'}</div>
+            <div class="panel-head"><h3>🏆 أفضل 5 فى الأعمال الميدانية (عدد المعاينات - هذا الشهر)</h3></div>
+            ${topList(topField, 'معاينة')}
         </div>
         <div class="panel">
-            <div class="panel-head"><h3>📊 ترتيب المراكز (هذا الشهر)</h3></div>
-            <div class="table-wrap"><table><thead><tr><th>الترتيب</th><th>المركز</th><th>إجمالي الطلبات المنجزة</th></tr></thead>
-            <tbody>${ranking.length ? ranking.map(r => `<tr style="${r.center === myCenter ? 'background:#eaf1fb;font-weight:700' : ''}"><td>${r.rank}</td><td>${r.center}</td><td>${r.total}</td></tr>`).join('') : '<tr><td colspan="3"><div class="empty-state">لا توجد بيانات كافية بعد</div></td></tr>'}</tbody></table></div>
+            <div class="panel-head"><h3>🏆 أفضل 5 فى الأعمال المكتبية (طلبات مدخلة على المنظومة - هذا الشهر)</h3></div>
+            ${topList(topOffice, 'طلب')}
         </div>
+        <div class="panel">
+            <div class="panel-head"><h3>📊 مجهود كل مركز حتى اليوم</h3></div>
+            <div class="table-wrap"><table><thead><tr><th>المركز</th><th>🚶 ميداني</th><th>🏢 مكتبي</th><th>الإجمالي</th></tr></thead>
+            <tbody>${centerEffort.length ? centerEffort.map(c => `<tr style="${c.center === myCenter ? 'background:#eaf1fb;font-weight:700' : ''}"><td>${c.center}</td><td>${c.fieldTotal}</td><td>${c.officeTotal}</td><td>${c.total}</td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state">لا توجد بيانات كافية بعد</div></td></tr>'}</tbody></table></div>
+        </div>
+        ${(isSystemAdmin || isCenterAdmin) ? `
+        <div class="panel">
+            <div class="panel-head"><h3>🔎 مجهود فرد محدد</h3></div>
+            <div class="filter-bar">
+                <select id="effortCenterFilter">${isSystemAdmin ? `<option value="">اختر المركز</option>${CENTERS.map(c=>`<option value="${c}">${c}</option>`).join('')}` : `<option value="${myCenter}">${myCenter}</option>`}</select>
+                <select id="effortUserFilter"><option value="">اختر الفرد</option></select>
+                <button class="btn btn-outline btn-sm" onclick="loadEffortUserOptions()">تحميل الموظفين</button>
+            </div>
+            <div id="individualEffortResult"></div>
+        </div>` : ''}
         <div style="font-size:12px;color:var(--ink-400);text-align:center;padding:6px 0 20px">📌 الأرقام هنا مبنية على بيان "ما تم تنفيذه" الذي يُدخله كل فني/مهندس عند تسجيل الانصراف يوميًا</div>
     `;
+
+    window.loadEffortUserOptions = async function() {
+        const center = document.getElementById('effortCenterFilter')?.value || '';
+        if (!center) { showToast('يرجى اختيار المركز', 'err'); return; }
+        const staff = await api('listCenterStaff', { center });
+        const sel = document.getElementById('effortUserFilter');
+        sel.innerHTML = '<option value="">اختر الفرد</option>' + staff.map(u => `<option value="${u.id}">${u.fullName}</option>`).join('');
+        sel.onchange = () => { if (sel.value) showIndividualEffort(sel.value); };
+    };
 }
+
+window.showIndividualEffort = async function(userId) {
+    const box = document.getElementById('individualEffortResult');
+    if (box) box.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+    try {
+        const r = await api('individualEffortSummary', { userId });
+        const html = `
+            <div class="summary-grid" style="margin-top:12px">
+                <div class="summary-card"><div class="summary-label">${r.fullName}</div><div class="summary-value" style="font-size:14px">${r.center || '-'}</div></div>
+                <div class="summary-card"><div class="summary-label">ميداني</div><div class="summary-value">${r.fieldTotal}</div></div>
+                <div class="summary-card"><div class="summary-label">مكتبي</div><div class="summary-value">${r.officeTotal}</div></div>
+                <div class="summary-card"><div class="summary-label">الإجمالي</div><div class="summary-value">${r.total}</div></div>
+            </div>
+            <div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>العدد</th></tr></thead>
+            <tbody>${r.days.length ? r.days.map(d => `<tr><td>${d.date}</td><td>${d.workType === 'FIELD' ? 'ميداني' : 'مكتبي'}</td><td>${d.workType === 'FIELD' ? d.casesCount : d.systemEntriesCount}</td></tr>`).join('') : '<tr><td colspan="3"><div class="empty-state">لا توجد بيانات</div></td></tr>'}</tbody></table></div>
+        `;
+        if (box) box.innerHTML = html;
+        else openModal(`<h3>مجهود ${r.fullName}</h3>${html}<div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إغلاق</button></div>`);
+    } catch(e) { if (box) box.innerHTML = `<div class="empty-state">تعذر تحميل البيانات</div>`; }
+};
 
 /* =====================================================================
    الملف الشخصي والإشعارات
@@ -2716,6 +3066,92 @@ window.saveProfile = async function() {
     } catch(e) { hideSavingModal(); showToast('فشل الحفظ: ' + e.message, 'err'); }
 };
 async function renderProfile(root) { root.innerHTML = `<div class="panel"><div class="panel-head"><h3>الملف الشخصي</h3></div></div>`; }
+
+/* =====================================================================
+   إشعارات Push حقيقية (Firebase Cloud Messaging)
+   تعمل هذه الوظيفة بصمت وتتجاهل أى خطأ لو لم يتم إعداد FCM_VAPID_KEY بعد
+   أو لو المتصفح/الجهاز لا يدعم إشعارات الويب.
+   ===================================================================== */
+async function setupPushNotifications() {
+    try {
+        if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+        if (!FCM_VAPID_KEY || FCM_VAPID_KEY.indexOf('YOUR_') === 0) return; // لم يتم الإعداد بعد
+        if (Notification.permission === 'denied') return;
+
+        const messaging = firebase.messaging();
+        let permission = Notification.permission;
+        if (permission === 'default') {
+            // نطلب الإذن بعد استقرار الجلسة حتى لا يظهر الطلب فجأة عند فتح التطبيق مباشرة
+            permission = await Notification.requestPermission();
+        }
+        if (permission !== 'granted') return;
+
+        const reg = await navigator.serviceWorker.ready;
+        const token = await messaging.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: reg });
+        if (token && token !== localStorage.getItem('fcmTokenSaved')) {
+            await api('saveFcmToken', { userId: CURRENT_USER.id, token });
+            localStorage.setItem('fcmTokenSaved', token);
+        }
+        messaging.onMessage((payload) => {
+            const n = payload.notification || {};
+            showToast((n.title ? n.title + ': ' : '') + (n.body || ''), 'ok');
+            refreshNotifCount();
+        });
+    } catch (e) { /* لا نزعج المستخدم لو فشل إعداد الإشعارات */ }
+}
+
+/* =====================================================================
+   صندوق إشعار التكليفات الجديدة عند الدخول (قبول / رفض مع سبب)
+   ===================================================================== */
+async function showPendingAssignmentsPrompt() {
+    try {
+        const list = await api('listPendingAssignmentsForUser', { userId: CURRENT_USER.id });
+        if (!Array.isArray(list) || !list.length) return;
+        renderPendingAssignmentsQueue(list);
+    } catch(e) {}
+}
+function renderPendingAssignmentsQueue(list) {
+    if (!list.length) { closeModal(); showToast('تم الرد على كل التكليفات الجديدة', 'ok'); return; }
+    const a = list[0];
+    openModal(`
+        <h3>🔔 لديك تكليف جديد</h3>
+        <div style="background:var(--admin-bg);border:1px solid var(--gold-500);border-radius:12px;padding:14px;margin-bottom:14px">
+            <div style="font-weight:800;font-size:14.5px;margin-bottom:6px">${a.details || 'تكليف جديد'}</div>
+            <div style="font-size:12.5px;color:var(--ink-600);display:flex;flex-wrap:wrap;gap:10px">
+                <span>🏢 ${a.recipientCenter || '-'}</span>
+                <span>🛠️ ${a.workType || '-'}</span>
+                <span>📅 ${fmtDate(a.createdAt)}</span>
+                ${a.hasDeadline ? `<span>⏰ الموعد النهائى: ${fmtDate(a.deadlineAt)}</span>` : ''}
+            </div>
+        </div>
+        <div style="font-size:12px;color:var(--ink-400);margin-bottom:10px">تكليف ${list.length > 1 ? `(${list.length} تكليفات فى الانتظار)` : ''}</div>
+        <div class="modal-close-row">
+            <button class="btn btn-danger" onclick="rejectPendingAssignmentPrompt('${a.id}')">✖ رفض</button>
+            <button class="btn btn-primary" onclick="acceptPendingAssignmentPrompt('${a.id}')">✅ قبول التكليف</button>
+        </div>
+    `);
+    window.__pendingAssignQueue = list;
+}
+window.acceptPendingAssignmentPrompt = async function(id) {
+    try {
+        await api('respondAssignment', { assignmentId: id, accept: true, requesterId: CURRENT_USER.id });
+        showToast('✅ تم قبول التكليف', 'ok');
+        const rest = (window.__pendingAssignQueue || []).filter(x => x.id !== id);
+        renderPendingAssignmentsQueue(rest);
+    } catch(e) { showToast('فشل: ' + e.message, 'err'); }
+};
+window.rejectPendingAssignmentPrompt = function(id) {
+    openModal(`<h3>سبب رفض التكليف</h3><div class="field"><textarea id="rejAssignReason" rows="3" placeholder="اكتب سبب الرفض..."></textarea></div><div class="modal-close-row"><button class="btn btn-outline" onclick="renderPendingAssignmentsQueue(window.__pendingAssignQueue || [])">تراجع</button><button class="btn btn-danger" onclick="confirmRejectPendingAssignment('${id}')">تأكيد الرفض</button></div>`);
+};
+window.confirmRejectPendingAssignment = async function(id) {
+    const reason = val('rejAssignReason');
+    try {
+        await api('respondAssignment', { assignmentId: id, accept: false, reason: reason || 'بدون سبب', requesterId: CURRENT_USER.id });
+        showToast('تم رفض التكليف', 'ok');
+        const rest = (window.__pendingAssignQueue || []).filter(x => x.id !== id);
+        renderPendingAssignmentsQueue(rest);
+    } catch(e) { showToast('فشل: ' + e.message, 'err'); }
+};
 
 /* =====================================================================
    الإشعارات
