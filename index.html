@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#071b2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -51,14 +51,17 @@
     --font-display:'Cairo',sans-serif;
     --font-body:'Tajawal',sans-serif;
     --map-height:400px;
+    --safe-bottom:env(safe-area-inset-bottom, 0px);
 }
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;height:100%}
+html,body{margin:0;padding:0;height:100%;min-height:100%}
 body{
     font-family:var(--font-body);
     background:var(--paper);
     color:var(--ink-900);
     overflow-x:hidden;
+    min-height:100dvh;
+    min-height:100svh;
 }
 h1,h2,h3,h4,.brand,.stat-num{font-family:var(--font-display)}
 ::-webkit-scrollbar{width:8px;height:8px}
@@ -115,13 +118,15 @@ a{color:inherit}
    ثابتة (position:fixed) تغطى الشاشة بالكامل، بحيث يظهر واحد منها فقط دائمًا. */
 #loginScreen,#registerScreen,#pendingScreen,#rejectedScreen,#completeProfileScreen{
     position:fixed;inset:0;z-index:60;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    min-height:100dvh;
+    min-height:100svh;
 }
 #loginScreen{
-    min-height:100vh;display:flex;align-items:center;justify-content:center;
+    min-height:100dvh;min-height:100svh;display:flex;align-items:center;justify-content:center;
     background: radial-gradient(1200px 600px at 15% -10%, rgba(201,162,39,.18), transparent 60%),
                 radial-gradient(1200px 700px at 110% 110%, rgba(33,95,143,.35), transparent 60%),
                 linear-gradient(160deg,var(--navy-950),var(--navy-800) 70%);
-    padding:24px;
+    padding:24px 24px calc(24px + var(--safe-bottom));
 }
 .login-card{width:100%;max-width:440px;background:var(--card);border-radius:20px;box-shadow:0 30px 60px rgba(0,0,0,.35);overflow:hidden;}
 .login-head{background:linear-gradient(135deg,var(--navy-900),var(--navy-700));padding:36px 28px 28px;text-align:center;color:#fff;position:relative;}
@@ -134,8 +139,8 @@ a{color:inherit}
 .login-note{margin-top:18px;font-size:12.5px;color:var(--ink-400);text-align:center;line-height:1.8}
 
 /* ---------- شاشات الحالة ---------- */
-.status-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--paper)}
-.status-card{max-width:520px;width:100%;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:40px 32px;text-align:center}
+.status-screen{min-height:100dvh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:24px 24px calc(24px + var(--safe-bottom));background:var(--paper)}
+.status-card{max-width:520px;width:100%;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:40px 32px calc(32px + var(--safe-bottom));text-align:center}
 .status-icon{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:32px}
 .status-icon.pending{background:#fdf3e2;color:var(--warn)}
 .status-icon.rejected{background:#fdeaea;color:var(--bad)}
@@ -143,8 +148,8 @@ a{color:inherit}
 .status-card p{color:var(--ink-600);line-height:1.9;font-size:14.5px;margin:0 0 6px}
 
 /* ---------- نموذج التسجيل الأولي ---------- */
-#registerScreen{min-height:100vh;background:var(--paper);padding:30px 16px;display:flex;justify-content:center}
-.reg-card{width:100%;max-width:640px;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:32px}
+#registerScreen{min-height:100dvh;min-height:100svh;background:var(--paper);padding:30px 16px calc(30px + var(--safe-bottom));display:flex;justify-content:center}
+.reg-card{width:100%;max-width:640px;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:32px 32px calc(32px + var(--safe-bottom))}
 .reg-card h2{margin:0 0 4px;font-size:21px}
 .reg-card>p{color:var(--ink-600);font-size:13.5px;margin:0 0 24px}
 .field{margin-bottom:16px}
@@ -170,9 +175,9 @@ a{color:inherit}
 .btn-block{width:100%}
 
 /* ---------- هيكل التطبيق الرئيسي ---------- */
-#app{display:none;min-height:100vh}
-.shell{display:flex;min-height:100vh}
-.sidebar{width:250px;background:linear-gradient(180deg,var(--navy-950),var(--navy-900));color:#fff;flex-shrink:0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;transition:.25s;}
+#app{display:none;min-height:100dvh;min-height:100svh}
+.shell{display:flex;min-height:100dvh;min-height:100svh}
+.sidebar{width:250px;background:linear-gradient(180deg,var(--navy-950),var(--navy-900));color:#fff;flex-shrink:0;display:flex;flex-direction:column;position:sticky;top:0;height:100dvh;height:100svh;transition:.25s;}
 .sidebar .brand{padding:22px 18px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
 .brand-row{display:flex;align-items:center;gap:10px}
 .brand-mark{width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,var(--gold-500),var(--gold-600));display:flex;align-items:center;justify-content:center;color:var(--navy-950);font-weight:800;font-size:16px;flex-shrink:0}
@@ -184,7 +189,7 @@ a{color:inherit}
 .nav-item:hover{background:rgba(255,255,255,.06);color:#fff}
 .nav-item.active{background:linear-gradient(90deg,var(--gold-500),var(--gold-600));color:var(--navy-950)}
 .nav-section-title{font-size:10.5px;color:rgba(255,255,255,.4);padding:14px 13px 6px;letter-spacing:.5px}
-.sidebar-foot{padding:14px;border-top:1px solid rgba(255,255,255,.08)}
+.sidebar-foot{padding:14px 14px calc(14px + var(--safe-bottom));border-top:1px solid rgba(255,255,255,.08)}
 .user-mini{display:flex;align-items:center;gap:10px}
 .avatar{width:36px;height:36px;border-radius:50%;background:var(--navy-700);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;overflow:hidden}
 .avatar img{width:100%;height:100%;object-fit:cover}
@@ -203,7 +208,7 @@ a{color:inherit}
 .icon-btn{position:relative;width:38px;height:38px;border-radius:10px;border:1.5px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:center;font-size:16px}
 .badge{position:absolute;top:-5px;left:-5px;background:var(--bad);color:#fff;font-size:10px;min-width:17px;height:17px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;font-weight:700}
 .menu-toggle{display:none;border:none;background:none;font-size:20px;color:var(--navy-900)}
-.content{padding:22px 24px 60px;flex:1}
+.content{padding:22px 24px calc(60px + var(--safe-bottom));flex:1}
 
 .chip{display:inline-flex;align-items:center;padding:4px 11px;border-radius:20px;font-size:12px;font-weight:700}
 .chip.pending{background:#fdf3e2;color:var(--warn)}
@@ -230,7 +235,7 @@ tbody tr:hover{background:#fafcfd}
 .empty-state{text-align:center;padding:40px 20px;color:var(--ink-400)}
 .empty-state .ic{font-size:34px;margin-bottom:10px}
 
-.modal-overlay{position:fixed;inset:0;background:rgba(7,27,46,.55);display:none;align-items:center;justify-content:center;z-index:1150;padding:16px;}
+.modal-overlay{position:fixed;inset:0;background:rgba(7,27,46,.55);display:none;align-items:center;justify-content:center;z-index:1150;padding:16px calc(16px + var(--safe-bottom));}
 .modal-overlay.show{display:flex}
 .modal-box{background:#fff;border-radius:16px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:26px}
 .modal-box h3{margin:0 0 18px;font-size:17px}
@@ -355,7 +360,7 @@ tbody tr:hover{background:#fafcfd}
     .menu-toggle{display:block}
     .overlay-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1100;display:none}
     .overlay-bg.show{display:block}
-    .content{padding:16px}
+    .content{padding:16px calc(16px + var(--safe-bottom))}
     .topbar{padding:12px 16px}
     .topbar h2{font-size:16px}
     #topbarUserInfo{display:none}
@@ -379,7 +384,7 @@ tbody tr:hover{background:#fafcfd}
     .topbar-actions{gap:8px}
     #profileEditBtn{padding:8px 12px;font-size:12.5px}
     .icon-btn{width:36px;height:36px}
-    .content{padding:12px}
+    .content{padding:12px calc(12px + var(--safe-bottom))}
     .panel{padding:16px;border-radius:12px;margin-bottom:14px}
     .panel-head{margin-bottom:12px}
     .panel-head h3{font-size:14.5px}
