@@ -486,21 +486,6 @@ tbody tr:hover{background:#fafcfd}
   </div>
 </div>
 
-<!-- ================= نموذج استكمال البيانات للمستخدمين المعتمدين ================= -->
-<div id="completeProfileScreen" style="display:none;min-height:100vh;background:var(--paper);padding:30px 16px;display:flex;justify-content:center;align-items:center">
-  <div class="reg-card">
-    <h2>📋 استكمال بيانات الحساب</h2>
-    <p style="color:var(--warn);font-weight:700;margin-bottom:16px">⚠️ يرجى استكمال البيانات التالية لإكمال ملفك الشخصي:</p>
-    <div class="field"><label>الاسم رباعي</label><input id="compFullName" disabled></div>
-    <div class="field"><label>الرقم القومي *</label><input id="compNationalId" placeholder="أدخل الرقم القومي (14 رقم)" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
-    <div class="field"><label>رقم الهاتف</label><input id="compPhone" placeholder="أدخل رقم الهاتف"></div>
-    <div class="field"><label>صورة شخصية *</label><input id="compPhotoFile" type="file" accept="image/*"></div>
-    <button class="btn btn-primary btn-block" id="submitCompleteBtn">حفظ البيانات</button>
-    <div style="margin-top:12px;text-align:center">
-      <button class="btn btn-outline btn-sm" onclick="doLogout()">تسجيل الخروج</button>
-    </div>
-  </div>
-</div>
 
 <!-- ================= شاشات الحالة ================= -->
 <div id="pendingScreen" class="status-screen" style="display:none">
@@ -961,32 +946,39 @@ async function refreshMyStatus() {
         if (existing.status === 'APPROVED') {
             const normalizedNationalId = (existing.nationalId || '').toString().trim();
             const normalizedPhotoUrl = (existing.photoUrl || '').toString().trim();
-            const cachedHasProfileData = hasRequiredProfileData(CURRENT_USER);
             const serverHasProfileData = !!normalizedNationalId && !!normalizedPhotoUrl;
-            if (serverHasProfileData || cachedHasProfileData) {
-                CURRENT_USER = {
-                    ...CURRENT_USER,
-                    nationalId: normalizedNationalId || (CURRENT_USER.nationalId || ''),
-                    photoUrl: normalizedPhotoUrl || (CURRENT_USER.photoUrl || '')
-                };
-                launchApp();
+            
+            // ✅ إذا كانت البيانات ناقصة، نعرض registerScreen
+            if (!serverHasProfileData) {
+                document.getElementById('regEmail').value = FIREBASE_USER.email;
+                // نملأ الحقول الموجودة إن وجدت
+                if (existing.fullName) document.getElementById('regFullName').value = existing.fullName;
+                if (existing.phone) document.getElementById('regPhone').value = existing.phone;
+                if (existing.nationalId) document.getElementById('regNationalId').value = existing.nationalId;
+                if (existing.center) {
+                    const centerSelect = document.getElementById('regCenter');
+                    for (let opt of centerSelect.options) {
+                        if (opt.value === existing.center) opt.selected = true;
+                    }
+                }
+                if (existing.job) {
+                    const jobSelect = document.getElementById('regJob');
+                    for (let opt of jobSelect.options) {
+                        if (opt.value === existing.job) opt.selected = true;
+                    }
+                }
+                document.getElementById('registerScreen').style.display = 'flex';
+                showToast('📝 يرجى استكمال بياناتك لإكمال التسجيل', 'info');
                 return;
             }
-            setTimeout(() => {
-                if (!FIREBASE_USER || !CURRENT_USER || CURRENT_USER.id !== existing.id) return;
-                const latestNationalId = (CURRENT_USER.nationalId || '').toString().trim();
-                const latestPhotoUrl = (CURRENT_USER.photoUrl || '').toString().trim();
-                if (latestNationalId && latestPhotoUrl) {
-                    launchApp();
-                    return;
-                }
-                document.getElementById('completeProfileScreen').style.display = 'flex';
-                document.getElementById('compFullName').value = CURRENT_USER.fullName || '';
-                let msg = '⚠️ يرجى استكمال البيانات التالية لإكمال ملفك الشخصي:\n';
-                if (!latestNationalId) msg += '• الرقم القومي (مطلوب)\n';
-                if (!latestPhotoUrl) msg += '• الصورة الشخصية (مطلوبة)\n';
-                document.querySelector('#completeProfileScreen .reg-card p').textContent = msg;
-            }, 400);
+            
+            // ✅ البيانات مكتملة - نطلق التطبيق
+            CURRENT_USER = {
+                ...CURRENT_USER,
+                nationalId: normalizedNationalId || (CURRENT_USER.nationalId || ''),
+                photoUrl: normalizedPhotoUrl || (CURRENT_USER.photoUrl || '')
+            };
+            launchApp();
             return;
         }
         if (existing.status === 'PENDING') { 
@@ -1003,7 +995,7 @@ async function refreshMyStatus() {
 }
 
 function hideAllScreens() {
-    ['loginScreen','registerScreen','pendingScreen','rejectedScreen','completeProfileScreen'].forEach(id => document.getElementById(id).style.display = 'none');
+    ['loginScreen','registerScreen','pendingScreen','rejectedScreen'].forEach(id => document.getElementById(id).style.display = 'none');
     document.getElementById('app').style.display = 'none';
 }
 
@@ -1061,7 +1053,35 @@ function buildNav() {
         nav.appendChild(el);
     });
 }
+
 function launchApp() {
+    // ✅ التحقق من اكتمال البيانات قبل التخزين المؤقت
+    const hasNationalId = (CURRENT_USER.nationalId || '').toString().trim();
+    const hasPhoto = (CURRENT_USER.photoUrl || '').toString().trim();
+    
+    if (!hasNationalId || !hasPhoto) {
+        // إذا كانت البيانات ناقصة، نعرض registerScreen بدلاً من launchApp
+        document.getElementById('regEmail').value = CURRENT_USER.email || '';
+        if (CURRENT_USER.fullName) document.getElementById('regFullName').value = CURRENT_USER.fullName;
+        if (CURRENT_USER.phone) document.getElementById('regPhone').value = CURRENT_USER.phone;
+        if (CURRENT_USER.center) {
+            const centerSelect = document.getElementById('regCenter');
+            for (let opt of centerSelect.options) {
+                if (opt.value === CURRENT_USER.center) opt.selected = true;
+            }
+        }
+        if (CURRENT_USER.job) {
+            const jobSelect = document.getElementById('regJob');
+            for (let opt of jobSelect.options) {
+                if (opt.value === CURRENT_USER.job) opt.selected = true;
+            }
+        }
+        hideAllScreens();
+        document.getElementById('registerScreen').style.display = 'flex';
+        showToast('📝 يرجى استكمال بياناتك لإكمال التسجيل', 'info');
+        return;
+    }
+    
     hideAppLoadingOverlay();
     hideAllScreens();
     removeAutoLoginBoot();
@@ -3257,6 +3277,7 @@ document.getElementById('regJob').addEventListener('change', function() {
     document.getElementById('regUnitField').style.display = isEngineer ? 'none' : 'block';
     if (isEngineer) { document.getElementById('regCenter').value = ''; document.getElementById('regUnit').value = ''; }
 });
+
 document.getElementById('submitRegisterBtn').addEventListener('click', async function() {
     const email = document.getElementById('regEmail').value.trim();
     const fullName = document.getElementById('regFullName').value.trim();
@@ -3269,58 +3290,73 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async fun
     const localUnit = isEngineer ? '' : document.getElementById('regUnit').value.trim();
     const fileInput = document.getElementById('regPhotoFile');
     const hasPhoto = !!(fileInput.files && fileInput.files[0]);
-    if (!email || !fullName || !job || !phone || !nationalId || (!isEngineer && !center)) { showToast('يرجى استكمال جميع الحقول الإلزامية (*)', 'err'); return; }
-    if (!hasPhoto) { showToast('الصورة الشخصية إلزامية', 'err'); return; }
-    this.disabled = true; this.textContent = 'جارى إرسال الطلب...';
+    
+    if (!email || !fullName || !job || !phone || !nationalId || (!isEngineer && !center)) { 
+        showToast('يرجى استكمال جميع الحقول الإلزامية (*)', 'err'); 
+        return; 
+    }
+    if (!hasPhoto) { 
+        showToast('الصورة الشخصية إلزامية', 'err'); 
+        return; 
+    }
+    
+    this.disabled = true; 
+    this.textContent = 'جارى إرسال الطلب...';
+    
     try {
         let photoUrl = '';
         if (fileInput.files && fileInput.files[0]) {
             const file = fileInput.files[0];
-            if (file.size > 5 * 1024 * 1024) { showToast('حجم الصورة كبير جداً', 'err'); this.disabled = false; this.textContent = 'إرسال طلب الاعتماد'; return; }
-            try { const base64 = await fileToBase64(file); const uploadRes = await api('uploadPhotoToDrive', { imageData: base64, fileName: file.name, mimeType: file.type }); if (uploadRes && uploadRes.url) photoUrl = uploadRes.url; } catch(e) { console.error(e); }
-        }
-        await api('registerUser', { email, fullName, job, phone, nationalId, role, center, localUnit, photoUrl });
-        showToast('تم إرسال طلبك بنجاح', 'ok'); refreshMyStatus();
-    } catch(e) { showToast('حدث خطأ: ' + e.message, 'err'); } finally { this.disabled = false; this.textContent = 'إرسال طلب الاعتماد'; }
-});
-
-const submitCompleteBtn = document.getElementById('submitCompleteBtn');
-if (submitCompleteBtn) {
-    submitCompleteBtn.addEventListener('click', async function() {
-        const nationalId = document.getElementById('compNationalId')?.value?.trim() || '';
-        const phone = document.getElementById('compPhone')?.value?.trim() || '';
-        const fileInput = document.getElementById('compPhotoFile');
-        const photoFile = fileInput?.files?.[0];
-        if (!nationalId || !photoFile) {
-            showToast('يرجى إدخال الرقم القومي واختيار الصورة الشخصية', 'err');
-            return;
-        }
-        this.disabled = true;
-        this.textContent = 'جارى الحفظ...';
-        try {
-            let photoUrl = CURRENT_USER?.photoUrl || '';
-            if (photoFile) {
-                if (photoFile.size > 5 * 1024 * 1024) {
-                    showToast('حجم الصورة كبير جدًا (الحد الأقصى 5 ميجابايت)', 'err');
-                    return;
-                }
-                const base64 = await fileToBase64(photoFile);
-                const uploadRes = await api('uploadPhotoToDrive', { imageData: base64, fileName: photoFile.name, mimeType: photoFile.type });
-                if (uploadRes && uploadRes.url) photoUrl = uploadRes.url;
+            if (file.size > 5 * 1024 * 1024) { 
+                showToast('حجم الصورة كبير جداً', 'err'); 
+                this.disabled = false; 
+                this.textContent = 'إرسال طلب الاعتماد'; 
+                return; 
             }
-            await api('updateMyProfile', { userId: CURRENT_USER.id, fullName: CURRENT_USER.fullName || '', nationalId, phone, photoUrl });
-            CURRENT_USER = { ...CURRENT_USER, nationalId, phone, photoUrl };
-            showToast('✅ تم حفظ البيانات بنجاح', 'ok');
-            hideAllScreens();
-            launchApp();
-        } catch (e) {
-            showToast('❌ فشل حفظ البيانات: ' + (e.message || 'خطأ غير معروف'), 'err');
-        } finally {
-            this.disabled = false;
-            this.textContent = 'حفظ البيانات';
+            try { 
+                const base64 = await fileToBase64(file); 
+                const uploadRes = await api('uploadPhotoToDrive', { 
+                    imageData: base64, 
+                    fileName: file.name, 
+                    mimeType: file.type 
+                }); 
+                if (uploadRes && uploadRes.url) photoUrl = uploadRes.url; 
+            } catch(e) { 
+                console.error(e); 
+            }
         }
-    });
-}
+        
+        // ✅ إذا كان المستخدم موجود بالفعل (معتمد أو غير معتمد)
+        if (CURRENT_USER && CURRENT_USER.id) {
+            // تحديث بيانات المستخدم الحالي
+            await api('updateMyProfile', { 
+                userId: CURRENT_USER.id,
+                fullName, 
+                nationalId, 
+                phone, 
+                photoUrl,
+                center,
+                job,
+                localUnit
+            });
+            CURRENT_USER = { ...CURRENT_USER, fullName, nationalId, phone, photoUrl, center, job, localUnit };
+            showToast('✅ تم تحديث بياناتك بنجاح', 'ok');
+            launchApp();
+        } else {
+            // مستخدم جديد - تسجيل أولي
+            await api('registerUser', { 
+                email, fullName, job, phone, nationalId, role, center, localUnit, photoUrl 
+            });
+            showToast('✅ تم إرسال طلبك بنجاح', 'ok'); 
+            refreshMyStatus();
+        }
+    } catch(e) { 
+        showToast('❌ حدث خطأ: ' + e.message, 'err'); 
+    } finally { 
+        this.disabled = false; 
+        this.textContent = 'إرسال طلب الاعتماد'; 
+    }
+});
 
 const JOB_ROLE_MAP = { 'محافظة': 'SYSTEM_ADMIN', 'مدير إدارة': 'CENTER_ADMIN', 'فني': 'TECHNICIAN', 'مهندس': 'ENGINEER' };
 
