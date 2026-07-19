@@ -637,6 +637,26 @@ function hideAppLoadingOverlay() {
 }
 
 /* =====================================================================
+   مراقبة حالة الاتصال بالإنترنت
+   ===================================================================== */
+let isOnline = navigator.onLine;
+window.addEventListener('online', () => {
+    isOnline = true;
+    console.log('✅ عاد الاتصال بالإنترنت');
+    showToast('✅ عاد الاتصال بالإنترنت', 'ok');
+    // إعادة محاولة أي عمليات معلقة إذا لزم الأمر
+    if (CURRENT_USER) {
+        setTimeout(() => { prefetchAllPages(); }, 500);
+    }
+});
+
+window.addEventListener('offline', () => {
+    isOnline = false;
+    console.warn('❌ فُقد الاتصال بالإنترنت');
+    showToast('❌ فُقد الاتصال بالإنترنت. الرجاء التحقق من الاتصال.', 'warn');
+});
+
+/* =====================================================================
    دوال مساعدة عامة
    ===================================================================== */
 function toEgyptTime(dateValue) {
@@ -747,11 +767,12 @@ function showToast(msg, type) {
     const el = document.createElement('div');
     el.className = 'toast' + (type === 'err' ? ' err' : type === 'ok' ? ' ok' : type === 'warn' ? ' warn' : type === 'info' ? ' info' : '');
     el.textContent = msg;
+    el.style.maxWidth = 'min(92vw, 480px)';  // جعل الرسائل الطويلة تتسع أفقيًا بشكل أفضل
     wrap.appendChild(el);
     if (type === 'ok' || type === 'warn' || type === 'info') {
         playNotificationSound();
     }
-    setTimeout(() => el.remove(), 4000);
+    setTimeout(() => el.remove(), 5000);  // إظهار الرسالة لمدة 5 ثوانٍ بدلاً من 4
 }
 function openModal(html) { document.getElementById('modalBox').innerHTML = html; document.getElementById('modalOverlay').classList.add('show'); }
 function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
@@ -805,7 +826,7 @@ async function getLocationNameOSM(lat, lng) {
 }
 
 /* =====================================================================
-   طبقة الاتصال بالـ API
+   طبقة الاتصال بالـ API - محسّنة مع Retry Logic وتحسين الأخطاء
    ===================================================================== */
 // إجراءات قراءة فقط لا تستوجب تحديث المحتوى المخزن مؤقتًا لبقية الأقسام
 const READ_ONLY_ACTIONS = new Set([
@@ -817,25 +838,82 @@ const READ_ONLY_ACTIONS = new Set([
     'dashboardStats','centersOverviewToday','centerDailySummary','indicatorsOverview','listAuditLog','listCenters',
     'getCurrentLocations','recordLogin','recordAuditEvent'
 ]);
+
+// الإعدادات المحسّنة للـ API
+const API_CONFIG = {
+    maxRetries: 2,              // عدد إعادات المحاولة القصوى
+    baseTimeout: 8000,          // timeout أساسي (8 ثوانٍ بدلاً من الانتظار الطويل)
+    maxTimeout: 15000,          // أقصى timeout
+    retryDelay: 500,            // تأخير أولي بين المحاولات (milliseconds)
+    backoffMultiplier: 1.5      // مضاعف التأخير (exponential backoff)
+};
+
 async function api(action, params) {
     const body = Object.assign({ action }, params || {});
     try {
         if (CURRENT_USER && !body.requesterId) body.requesterId = CURRENT_USER.id;
         if (CURRENT_USER && !body.requesterRole) body.requesterRole = CURRENT_USER.role;
     } catch(e) {}
-    try {
-        const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
-        const json = await res.json();
-        if (!json.success) throw new Error(json.error || 'خطأ غير معروف');
-        // تحديث تلقائى شامل: أى إجراء غير قراءة (إضافة/تعديل/حذف/تحديث حالة...) يُبطل كل المحتوى
-        // المخزن مؤقتًا لبقية الأقسام حتى تُجلب بيانات حديثة تلقائيًا عند دخولها لاحقًا
-        if (!READ_ONLY_ACTIONS.has(action)) {
-            Object.keys(PAGE_CACHE).forEach(k => { if (k !== currentPage) delete PAGE_CACHE[k]; });
-            clearTimeout(window.__refreshDebounce);
-            window.__refreshDebounce = setTimeout(prefetchAllPages, 1200);
+    
+    let lastError = null;
+    const maxAttempts = API_CONFIG.maxRetries + 1;
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const controller = new AbortController();
+            const timeoutMs = Math.min(
+                API_CONFIG.baseTimeout * attempt,
+                API_CONFIG.maxTimeout
+            );
+            const timeout = setTimeout(() => controller.abort(), timeoutMs);
+            
+            const res = await fetch(API_URL, { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+                body: JSON.stringify(body),
+                signal: controller.signal 
+            });
+            
+            clearTimeout(timeout);
+            const json = await res.json();
+            
+            if (!json.success) {
+                throw new Error(json.error || 'خطأ غير معروف');
+            }
+            
+            // تحديث تلقائى شامل: أى إجراء غير قراءة يُبطل المحتوى المخزن مؤقتًا
+            if (!READ_ONLY_ACTIONS.has(action)) {
+                Object.keys(PAGE_CACHE).forEach(k => { if (k !== currentPage) delete PAGE_CACHE[k]; });
+                clearTimeout(window.__refreshDebounce);
+                window.__refreshDebounce = setTimeout(prefetchAllPages, 1200);
+            }
+            
+            return json.data;
+        } catch(e) {
+            lastError = e;
+            const isTimeout = e.name === 'AbortError';
+            const isNetworkError = e instanceof TypeError && e.message.includes('fetch');
+            
+            if (attempt < maxAttempts && (isTimeout || isNetworkError)) {
+                // إعادة محاولة للأخطاء المؤقتة فقط
+                const delayMs = API_CONFIG.retryDelay * Math.pow(API_CONFIG.backoffMultiplier, attempt - 1);
+                console.warn(`محاولة ${attempt}/${maxAttempts} فشلت (${isTimeout ? 'timeout' : 'network'}). إعادة المحاولة خلال ${delayMs}ms...`);
+                await new Promise(r => setTimeout(r, delayMs));
+            } else {
+                // لا تعيد المحاولة للأخطاء المنطقية أو بعد استنفاد المحاولات
+                break;
+            }
         }
-        return json.data;
-    } catch(e) { showToast(e.message || 'تعذر الاتصال بالخادم', 'err'); throw e; }
+    }
+    
+    // معالجة الخطأ النهائي مع رسالة واضحة
+    const errorMsg = lastError?.message || 'تعذر الاتصال بالخادم';
+    const userMessage = errorMsg.includes('Failed to fetch') 
+        ? '⚠️ تعذر الاتصال. تأكد من اتصال الإنترنت والمحاولة مرة أخرى'
+        : errorMsg;
+    
+    showToast(userMessage, 'err');
+    throw lastError || new Error(errorMsg);
 }
 
 /* /* =====================================================================
@@ -1202,28 +1280,39 @@ async function goPage(key, skipHistory, useCache = true) {
     document.getElementById('pageTitle').textContent = PAGE_TITLES[key] || key;
     const renderers = PAGE_RENDERERS;
     const content = document.getElementById('pageContent');
-    // تحميل فورى: لو عندنا نسخة سابقة من محتوى هذا القسم مخزّنة مؤقتًا نعرضها فورًا
-    // بدلاً من دائرة التحميل، ثم نجلب البيانات الحديثة فى الخلفية ونحدّث المحتوى بصمت
+    
+    // ⚡ تحسين: عرض المحتوى المخزن مؤقتًا فورًا بدون دائرة تحميل
     const hasCache = useCache && PAGE_CACHE[key];
-    if (hasCache) { content.innerHTML = PAGE_CACHE[key]; }
-    else { content.innerHTML = '<div class="loader"><div class="spinner"></div></div>'; }
-    try {
-        if (renderers[key]) { 
-            await renderers[key](content); 
-            PAGE_CACHE[key] = content.innerHTML;
+    if (hasCache) { 
+        content.innerHTML = PAGE_CACHE[key]; 
+        // تحديث البيانات في الخلفية بدون إزعاج المستخدم
+        if (renderers[key]) {
+            renderers[key](content).then(() => {
+                PAGE_CACHE[key] = content.innerHTML;
+            }).catch(e => {
+                console.warn(`فشل تحديث ${key}:`, e.message);
+            });
         }
-        else { content.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>الصفحة قيد التطوير</div>`; }
-    } catch(e) { 
-        if (!hasCache) content.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>تعذر تحميل بيانات هذا القسم.<br><span style="font-size:12.5px;color:var(--ink-600)">${e.message || 'خطأ غير معروف'}</span><div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="goPage('${key}', true, false)">إعادة المحاولة</button></div></div>`; 
+    } else { 
+        content.innerHTML = '<div class="loader"><div class="spinner"></div></div>'; 
+        try {
+            if (renderers[key]) { 
+                await renderers[key](content); 
+                PAGE_CACHE[key] = content.innerHTML;
+            }
+            else { content.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>الصفحة قيد التطوير</div>`; }
+        } catch(e) { 
+            if (!hasCache) content.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>تعذر تحميل بيانات هذا القسم.<br><span style="font-size:12.5px;color:var(--ink-600)">${e.message || 'خطأ غير معروف'}</span><div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="goPage('${key}', true, false)">إعادة المحاولة</button></div></div>`; 
+        }
     }
     isProcessing = false;
 }
 
 /* =====================================================================
-   تحميل مسبق لكل الأقسام فى الخلفية (Prefetch)
-   بعد دخول التطبيق نجهّز بيانات كل الأقسام المسموح بها للمستخدم فى عنصر
-   منفصل غير ظاهر، حتى يجد المستخدم المحتوى جاهزًا فور دخوله لأى قسم
-   دون انتظار، ودون التأثير على القسم المعروض حاليًا على الشاشة.
+   تحميل مسبق لكل الأقسام فى الخلفية (Prefetch) - محسّن
+   بعد دخول التطبيق نجهّز بيانات كل الأقسام المسموح بها للمستخدم بطريقة ذكية:
+   - تحميل متسلسل بدلاً من متزامن لتجنب اختناقات الشبكة
+   - timeout قصير لكل قسم
    ===================================================================== */
 let __prefetchRunning = false;
 async function prefetchAllPages() {
@@ -1231,13 +1320,32 @@ async function prefetchAllPages() {
     __prefetchRunning = true;
     try {
         const keys = NAV_ITEMS.filter(i => i.roles.includes(CURRENT_USER.role) && !PREFETCH_UNSAFE_PAGES.includes(i.key)).map(i => i.key);
+        
+        // 🔄 تحميل متسلسل مع معالجة أفضل للأخطاء
         for (const key of keys) {
             if (key === currentPage) continue; // القسم المعروض حاليًا محدَّث بالفعل
+            
+            // تخطي إذا كان محملاً بالفعل
+            if (PAGE_CACHE[key]) continue;
+            
             try {
                 const buffer = document.createElement('div');
-                await PAGE_RENDERERS[key](buffer);
+                
+                // إضافة timeout للتحميل المسبق (لا ننتظر أكثر من 10 ثوان)
+                const prefetchPromise = Promise.race([
+                    PAGE_RENDERERS[key](buffer),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error(`Prefetch timeout for ${key}`)), 10000)
+                    )
+                ]);
+                
+                await prefetchPromise;
                 PAGE_CACHE[key] = buffer.innerHTML;
-            } catch(e) { /* تجاهل أخطاء أى قسم بمفرده حتى لا توقف بقية التحميل المسبق */ }
+                console.log(`✓ تم تحميل ${key} مسبقًا`);
+            } catch(e) { 
+                console.warn(`⚠️ فشل التحميل المسبق لـ ${key}:`, e.message);
+                // تجاهل بصمت - لن نعرض رسالة خطأ للمستخدم
+            }
         }
     } finally { __prefetchRunning = false; }
 }
@@ -1336,9 +1444,10 @@ async function todayAttendanceStatus(p) {
 
 
 /**
- * الحصول على الموقع مع إعادة المحاولة - بدون استخدام Permissions API
+ * الحصول على الموقع مع إعادة المحاولة - محسّنة
+ * تقليل الـ timeout وإضافة خيار بدون موقع
  */
-async function getCurrentPositionWithRetryDirect(maxAttempts = 3, timeoutMs = 15000) {
+async function getCurrentPositionWithRetryDirect(maxAttempts = 2, timeoutMs = 8000) {
     let lastError = null;
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -1378,7 +1487,7 @@ async function getCurrentPositionWithRetryDirect(maxAttempts = 3, timeoutMs = 15
                     {
                         enableHighAccuracy: attempt === 1,
                         timeout: timeoutMs,
-                        maximumAge: 0
+                        maximumAge: 30000  // استخدام موقع مخزن مؤقتًا لمدة 30 ثانية لتسريع العملية
                     }
                 );
             });
@@ -1396,7 +1505,7 @@ async function getCurrentPositionWithRetryDirect(maxAttempts = 3, timeoutMs = 15
             }
             
             if (attempt < maxAttempts) {
-                const waitTime = attempt * 1000;
+                const waitTime = 500; // تأخير أقصر (500ms بدلاً من 1s، 2s)
                 await new Promise(r => setTimeout(r, waitTime));
             }
         }
