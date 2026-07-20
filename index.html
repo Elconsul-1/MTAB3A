@@ -305,9 +305,13 @@ tbody tr:hover{background:#fafcfd}
 .btn-attendance:not([disabled]):hover{transform:translateY(-2px);filter:brightness(1.04)}
 .btn-attendance:not([disabled]):active{transform:translateY(0)}
 .btn-attendance[disabled]{cursor:not-allowed;box-shadow:none}
+.btn-attendance.hidden-att{display:none !important}
 
-.btn-checkin{background:linear-gradient(135deg,#1f9d5f,#136e42);color:#fff}
+.btn-checkin{background:linear-gradient(135deg,var(--navy-900),var(--navy-950));color:#fff;border:1px solid var(--gold-500);position:relative;overflow:hidden}
+.btn-checkin .ic{background:var(--gold-500);color:var(--navy-950);width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px}
+.btn-checkin:not([disabled]):hover{box-shadow:0 10px 22px rgba(7,27,46,.35)}
 .btn-checkin.done{background:#eafaf1;color:#136e42;border:1.5px solid #b7ecd0;box-shadow:none}
+.btn-checkin.done .ic{background:transparent;color:#136e42;width:auto;height:auto;border-radius:0}
 
 .btn-checkout{background:linear-gradient(135deg,#e0453c,#b02a22);color:#fff}
 .btn-checkout.done{background:#fdecea;color:#b02a22;border:1.5px solid #f6c4c0;box-shadow:none}
@@ -1391,72 +1395,71 @@ async function renderHome(root) {
 async function renderDashboard(root) {
     const todayKey = getEgyptDateKey(getEgyptNow());
     const monthStartKey = todayKey.slice(0, 8) + '01';
-    const savedFrom = localStorage.getItem('indicatorsDateFrom') || monthStartKey;
-    const savedTo = localStorage.getItem('indicatorsDateTo') || todayKey;
+    const monthEndDate = new Date(todayKey.slice(0,4)*1, todayKey.slice(5,7)*1, 0); // آخر يوم فى الشهر الحالى
+    const monthEndKey = getEgyptDateKey(monthEndDate);
     const isCenterAdminDash = CURRENT_USER.role === 'CENTER_ADMIN';
     // مدير المركز مقيّد بمركزه فقط ولا يمكنه اختيار مركز آخر أو "كل المراكز"
     const savedCenter = isCenterAdminDash ? CURRENT_USER.center : (localStorage.getItem('indicatorsCenter') || '');
 
-    const [stats, indicators] = await Promise.all([
-        api('dashboardStats', Object.assign(isCenterAdminDash ? { center: CURRENT_USER.center } : {}, { date: todayKey })),
-        api('indicatorsOverview', { dateFrom: savedFrom, dateTo: savedTo, center: savedCenter })
+    const [todayInd, monthInd] = await Promise.all([
+        api('indicatorsOverview', { dateFrom: todayKey, dateTo: todayKey, center: savedCenter }),
+        api('indicatorsOverview', { dateFrom: monthStartKey, dateTo: monthEndKey, center: savedCenter })
     ]);
+
+    const centerSelectHtml = isCenterAdminDash
+        ? `<select id="indCenter" disabled><option value="${savedCenter}" selected>${savedCenter}</option></select>`
+        : `<select id="indCenter" onchange="applyIndicatorsFilters()"><option value="">كل المراكز</option>${CENTERS.map(c => `<option value="${c}" ${savedCenter===c?'selected':''}>${c}</option>`).join('')}</select>`;
+
+    const statCards = (ind) => `
+        <div class="summary-card"><div class="summary-label">👥 عدد الموظفين بالمحافظة</div><div class="summary-value">${ind.usersCount}</div></div>
+        <div class="summary-card"><div class="summary-label">🚶 عدد المعاينات الميدانية</div><div class="summary-value">${ind.fieldTotal}</div></div>
+        <div class="summary-card"><div class="summary-label">🏢 عدد ما تم إدخاله على المنظومة</div><div class="summary-value">${ind.officeTotal}</div></div>
+    `;
 
     root.innerHTML = `
         <div class="dashboard-topline"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px;font-weight:800;color:var(--navy-950)">مؤشرات</span></div><div id="dashboardClock" class="dashboard-clock"></div></div>
 
         <div class="filter-bar" style="margin-bottom:16px">
-            <label style="font-size:12.5px;color:var(--ink-600);display:flex;align-items:center;gap:6px">من <input id="indFrom" type="date" value="${savedFrom}"></label>
-            <label style="font-size:12.5px;color:var(--ink-600);display:flex;align-items:center;gap:6px">إلى <input id="indTo" type="date" value="${savedTo}"></label>
-            ${isCenterAdminDash
-                ? `<select id="indCenter" disabled><option value="${savedCenter}" selected>${savedCenter}</option></select>`
-                : `<select id="indCenter"><option value="">كل المراكز</option>${CENTERS.map(c => `<option value="${c}" ${savedCenter===c?'selected':''}>${c}</option>`).join('')}</select>`}
-            <button class="btn btn-primary btn-sm" onclick="applyIndicatorsFilters()">🔍 تطبيق</button>
-            <button class="btn btn-outline btn-sm" onclick="clearIndicatorsFilters()">↺ من أول الشهر</button>
+            <label style="font-size:12.5px;color:var(--ink-600);display:flex;align-items:center;gap:6px">المركز ${centerSelectHtml}</label>
         </div>
 
-        <div style="font-size:13px;font-weight:700;color:var(--ink-600);margin-bottom:8px">📌 اليوم الحالى</div>
-        <div class="summary-grid"><div class="summary-card"><div class="summary-label">عدد المعاينات المستهدفة</div><div class="summary-value">${stats.targetCount || 0}</div></div><div class="summary-card"><div class="summary-label">عدد ما تم إنجازه</div><div class="summary-value">${stats.completedTasks || 0}</div></div><div class="summary-card"><div class="summary-label">أول بدء عمل</div><div class="summary-value">${stats.workStart ? fmtDate(stats.workStart) : '-'}</div></div><div class="summary-card"><div class="summary-label">آخر انتهاء عمل</div><div class="summary-value">${stats.workEnd ? fmtDate(stats.workEnd) : '-'}</div></div></div>
+        <div style="font-size:13px;font-weight:700;color:var(--ink-600);margin-bottom:8px">📌 إحصائيات اليوم الحالى (${todayKey})</div>
+        <div class="summary-grid">${statCards(todayInd)}</div>
 
-        <div style="font-size:13px;font-weight:700;color:var(--ink-600);margin:18px 0 8px">📊 إحصائيات الفترة المحددة (${indicators.dateFrom} → ${indicators.dateTo}${indicators.center ? ' — ' + indicators.center : ''})</div>
-        <div class="summary-grid">
-            <div class="summary-card"><div class="summary-label">👥 عدد الموظفين</div><div class="summary-value">${indicators.usersCount}</div></div>
-            <div class="summary-card"><div class="summary-label">✅ حضور</div><div class="summary-value">${indicators.attendanceInCount}</div></div>
-            <div class="summary-card"><div class="summary-label">⏰ تأخير</div><div class="summary-value">${indicators.lateCount}</div></div>
-            <div class="summary-card"><div class="summary-label">🗂️ مأموريات</div><div class="summary-value">${indicators.missionsCount}</div></div>
-            <div class="summary-card"><div class="summary-label">📂 مأموريات مفتوحة</div><div class="summary-value">${indicators.missionsOpenCount}</div></div>
-            <div class="summary-card"><div class="summary-label">📝 مهام</div><div class="summary-value">${indicators.tasksCount}</div></div>
-            <div class="summary-card"><div class="summary-label">📋 تكليفات</div><div class="summary-value">${indicators.assignmentsCount}</div></div>
-            <div class="summary-card"><div class="summary-label">✅ تكليفات منفذة</div><div class="summary-value">${indicators.assignmentsDoneCount}</div></div>
-            <div class="summary-card"><div class="summary-label">⏳ تكليفات قيد الانتظار</div><div class="summary-value">${indicators.assignmentsPendingCount}</div></div>
-            <div class="summary-card"><div class="summary-label">🛠️ أجهزة متاحة</div><div class="summary-value">${indicators.equipmentAvailable}</div></div>
-            <div class="summary-card"><div class="summary-label">🧑‍🔧 أجهزة مع مهندس</div><div class="summary-value">${indicators.equipmentWithEngineer}</div></div>
-            <div class="summary-card"><div class="summary-label">🚶 معاينات ميدانية</div><div class="summary-value">${indicators.fieldTotal}</div></div>
-            <div class="summary-card"><div class="summary-label">🏢 طلبات مكتبية</div><div class="summary-value">${indicators.officeTotal}</div></div>
-        </div>
+        <div style="font-size:13px;font-weight:700;color:var(--ink-600);margin:18px 0 8px">📅 إحصائيات الشهر الحالى بالكامل (${monthStartKey} → ${monthEndKey})</div>
+        <div class="summary-grid">${statCards(monthInd)}</div>
 
         <div class="panel" style="margin-top:22px">
-            <div class="panel-head"><h3>📋 بيان حالة الموظفين (${indicators.center ? indicators.center : 'كل المحافظة'} — ${indicators.dateFrom} → ${indicators.dateTo})</h3></div>
+            <div class="panel-head"><h3>📋 بيان حالة الموظفين</h3></div>
             <div style="font-size:12px;color:var(--ink-400);margin-bottom:10px">
-                يشمل: أيام الحضور والغياب، ما تم إدخاله مكتبيًا، ما تم معاينته ميدانيًا، والتكليفات المنفذة والمطلوبة لكل موظف خلال الفترة المحددة أعلاه.
-                ${(function(){ const d1=new Date(savedFrom), d2=new Date(savedTo); const days=Math.round((d2-d1)/86400000)+1; return days>31 ? '<br>⚠️ الفترة المحددة أطول من 31 يوم — قلّل الفترة من فلتر التاريخ بالأعلى قبل التحميل.' : ''; })()}
+                يشمل: أيام الحضور والغياب، ما تم إدخاله مكتبيًا، ما تم معاينته ميدانيًا، والتكليفات المنفذة والمطلوبة لكل موظف خلال الشهر الحالى.
             </div>
             <div class="filter-bar" style="margin-bottom:10px">
-                <input id="employeeSearchBox" placeholder="🔎 ابحث عن موظف بالاسم..." oninput="filterEmployeeStatusTable()" style="min-width:220px">
+                <label style="font-size:12.5px;color:var(--ink-600);display:flex;align-items:center;gap:6px">المركز
+                    ${isCenterAdminDash
+                        ? `<select id="statusCenterFilter" disabled><option value="${CURRENT_USER.center}" selected>${CURRENT_USER.center}</option></select>`
+                        : `<select id="statusCenterFilter" onchange="onStatusCenterChange()"><option value="">كل المراكز</option>${CENTERS.map(c => `<option value="${c}">${c}</option>`).join('')}</select>`}
+                </label>
+                <select id="employeeSelectFilter" onchange="filterEmployeeStatusTable()"><option value="">كل الموظفين</option></select>
+                <input id="employeeSearchBox" placeholder="🔎 ابحث بالاسم..." oninput="filterEmployeeStatusTable()" style="min-width:180px">
                 <button class="btn btn-primary btn-sm" onclick="loadEmployeeStatusReport()">📥 تحميل البيان</button>
             </div>
-            <div id="employeeStatusReportBox"><div class="empty-state">اضغط "تحميل البيان" لعرض حالة الموظفين</div></div>
+            <div id="employeeStatusReportBox"><div class="empty-state">اختر المركز (أو اتركه "كل المراكز") ثم اضغط "تحميل البيان"</div></div>
         </div>
     `;
     window.__employeeStatusRows = [];
+    window.onStatusCenterChange = function() {
+        const sel = document.getElementById('employeeSelectFilter');
+        if (sel) sel.innerHTML = '<option value="">كل الموظفين</option>';
+        window.__employeeStatusRows = [];
+        document.getElementById('employeeStatusReportBox').innerHTML = '<div class="empty-state">اضغط "تحميل البيان" لعرض حالة الموظفين</div>';
+    };
     window.loadEmployeeStatusReport = async function() {
         const box = document.getElementById('employeeStatusReportBox');
-        const from = document.getElementById('indFrom')?.value || savedFrom;
-        const to = document.getElementById('indTo')?.value || savedTo;
-        const center = isCenterAdminDash ? CURRENT_USER.center : (document.getElementById('indCenter')?.value || '');
+        const from = monthStartKey, to = monthEndKey;
+        const center = isCenterAdminDash ? CURRENT_USER.center : (document.getElementById('statusCenterFilter')?.value || '');
         const d1 = new Date(from), d2 = new Date(to);
         const dayCount = Math.round((d2 - d1) / 86400000) + 1;
-        if (dayCount > 31 || dayCount < 1) { showToast('يرجى تحديد فترة صحيحة لا تتجاوز 31 يوم', 'err'); return; }
         box.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
         try {
             const [allUsers, allAssignments, allWorkReports] = await Promise.all([
@@ -1464,6 +1467,7 @@ async function renderDashboard(root) {
                 api('listAssignments', {}),
                 api('listWorkReports', center ? { center } : {})
             ]);
+            // الفنيون والمهندسون ومدير الإدارة (مدير المركز) الخاصون بالمركز المختار — أو كل المراكز
             const roster = allUsers.filter(u => u.status === 'APPROVED' && u.role !== 'SYSTEM_ADMIN' && (!center || u.center === center));
 
             // بناء خريطة الحضور يوم بيوم (بالاعتماد على نفس استدعاء listAttendance المستخدم فعليًا فى شاشة اليوزرز)
@@ -1510,7 +1514,11 @@ async function renderDashboard(root) {
                     assignmentsDone: asg.done, assignmentsRequired: asg.required,
                     workDays: wk.days
                 };
-            });
+            }).sort((a,b) => a.fullName.localeCompare(b.fullName, 'ar'));
+
+            const sel = document.getElementById('employeeSelectFilter');
+            if (sel) sel.innerHTML = '<option value="">كل الموظفين</option>' + window.__employeeStatusRows.map(r => `<option value="${r.userId}">${r.fullName}${center ? '' : ' — ' + r.center}</option>`).join('');
+
             renderEmployeeStatusTable(window.__employeeStatusRows);
         } catch (e) {
             box.innerHTML = `<div class="empty-state">تعذر تحميل البيان: ${e.message}</div>`;
@@ -1531,8 +1539,11 @@ async function renderDashboard(root) {
         </tr>`).join('')}</tbody></table></div>`;
     }
     window.filterEmployeeStatusTable = function() {
+        const selectedId = document.getElementById('employeeSelectFilter')?.value || '';
         const q = (document.getElementById('employeeSearchBox')?.value || '').trim();
-        const filtered = q ? window.__employeeStatusRows.filter(r => r.fullName.includes(q)) : window.__employeeStatusRows;
+        let filtered = window.__employeeStatusRows;
+        if (selectedId) filtered = filtered.filter(r => r.userId === selectedId);
+        else if (q) filtered = filtered.filter(r => r.fullName.includes(q));
         renderEmployeeStatusTable(filtered);
     };
     window.showEmployeeStatusDetail = function(userId) {
@@ -1553,17 +1564,13 @@ async function renderDashboard(root) {
     };
 
     window.applyIndicatorsFilters = function() {
-        const from = document.getElementById('indFrom')?.value || todayKey;
-        const to = document.getElementById('indTo')?.value || todayKey;
         const center = isCenterAdminDash ? CURRENT_USER.center : (document.getElementById('indCenter')?.value || '');
-        localStorage.setItem('indicatorsDateFrom', from);
-        localStorage.setItem('indicatorsDateTo', to);
         localStorage.setItem('indicatorsCenter', center);
         delete PAGE_CACHE['dashboard'];
         goPage('dashboard', true, false);
     };
     window.clearIndicatorsFilters = function() {
-        localStorage.removeItem('indicatorsDateFrom'); localStorage.removeItem('indicatorsDateTo'); localStorage.removeItem('indicatorsCenter');
+        localStorage.removeItem('indicatorsCenter');
         delete PAGE_CACHE['dashboard'];
         goPage('dashboard', true, false);
     };
@@ -1879,9 +1886,9 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
     }
     if (checkOutBtn) {
         checkOutBtn.style.opacity = '1';
-        if (hasCheckOut) { checkOutBtn.disabled = true; checkOutBtn.innerHTML = '<span class="ic">✅</span>تم تسجيل الانصراف اليوم'; checkOutBtn.className = 'btn-attendance btn-checkout done'; }
-        else if (hasCheckIn) { checkOutBtn.disabled = false; checkOutBtn.innerHTML = '<span class="ic">🔴</span>تسجيل انصراف'; checkOutBtn.className = 'btn-attendance btn-checkout'; }
-        else { checkOutBtn.disabled = true; checkOutBtn.innerHTML = '<span class="ic">🔒</span>انصراف (يجب الحضور أولاً)'; checkOutBtn.className = 'btn-attendance btn-checkout blocked'; }
+        if (hasCheckOut) { checkOutBtn.classList.remove('hidden-att'); checkOutBtn.disabled = true; checkOutBtn.innerHTML = '<span class="ic">✅</span>تم تسجيل الانصراف اليوم'; checkOutBtn.className = 'btn-attendance btn-checkout done'; }
+        else if (hasCheckIn) { checkOutBtn.classList.remove('hidden-att'); checkOutBtn.disabled = false; checkOutBtn.innerHTML = '<span class="ic">🔴</span>تسجيل انصراف'; checkOutBtn.className = 'btn-attendance btn-checkout'; }
+        else { checkOutBtn.disabled = true; checkOutBtn.innerHTML = '<span class="ic">🔴</span>تسجيل انصراف'; checkOutBtn.className = 'btn-attendance btn-checkout hidden-att'; }
     }
 }
 window.toggleCheckoutWorkTypeFields = function() {
@@ -2049,7 +2056,7 @@ async function renderAttendance(root) {
             </div>
             <div class="attendance-buttons-row">
                 <button class="btn-attendance btn-checkin${hasCheckIn ? ' done' : ''}" id="checkInBtn" ${hasCheckIn ? 'disabled' : ''}><span class="ic">${hasCheckIn ? '✅' : '🟢'}</span>${hasCheckIn ? 'تم تسجيل الحضور اليوم' : 'تسجيل حضور'}</button>
-                <button class="btn-attendance btn-checkout${hasCheckOut ? ' done' : (!hasCheckIn ? ' blocked' : '')}" id="checkOutBtn" ${(!hasCheckIn || hasCheckOut) ? 'disabled' : ''}><span class="ic">${hasCheckOut ? '✅' : '🔴'}</span>${hasCheckOut ? 'تم تسجيل الانصراف اليوم' : (hasCheckIn ? 'تسجيل انصراف' : 'انصراف (يجب الحضور أولاً)')}</button>
+                <button class="btn-attendance btn-checkout${hasCheckOut ? ' done' : ''}${!hasCheckIn ? ' hidden-att' : ''}" id="checkOutBtn" ${(!hasCheckIn || hasCheckOut) ? 'disabled' : ''}><span class="ic">${hasCheckOut ? '✅' : '🔴'}</span>${hasCheckOut ? 'تم تسجيل الانصراف اليوم' : 'تسجيل انصراف'}</button>
             </div>
             <div class="gps-box" style="justify-content:center;margin-top:12px">📍 سيُحاول النظام تحديد موقعك تلقائيًا عند تسجيل الحضور، وفي حال تعذر ذلك سيتم التسجيل بدون موقع.</div>
         </div>
