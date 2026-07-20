@@ -297,7 +297,21 @@ tbody tr:hover{background:#fafcfd}
 .attendance-status-box .status-icon-large{font-size:48px}
 .attendance-status-box .status-text-large{font-size:18px;font-weight:700;color:var(--navy-900)}
 .attendance-status-box .status-sub{font-size:13px;color:var(--ink-600)}
-.attendance-buttons-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin:10px 0}
+.attendance-buttons-row{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:14px 0}
+
+/* أزرار الحضور والانصراف - تصميم محسّن */
+.btn-attendance{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-width:190px;padding:16px 26px;border-radius:16px;border:none;font-weight:800;font-size:15.5px;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,filter .15s ease;box-shadow:0 6px 16px rgba(0,0,0,.12)}
+.btn-attendance .ic{font-size:19px;line-height:1}
+.btn-attendance:not([disabled]):hover{transform:translateY(-2px);filter:brightness(1.04)}
+.btn-attendance:not([disabled]):active{transform:translateY(0)}
+.btn-attendance[disabled]{cursor:not-allowed;box-shadow:none}
+
+.btn-checkin{background:linear-gradient(135deg,#1f9d5f,#136e42);color:#fff}
+.btn-checkin.done{background:#eafaf1;color:#136e42;border:1.5px solid #b7ecd0;box-shadow:none}
+
+.btn-checkout{background:linear-gradient(135deg,#e0453c,#b02a22);color:#fff}
+.btn-checkout.done{background:#fdecea;color:#b02a22;border:1.5px solid #f6c4c0;box-shadow:none}
+.btn-checkout.blocked{background:#eef1f4;color:#8a94a1;border:1.5px dashed #cfd6de;box-shadow:none;opacity:1}
 
 /* ---------- التاريخ ---------- */
 .date-nav-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line)}
@@ -463,7 +477,7 @@ tbody tr:hover{background:#fafcfd}
     <div class="field"><label>البريد الإلكتروني</label><input id="regEmail" disabled></div>
     <div class="field"><label>الاسم رباعي *</label><input id="regFullName" placeholder="مثال: أحمد محمد علي إبراهيم"></div>
     <div class="field-row">
-      <div class="field"><label>الرقم القومي *</label><input id="regNationalId" placeholder="14 رقم" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+      <div class="field"><label>الرقم القومي *</label><input id="regNationalId" placeholder="14 رقم" inputmode="numeric" pattern="[0-9]*" maxlength="14" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onblur="checkNationalIdDuplicate()"><div id="regNationalIdMsg" style="font-size:12.5px;margin-top:4px;display:none"></div></div>
       <div class="field"><label>رقم الهاتف *</label><input id="regPhone" placeholder="01xxxxxxxxx"></div>
     </div>
     <div class="field">
@@ -1132,7 +1146,7 @@ function buildNav() {
         el.className = 'nav-item' + (item.key === currentPage ? ' active' : '');
         el.id = 'nav-' + item.key;
         el.innerHTML = `<span class="ic">${item.icon}</span><span>${item.label}</span>`;
-        el.onclick = () => goPage(item.key, false, false);
+        el.onclick = () => goPage(item.key, false, true);
         nav.appendChild(el);
     });
 }
@@ -1357,7 +1371,7 @@ async function renderHome(root) {
     const cards = NAV_ITEMS.filter(i => i.key !== 'home' && i.roles.includes(CURRENT_USER.role));
     root.innerHTML = `
         <div class="home-greeting"><p class="hg-name">أهلاً، ${CURRENT_USER.fullName || ''}</p><div class="hg-role">${roleLabel(CURRENT_USER.role)}${CURRENT_USER.center ? ' - ' + CURRENT_USER.center : ''}</div></div>
-        <div class="home-cards-grid">${cards.map(item => `<div class="home-card" onclick="goPage('${item.key}', false, false)"><div class="home-card-ic">${item.icon}</div><div class="home-card-label">${item.label}</div></div>`).join('')}</div>
+        <div class="home-cards-grid">${cards.map(item => `<div class="home-card" onclick="goPage('${item.key}', false, true)"><div class="home-card-ic">${item.icon}</div><div class="home-card-label">${item.label}</div></div>`).join('')}</div>
     `;
 }
 
@@ -1652,7 +1666,7 @@ async function doAttendanceEnhanced(action, extra = {}) {
     const btn = document.getElementById(action === 'checkIn' ? 'checkInBtn' : 'checkOutBtn');
     const originalText = btn ? btn.textContent : '';
     const originalClass = btn ? btn.className : '';
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري الحفظ...'; btn.className = 'btn'; btn.style.background = action === 'checkIn' ? '#184b73' : '#c23a3a'; btn.style.color = '#fff'; btn.style.opacity = '0.7'; }
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري الحفظ...'; btn.className = action === 'checkIn' ? 'btn-attendance btn-checkin' : 'btn-attendance btn-checkout'; btn.style.opacity = '0.75'; }
     showSavingModal(action === 'checkIn' ? 'جارى تسجيل الحضور...' : 'جارى تسجيل الانصراف...');
     
     try {
@@ -1698,13 +1712,13 @@ async function doAttendanceEnhanced(action, extra = {}) {
         if (action === 'checkIn') {
             localStorage.setItem(checkInKey, '1');
             localStorage.setItem('attendance_checkin_time_' + CURRENT_USER.id + '_' + today, new Date().toISOString());
-            if (btn) { btn.disabled = true; btn.textContent = '✅ تم تسجيل الحضور اليوم'; btn.className = 'btn btn-done-checkin'; btn.style.background = '#1f8a55'; btn.style.color = '#fff'; btn.style.opacity = '1'; }
+            if (btn) { btn.disabled = true; btn.textContent = '✅ تم تسجيل الحضور اليوم'; btn.className = 'btn-attendance btn-checkin done'; btn.style.opacity = '1'; }
             const locationMsg = position ? 'مع تحديد الموقع' : 'بدون تحديد الموقع';
             const checkInTimeText = fmtTime(new Date());
             showToast(`✅ تم تسجيل حضورك في الساعة ${checkInTimeText} (${locationMsg})`, isLate ? 'warn' : 'ok');
         } else {
             localStorage.setItem(checkOutKey, '1');
-            if (btn) { btn.disabled = true; btn.textContent = '✅ تم تسجيل الانصراف اليوم'; btn.className = 'btn btn-done-checkout'; btn.style.background = '#c23a3a'; btn.style.color = '#fff'; btn.style.opacity = '1'; }
+            if (btn) { btn.disabled = true; btn.textContent = '✅ تم تسجيل الانصراف اليوم'; btn.className = 'btn-attendance btn-checkout done'; btn.style.opacity = '1'; }
             showToast('✅ تم تسجيل الانصراف بنجاح', 'ok');
         }
         
@@ -1724,13 +1738,15 @@ function updateAttendanceUI(hasCheckIn, hasCheckOut) {
     const checkInBtn = document.getElementById('checkInBtn');
     const checkOutBtn = document.getElementById('checkOutBtn');
     if (checkInBtn) {
-        if (hasCheckIn) { checkInBtn.disabled = true; checkInBtn.textContent = '✅ تم تسجيل الحضور اليوم'; checkInBtn.className = 'btn btn-done-checkin'; checkInBtn.style.background = '#1f8a55'; checkInBtn.style.color = '#fff'; checkInBtn.style.opacity = '1'; }
-        else { checkInBtn.disabled = false; checkInBtn.textContent = '✅ تسجيل حضور'; checkInBtn.className = 'btn btn-primary'; checkInBtn.style.background = ''; checkInBtn.style.color = ''; checkInBtn.style.opacity = '1'; }
+        checkInBtn.style.opacity = '1';
+        if (hasCheckIn) { checkInBtn.disabled = true; checkInBtn.innerHTML = '<span class="ic">✅</span>تم تسجيل الحضور اليوم'; checkInBtn.className = 'btn-attendance btn-checkin done'; }
+        else { checkInBtn.disabled = false; checkInBtn.innerHTML = '<span class="ic">🟢</span>تسجيل حضور'; checkInBtn.className = 'btn-attendance btn-checkin'; }
     }
     if (checkOutBtn) {
-        if (hasCheckOut) { checkOutBtn.disabled = true; checkOutBtn.textContent = '✅ تم تسجيل الانصراف اليوم'; checkOutBtn.className = 'btn btn-done-checkout'; checkOutBtn.style.background = '#c23a3a'; checkOutBtn.style.color = '#fff'; checkOutBtn.style.opacity = '1'; }
-        else if (hasCheckIn) { checkOutBtn.disabled = false; checkOutBtn.textContent = '⏹ تسجيل انصراف'; checkOutBtn.className = 'btn btn-danger'; checkOutBtn.style.background = ''; checkOutBtn.style.color = ''; checkOutBtn.style.opacity = '1'; }
-        else { checkOutBtn.disabled = true; checkOutBtn.textContent = '⏹ انصراف (يجب الحضور أولاً)'; checkOutBtn.className = 'btn btn-disabled'; checkOutBtn.style.background = '#e9ecef'; checkOutBtn.style.color = '#6c757d'; checkOutBtn.style.opacity = '0.65'; }
+        checkOutBtn.style.opacity = '1';
+        if (hasCheckOut) { checkOutBtn.disabled = true; checkOutBtn.innerHTML = '<span class="ic">✅</span>تم تسجيل الانصراف اليوم'; checkOutBtn.className = 'btn-attendance btn-checkout done'; }
+        else if (hasCheckIn) { checkOutBtn.disabled = false; checkOutBtn.innerHTML = '<span class="ic">🔴</span>تسجيل انصراف'; checkOutBtn.className = 'btn-attendance btn-checkout'; }
+        else { checkOutBtn.disabled = true; checkOutBtn.innerHTML = '<span class="ic">🔒</span>انصراف (يجب الحضور أولاً)'; checkOutBtn.className = 'btn-attendance btn-checkout blocked'; }
     }
 }
 window.toggleCheckoutWorkTypeFields = function() {
@@ -1897,8 +1913,8 @@ async function renderAttendance(root) {
                 <div class="status-sub">${checkInTime ? `آخر حضور: ${fmtDate(checkInTime)}` : 'لم يتم تسجيل حضور اليوم بعد'}</div>
             </div>
             <div class="attendance-buttons-row">
-                <button class="btn btn-primary" id="checkInBtn" ${hasCheckIn ? 'disabled' : ''}>${hasCheckIn ? '✅ تم تسجيل الحضور اليوم' : '✅ تسجيل حضور'}</button>
-                <button class="btn btn-danger" id="checkOutBtn" ${(!hasCheckIn || hasCheckOut) ? 'disabled' : ''}>${hasCheckOut ? '✅ تم تسجيل الانصراف اليوم' : (hasCheckIn ? '⏹ تسجيل انصراف' : '⏹ انصراف (يجب الحضور أولاً)')}</button>
+                <button class="btn-attendance btn-checkin${hasCheckIn ? ' done' : ''}" id="checkInBtn" ${hasCheckIn ? 'disabled' : ''}><span class="ic">${hasCheckIn ? '✅' : '🟢'}</span>${hasCheckIn ? 'تم تسجيل الحضور اليوم' : 'تسجيل حضور'}</button>
+                <button class="btn-attendance btn-checkout${hasCheckOut ? ' done' : (!hasCheckIn ? ' blocked' : '')}" id="checkOutBtn" ${(!hasCheckIn || hasCheckOut) ? 'disabled' : ''}><span class="ic">${hasCheckOut ? '✅' : '🔴'}</span>${hasCheckOut ? 'تم تسجيل الانصراف اليوم' : (hasCheckIn ? 'تسجيل انصراف' : 'انصراف (يجب الحضور أولاً)')}</button>
             </div>
             <div class="gps-box" style="justify-content:center;margin-top:12px">📍 سيُحاول النظام تحديد موقعك تلقائيًا عند تسجيل الحضور، وفي حال تعذر ذلك سيتم التسجيل بدون موقع.</div>
         </div>
@@ -3392,6 +3408,41 @@ document.getElementById('regJob').addEventListener('change', function() {
     if (isEngineer) { document.getElementById('regCenter').value = ''; document.getElementById('regUnit').value = ''; }
 });
 
+// يتحقق مما إذا كان الرقم القومي مسجلاً بالفعل بحساب Gmail آخر، ويعرض رسالة توضيحية
+let __lastCheckedNationalId = '';
+async function checkNationalIdDuplicate() {
+    const input = document.getElementById('regNationalId');
+    const msgBox = document.getElementById('regNationalIdMsg');
+    const nationalId = (input.value || '').trim();
+    if (!msgBox) return true;
+    msgBox.style.display = 'none';
+    msgBox.textContent = '';
+    input.dataset.duplicate = '';
+    if (!/^[0-9]{14}$/.test(nationalId)) return true; // لا يوجد تحقق قبل اكتمال الـ14 رقم
+    if (nationalId === __lastCheckedNationalId && input.dataset.checked === '1') {
+        return input.dataset.duplicate !== '1';
+    }
+    try {
+        // ⚠️ يتطلب هذا الإجراء دالة "checkNationalId" في الـ Apps Script الخاص بالخادم
+        const result = await api('checkNationalId', { nationalId, excludeUserId: (CURRENT_USER && CURRENT_USER.id) || '' });
+        __lastCheckedNationalId = nationalId;
+        input.dataset.checked = '1';
+        if (result && result.exists) {
+            input.dataset.duplicate = '1';
+            msgBox.style.color = 'var(--bad, #c23a3a)';
+            msgBox.innerHTML = `⚠️ هذا الرقم القومي مسجل بالفعل بحساب: <strong>${result.maskedEmail || 'بريد آخر'}</strong>. برجاء التواصل مع مدير النظام إذا كنت تعتقد أن هذا خطأ.`;
+            msgBox.style.display = 'block';
+            return false;
+        }
+        input.dataset.duplicate = '0';
+        return true;
+    } catch (e) {
+        // فى حال عدم توفر هذا الإجراء على الخادم بعد، لا نمنع المستخدم من إكمال التسجيل
+        console.warn('تعذر التحقق من تكرار الرقم القومي:', e.message);
+        return true;
+    }
+}
+
 document.getElementById('submitRegisterBtn').addEventListener('click', async function() {
     const email = document.getElementById('regEmail').value.trim();
     const fullName = document.getElementById('regFullName').value.trim();
@@ -3412,6 +3463,16 @@ document.getElementById('submitRegisterBtn').addEventListener('click', async fun
     if (!hasPhoto) { 
         showToast('الصورة الشخصية إلزامية', 'err'); 
         return; 
+    }
+    if (!/^[0-9]{14}$/.test(nationalId)) {
+        showToast('الرقم القومي يجب أن يكون 14 رقم', 'err');
+        return;
+    }
+    const isIdOk = await checkNationalIdDuplicate();
+    if (!isIdOk) {
+        showToast('⚠️ لا يمكن التسجيل: الرقم القومي مسجل بحساب آخر بالفعل', 'err');
+        document.getElementById('regNationalId').focus();
+        return;
     }
     
     this.disabled = true; 
