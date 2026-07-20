@@ -862,7 +862,20 @@ const API_CONFIG = {
     backoffMultiplier: 1.5      // مضاعف التأخير (exponential backoff)
 };
 
+// ⏱️ تباعد بسيط بين الطلبات لتفادي إرسال عدد كبير من الطلبات دفعة واحدة
+// (مثال: تسجيل الحضور يستدعي عدة طلبات قراءة متتالية فى الخلفية)
+let __lastApiCallTime = 0;
+const API_MIN_GAP_MS = 350;
+async function __apiThrottleGap() {
+    const now = Date.now();
+    const nextAllowed = Math.max(now, __lastApiCallTime + API_MIN_GAP_MS);
+    const wait = nextAllowed - now;
+    __lastApiCallTime = nextAllowed;
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+}
+
 async function api(action, params) {
+    await __apiThrottleGap();
     const body = Object.assign({ action }, params || {});
     try {
         if (CURRENT_USER && !body.requesterId) body.requesterId = CURRENT_USER.id;
@@ -899,7 +912,7 @@ async function api(action, params) {
             if (!READ_ONLY_ACTIONS.has(action)) {
                 Object.keys(PAGE_CACHE).forEach(k => { if (k !== currentPage) delete PAGE_CACHE[k]; });
                 clearTimeout(window.__refreshDebounce);
-                window.__refreshDebounce = setTimeout(prefetchAllPages, 1200);
+                window.__refreshDebounce = setTimeout(prefetchAllPages, 3500);
             }
             
             return json.data;
@@ -973,7 +986,7 @@ document.getElementById('googleLoginBtn').addEventListener('click', async () => 
                 </div>
             `);
         } else if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') {
-            showToast('⚠️ تم حظر النافذة المنبثقة. جارٍ التحويل...', 'warn');
+            showToast('ℹ️ جارٍ تسجيل الدخول بطريقة بديلة...', 'info');
             await auth.signInWithRedirect(provider);
         } else if (e.code === 'auth/network-request-failed') {
             showToast('❌ فشل الاتصال بالشبكة. تأكد من اتصال الإنترنت.', 'err');
@@ -1116,7 +1129,7 @@ function doLogout() {
    ===================================================================== */
 const NAV_ITEMS = [
     { key:'home', label:'الرئيسية', icon:'🏠', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
-    { key:'dashboard', label:'مؤشرات', icon:'📊', roles:['SYSTEM_ADMIN'] },
+    { key:'dashboard', label:'مؤشرات', icon:'📊', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
     { key:'attendance', label:'الحضور والانصراف', icon:'🕒', roles:['CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
     { key:'coordination', label:'متابعة اليوم', icon:'🧭', roles:['SYSTEM_ADMIN','CENTER_ADMIN'] },
     { key:'assignments', label:'التكليفات والمهام', icon:'🗂️', roles:['SYSTEM_ADMIN','CENTER_ADMIN','ENGINEER','TECHNICIAN'] },
@@ -1377,12 +1390,15 @@ async function renderHome(root) {
 
 async function renderDashboard(root) {
     const todayKey = getEgyptDateKey(getEgyptNow());
-    const savedFrom = localStorage.getItem('indicatorsDateFrom') || todayKey;
+    const monthStartKey = todayKey.slice(0, 8) + '01';
+    const savedFrom = localStorage.getItem('indicatorsDateFrom') || monthStartKey;
     const savedTo = localStorage.getItem('indicatorsDateTo') || todayKey;
-    const savedCenter = localStorage.getItem('indicatorsCenter') || '';
+    const isCenterAdminDash = CURRENT_USER.role === 'CENTER_ADMIN';
+    // مدير المركز مقيّد بمركزه فقط ولا يمكنه اختيار مركز آخر أو "كل المراكز"
+    const savedCenter = isCenterAdminDash ? CURRENT_USER.center : (localStorage.getItem('indicatorsCenter') || '');
 
     const [stats, indicators] = await Promise.all([
-        api('dashboardStats', Object.assign(CURRENT_USER.role === 'CENTER_ADMIN' ? { center: CURRENT_USER.center } : {}, { date: todayKey })),
+        api('dashboardStats', Object.assign(isCenterAdminDash ? { center: CURRENT_USER.center } : {}, { date: todayKey })),
         api('indicatorsOverview', { dateFrom: savedFrom, dateTo: savedTo, center: savedCenter })
     ]);
 
@@ -1392,9 +1408,11 @@ async function renderDashboard(root) {
         <div class="filter-bar" style="margin-bottom:16px">
             <label style="font-size:12.5px;color:var(--ink-600);display:flex;align-items:center;gap:6px">من <input id="indFrom" type="date" value="${savedFrom}"></label>
             <label style="font-size:12.5px;color:var(--ink-600);display:flex;align-items:center;gap:6px">إلى <input id="indTo" type="date" value="${savedTo}"></label>
-            <select id="indCenter"><option value="">كل المراكز</option>${CENTERS.map(c => `<option value="${c}" ${savedCenter===c?'selected':''}>${c}</option>`).join('')}</select>
+            ${isCenterAdminDash
+                ? `<select id="indCenter" disabled><option value="${savedCenter}" selected>${savedCenter}</option></select>`
+                : `<select id="indCenter"><option value="">كل المراكز</option>${CENTERS.map(c => `<option value="${c}" ${savedCenter===c?'selected':''}>${c}</option>`).join('')}</select>`}
             <button class="btn btn-primary btn-sm" onclick="applyIndicatorsFilters()">🔍 تطبيق</button>
-            <button class="btn btn-outline btn-sm" onclick="clearIndicatorsFilters()">✖ اليوم / الكل</button>
+            <button class="btn btn-outline btn-sm" onclick="clearIndicatorsFilters()">↺ من أول الشهر</button>
         </div>
 
         <div style="font-size:13px;font-weight:700;color:var(--ink-600);margin-bottom:8px">📌 اليوم الحالى</div>
@@ -1416,11 +1434,128 @@ async function renderDashboard(root) {
             <div class="summary-card"><div class="summary-label">🚶 معاينات ميدانية</div><div class="summary-value">${indicators.fieldTotal}</div></div>
             <div class="summary-card"><div class="summary-label">🏢 طلبات مكتبية</div><div class="summary-value">${indicators.officeTotal}</div></div>
         </div>
+
+        <div class="panel" style="margin-top:22px">
+            <div class="panel-head"><h3>📋 بيان حالة الموظفين (${indicators.center ? indicators.center : 'كل المحافظة'} — ${indicators.dateFrom} → ${indicators.dateTo})</h3></div>
+            <div style="font-size:12px;color:var(--ink-400);margin-bottom:10px">
+                يشمل: أيام الحضور والغياب، ما تم إدخاله مكتبيًا، ما تم معاينته ميدانيًا، والتكليفات المنفذة والمطلوبة لكل موظف خلال الفترة المحددة أعلاه.
+                ${(function(){ const d1=new Date(savedFrom), d2=new Date(savedTo); const days=Math.round((d2-d1)/86400000)+1; return days>31 ? '<br>⚠️ الفترة المحددة أطول من 31 يوم — قلّل الفترة من فلتر التاريخ بالأعلى قبل التحميل.' : ''; })()}
+            </div>
+            <div class="filter-bar" style="margin-bottom:10px">
+                <input id="employeeSearchBox" placeholder="🔎 ابحث عن موظف بالاسم..." oninput="filterEmployeeStatusTable()" style="min-width:220px">
+                <button class="btn btn-primary btn-sm" onclick="loadEmployeeStatusReport()">📥 تحميل البيان</button>
+            </div>
+            <div id="employeeStatusReportBox"><div class="empty-state">اضغط "تحميل البيان" لعرض حالة الموظفين</div></div>
+        </div>
     `;
+    window.__employeeStatusRows = [];
+    window.loadEmployeeStatusReport = async function() {
+        const box = document.getElementById('employeeStatusReportBox');
+        const from = document.getElementById('indFrom')?.value || savedFrom;
+        const to = document.getElementById('indTo')?.value || savedTo;
+        const center = isCenterAdminDash ? CURRENT_USER.center : (document.getElementById('indCenter')?.value || '');
+        const d1 = new Date(from), d2 = new Date(to);
+        const dayCount = Math.round((d2 - d1) / 86400000) + 1;
+        if (dayCount > 31 || dayCount < 1) { showToast('يرجى تحديد فترة صحيحة لا تتجاوز 31 يوم', 'err'); return; }
+        box.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+        try {
+            const [allUsers, allAssignments, allWorkReports] = await Promise.all([
+                api('listUsers', {}),
+                api('listAssignments', {}),
+                api('listWorkReports', center ? { center } : {})
+            ]);
+            const roster = allUsers.filter(u => u.status === 'APPROVED' && u.role !== 'SYSTEM_ADMIN' && (!center || u.center === center));
+
+            // بناء خريطة الحضور يوم بيوم (بالاعتماد على نفس استدعاء listAttendance المستخدم فعليًا فى شاشة اليوزرز)
+            const dateKeys = [];
+            for (let i = 0; i < dayCount; i++) { const d = new Date(d1); d.setDate(d1.getDate() + i); dateKeys.push(getEgyptDateKey(d)); }
+            const todayK = getEgyptDateKey(getEgyptNow());
+            const countedDates = dateKeys.filter(dt => dt <= todayK);
+            const presentSetByDate = {};
+            for (const dt of countedDates) {
+                try {
+                    const recs = await api('listAttendance', { date: dt });
+                    presentSetByDate[dt] = new Set((recs || []).filter(r => r.type === 'IN').map(r => r.userId));
+                } catch (e) { presentSetByDate[dt] = new Set(); }
+            }
+
+            const assignByUser = {};
+            allAssignments.forEach(a => {
+                if (!a.recipientId) return;
+                const t = new Date(a.createdAt || 0).getTime();
+                if (t < d1.getTime() || t > d2.getTime() + 86399999) return;
+                if (!assignByUser[a.recipientId]) assignByUser[a.recipientId] = { required: 0, done: 0 };
+                assignByUser[a.recipientId].required++;
+                if (a.status === 'COMPLETED') assignByUser[a.recipientId].done++;
+            });
+
+            const workByUser = {};
+            allWorkReports.forEach(w => {
+                if (!w.userId || !w.date) return;
+                if (w.date < from || w.date > to) return;
+                if (!workByUser[w.userId]) workByUser[w.userId] = { field: 0, office: 0, days: [] };
+                if (w.workType === 'FIELD') workByUser[w.userId].field += (w.casesCount || 0);
+                else workByUser[w.userId].office += (w.systemEntriesCount || 0);
+                workByUser[w.userId].days.push(w);
+            });
+
+            window.__employeeStatusRows = roster.map(u => {
+                const presentDays = countedDates.filter(dt => presentSetByDate[dt] && presentSetByDate[dt].has(u.id)).length;
+                const wk = workByUser[u.id] || { field: 0, office: 0, days: [] };
+                const asg = assignByUser[u.id] || { required: 0, done: 0 };
+                return {
+                    userId: u.id, fullName: u.fullName, center: u.center || '-',
+                    presentDays, absentDays: Math.max(0, countedDates.length - presentDays),
+                    officeCount: wk.office, fieldCount: wk.field,
+                    assignmentsDone: asg.done, assignmentsRequired: asg.required,
+                    workDays: wk.days
+                };
+            });
+            renderEmployeeStatusTable(window.__employeeStatusRows);
+        } catch (e) {
+            box.innerHTML = `<div class="empty-state">تعذر تحميل البيان: ${e.message}</div>`;
+        }
+    };
+
+    function renderEmployeeStatusTable(rows) {
+        const box = document.getElementById('employeeStatusReportBox');
+        if (!rows.length) { box.innerHTML = '<div class="empty-state">لا يوجد موظفون مطابقون</div>'; return; }
+        box.innerHTML = `<div class="table-wrap"><table><thead><tr>
+            <th>الاسم</th><th>المركز</th><th>أيام الحضور</th><th>أيام الغياب</th><th>مكتبي</th><th>ميداني</th><th>تكليفات منفذة</th><th>تكليفات مطلوبة</th><th></th>
+        </tr></thead><tbody>${rows.map(r => `<tr>
+            <td>${r.fullName}</td><td>${r.center}</td><td>${r.presentDays}</td>
+            <td style="${r.absentDays > 0 ? 'color:var(--bad);font-weight:700' : ''}">${r.absentDays}</td>
+            <td>${r.officeCount}</td><td>${r.fieldCount}</td>
+            <td>${r.assignmentsDone}</td><td>${r.assignmentsRequired}</td>
+            <td><button class="btn btn-outline btn-sm" onclick="showEmployeeStatusDetail('${r.userId}')">تفاصيل يومية</button></td>
+        </tr>`).join('')}</tbody></table></div>`;
+    }
+    window.filterEmployeeStatusTable = function() {
+        const q = (document.getElementById('employeeSearchBox')?.value || '').trim();
+        const filtered = q ? window.__employeeStatusRows.filter(r => r.fullName.includes(q)) : window.__employeeStatusRows;
+        renderEmployeeStatusTable(filtered);
+    };
+    window.showEmployeeStatusDetail = function(userId) {
+        const r = window.__employeeStatusRows.find(x => x.userId === userId);
+        if (!r) return;
+        const rows = r.workDays.slice().sort((a,b) => a.date < b.date ? -1 : 1);
+        openModal(`
+            <h3>📅 تفاصيل يومية — ${r.fullName}</h3>
+            <div class="summary-grid" style="margin-top:8px">
+                <div class="summary-card"><div class="summary-label">أيام الحضور</div><div class="summary-value">${r.presentDays}</div></div>
+                <div class="summary-card"><div class="summary-label">أيام الغياب</div><div class="summary-value">${r.absentDays}</div></div>
+                <div class="summary-card"><div class="summary-label">تكليفات منفذة/مطلوبة</div><div class="summary-value" style="font-size:16px">${r.assignmentsDone}/${r.assignmentsRequired}</div></div>
+            </div>
+            <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>العدد</th></tr></thead>
+            <tbody>${rows.length ? rows.map(d => `<tr><td>${d.date}</td><td>${d.workType === 'FIELD' ? 'ميداني' : 'مكتبي'}</td><td>${d.workType === 'FIELD' ? (d.casesCount||0) : (d.systemEntriesCount||0)}</td></tr>`).join('') : '<tr><td colspan="3"><div class="empty-state">لا يوجد بيان أعمال مسجل خلال هذه الفترة</div></td></tr>'}</tbody></table></div>
+            <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إغلاق</button></div>
+        `);
+    };
+
     window.applyIndicatorsFilters = function() {
         const from = document.getElementById('indFrom')?.value || todayKey;
         const to = document.getElementById('indTo')?.value || todayKey;
-        const center = document.getElementById('indCenter')?.value || '';
+        const center = isCenterAdminDash ? CURRENT_USER.center : (document.getElementById('indCenter')?.value || '');
         localStorage.setItem('indicatorsDateFrom', from);
         localStorage.setItem('indicatorsDateTo', to);
         localStorage.setItem('indicatorsCenter', center);
