@@ -869,7 +869,7 @@ const API_CONFIG = {
 // ⏱️ تباعد بسيط بين الطلبات لتفادي إرسال عدد كبير من الطلبات دفعة واحدة
 // (مثال: تسجيل الحضور يستدعي عدة طلبات قراءة متتالية فى الخلفية)
 let __lastApiCallTime = 0;
-const API_MIN_GAP_MS = 350;
+const API_MIN_GAP_MS = 550;
 async function __apiThrottleGap() {
     const now = Date.now();
     const nextAllowed = Math.max(now, __lastApiCallTime + API_MIN_GAP_MS);
@@ -878,7 +878,8 @@ async function __apiThrottleGap() {
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
 }
 
-async function api(action, params) {
+async function api(action, params, opts) {
+    opts = opts || {};
     await __apiThrottleGap();
     const body = Object.assign({ action }, params || {});
     try {
@@ -943,7 +944,7 @@ async function api(action, params) {
         ? '⚠️ تعذر الاتصال. تأكد من اتصال الإنترنت والمحاولة مرة أخرى'
         : errorMsg;
     
-    showToast(userMessage, 'err');
+    if (!opts.silent) showToast(userMessage, 'err');
     throw lastError || new Error(errorMsg);
 }
 
@@ -1214,6 +1215,7 @@ function launchApp() {
     refreshNotifCount();
     setInterval(refreshNotifCount, 60000);
     showPendingAssignmentsPrompt();
+    setTimeout(showCheckInReminderIfNeeded, 4000);
     setTimeout(prefetchAllPages, 2000);
     setTimeout(setupPushNotifications, 3000);
     try { api('recordLogin', { userId: CURRENT_USER.id, userName: CURRENT_USER.fullName, email: CURRENT_USER.email }).catch(() => {}); } catch(e) {}
@@ -1471,17 +1473,44 @@ async function renderDashboard(root) {
             const roster = allUsers.filter(u => u.status === 'APPROVED' && u.role !== 'SYSTEM_ADMIN' && (!center || u.center === center));
 
             // بناء خريطة الحضور يوم بيوم (بالاعتماد على نفس استدعاء listAttendance المستخدم فعليًا فى شاشة اليوزرز)
+            // البيانات مخزّنة مؤقتًا لكل تاريخ (بيان الحضور لتاريخ معين لا يعتمد على المركز)، فإعادة تحميل البيان
+            // بمركز مختلف أو أكثر من مرة لا يكرر نفس الطلبات
+            window.__attendanceDateCache = window.__attendanceDateCache || {};
             const dateKeys = [];
             for (let i = 0; i < dayCount; i++) { const d = new Date(d1); d.setDate(d1.getDate() + i); dateKeys.push(getEgyptDateKey(d)); }
             const todayK = getEgyptDateKey(getEgyptNow());
             const countedDates = dateKeys.filter(dt => dt <= todayK);
             const presentSetByDate = {};
-            for (const dt of countedDates) {
-                try {
-                    const recs = await api('listAttendance', { date: dt });
-                    presentSetByDate[dt] = new Set((recs || []).filter(r => r.type === 'IN').map(r => r.userId));
-                } catch (e) { presentSetByDate[dt] = new Set(); }
+            let failedDates = 0;
+
+            // محاولة أولى: طلب واحد لكامل الفترة (أسرع بكثير) — يُستخدم فقط لو الخادم يدعمه
+            let rangeOk = false;
+            try {
+                const rangeRecs = await api('listAttendance', { dateFrom: from, dateTo: to }, { silent: true });
+                if (Array.isArray(rangeRecs) && rangeRecs.length && rangeRecs[0] && rangeRecs[0].date) {
+                    countedDates.forEach(dt => presentSetByDate[dt] = new Set());
+                    rangeRecs.forEach(r => { if (r.type === 'IN' && presentSetByDate[r.date]) presentSetByDate[r.date].add(r.userId); });
+                    countedDates.forEach(dt => window.__attendanceDateCache[dt] = presentSetByDate[dt]);
+                    rangeOk = true;
+                }
+            } catch (e) { /* الخادم لا يدعم الطلب الموحّد بعد — سيتم الرجوع للطريقة التقليدية */ }
+
+            if (!rangeOk) {
+                // الرجوع لتحميل يوم بيوم (مع تخزين مؤقت لتفادي تكرار نفس الطلبات لاحقًا)
+                let doneDates = 0;
+                const toFetch = countedDates.filter(dt => !window.__attendanceDateCache[dt]);
+                for (const dt of countedDates) {
+                    if (window.__attendanceDateCache[dt]) { presentSetByDate[dt] = window.__attendanceDateCache[dt]; continue; }
+                    box.innerHTML = `<div class="loader"><div class="spinner"></div><div style="margin-top:8px;font-size:12.5px;color:var(--ink-400)">جارٍ تحميل بيانات الحضور... (${++doneDates}/${toFetch.length})</div></div>`;
+                    try {
+                        const recs = await api('listAttendance', { date: dt }, { silent: true });
+                        const set = new Set((recs || []).filter(r => r.type === 'IN').map(r => r.userId));
+                        presentSetByDate[dt] = set;
+                        window.__attendanceDateCache[dt] = set;
+                    } catch (e) { presentSetByDate[dt] = new Set(); failedDates++; }
+                }
             }
+            if (failedDates > 0) showToast(`⚠️ تعذر تحميل بيانات الحضور لـ ${failedDates} يوم — أعد تحميل البيان بعد قليل لاستكمالها`, 'warn');
 
             const assignByUser = {};
             allAssignments.forEach(a => {
@@ -2095,18 +2124,26 @@ async function renderCoordination(root) {
     let selectedDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow());
     const today = getEgyptDateKey(getEgyptNow());
     if (selectedDate > today) { selectedDate = today; localStorage.setItem('coordinationDate', selectedDate); }
+    const isCenterAdminCoord = CURRENT_USER.role === 'CENTER_ADMIN';
+    // مدير المركز مقيّد بمركزه فقط، ومدير النظام يقدر يختار مركز محدد أو كل المراكز
+    const selectedCenter = isCenterAdminCoord ? CURRENT_USER.center : (localStorage.getItem('coordinationCenter') || '');
     let centersToShow = [];
-    if (CURRENT_USER.role === 'CENTER_ADMIN') centersToShow = [CURRENT_USER.center];
-    else if (CURRENT_USER.role === 'SYSTEM_ADMIN') centersToShow = CENTERS.filter(c => c !== 'مجمع الذكاء');
-    else centersToShow = [CURRENT_USER.center];
-    const [users, attendance] = await Promise.all([api('listUsers', {}), api('listAttendance', { date: selectedDate })]);
+    if (isCenterAdminCoord) centersToShow = [CURRENT_USER.center];
+    else if (selectedCenter) centersToShow = [selectedCenter];
+    else centersToShow = CENTERS.filter(c => c !== 'مجمع الذكاء');
+    const [users, attendance, workReports] = await Promise.all([
+        api('listUsers', {}),
+        api('listAttendance', { date: selectedDate }),
+        api('listWorkReports', selectedCenter ? { center: selectedCenter } : {})
+    ]);
     const uniqueUsers = [];
     const seenNames = new Set();
     users.forEach(u => { if (!seenNames.has(u.fullName)) { seenNames.add(u.fullName); uniqueUsers.push(u); } });
     await loadAttendanceWindowConfig();
     const lateThresholdMinutes = getAttendanceWindowState(getEgyptNow()).checkInDeadline;
     function minutesOfDay(iso) { const egypt = toEgyptTime(iso instanceof Date ? iso : new Date(iso)); if (!egypt) return null; return egypt.getHours() * 60 + egypt.getMinutes(); }
-    let centerData = [], totalEmployees = 0, totalPresent = 0, totalLate = 0, totalAbsent = 0;
+    const dayWorkReports = (workReports || []).filter(w => w.date === selectedDate);
+    let centerData = [], totalEmployees = 0, totalPresent = 0, totalLate = 0, totalAbsent = 0, totalFieldCount = 0, totalOfficeCount = 0;
     centersToShow.forEach(center => {
         const centerStaff = uniqueUsers.filter(u => u.status === 'APPROVED' && u.center === center && u.role !== 'SYSTEM_ADMIN');
         const centerAttendanceIn = attendance.filter(a => a.center === center && a.type === 'IN');
@@ -2115,24 +2152,19 @@ async function renderCoordination(root) {
         let centerLate = 0;
         centerStaff.forEach(u => {
             const records = centerAttendanceIn.filter(a => a.userId === u.id).sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+            const userWork = dayWorkReports.filter(w => w.userId === u.id);
+            const fieldCount = userWork.filter(w => w.workType === 'FIELD').reduce((s,w) => s + (w.casesCount || 0), 0);
+            const officeCount = userWork.filter(w => w.workType === 'OFFICE').reduce((s,w) => s + (w.systemEntriesCount || 0), 0);
+            totalFieldCount += fieldCount; totalOfficeCount += officeCount;
+            const workSummary = [fieldCount ? `🚶 ميدانى: ${fieldCount}` : '', officeCount ? `🏢 مكتبى: ${officeCount}` : ''].filter(Boolean).join(' / ') || '-';
             if (records.length) {
                 const first = records[0];
                 const mins = minutesOfDay(first.timestamp);
                 const late = mins !== null && mins >= lateThresholdMinutes;
                 if (late) centerLate++;
-                const locationName = first.locationName || 'موقع غير معروف';
-                let locLink = '-';
-                if (first.mapsLink && first.mapsLink.trim().startsWith('http')) locLink = `<a href="${first.mapsLink}" target="_blank" class="location-link">📍 ${locationName}</a>`;
-                else if (first.lat && first.lng && !isNaN(first.lat) && !isNaN(first.lng)) locLink = `<a href="https://www.google.com/maps?q=${first.lat},${first.lng}" target="_blank" class="location-link">📍 ${locationName}</a>`;
                 const checkOut = centerAttendanceOut.filter(a => a.userId === u.id).sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp))[0] || null;
-                let outLocLink = '-';
-                if (checkOut) {
-                    const outLocationName = checkOut.locationName || 'موقع غير معروف';
-                    if (checkOut.mapsLink && checkOut.mapsLink.trim().startsWith('http')) outLocLink = `<a href="${checkOut.mapsLink}" target="_blank" class="location-link">📍 ${outLocationName}</a>`;
-                    else if (checkOut.lat && checkOut.lng && !isNaN(checkOut.lat) && !isNaN(checkOut.lng)) outLocLink = `<a href="https://www.google.com/maps?q=${checkOut.lat},${checkOut.lng}" target="_blank" class="location-link">📍 ${outLocationName}</a>`;
-                }
-                presentList.push({ name: u.fullName, role: u.role, time: first.timestamp, late, location: locLink, checkOut, checkOutTime: checkOut ? checkOut.timestamp : null, checkOutLocation: outLocLink });
-            } else { absentList.push({ name: u.fullName, role: u.role }); }
+                presentList.push({ name: u.fullName, role: u.role, time: first.timestamp, late, checkOutTime: checkOut ? checkOut.timestamp : null, workSummary });
+            } else { absentList.push({ name: u.fullName, role: u.role, workSummary }); }
         });
         const centerPresent = presentList.length, centerAbsent = absentList.length;
         totalLate += centerLate;
@@ -2142,30 +2174,51 @@ async function renderCoordination(root) {
     const displayDate = new Date(selectedDate + 'T00:00:00');
     const formattedDate = displayDate.toLocaleDateString('ar-EG', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
     const isToday = selectedDate === today;
+    const centerFilterHtml = isCenterAdminCoord
+        ? `<select id="coordinationCenterPicker" disabled><option selected>${CURRENT_USER.center}</option></select>`
+        : `<select id="coordinationCenterPicker"><option value="">كل المراكز</option>${CENTERS.filter(c => c !== 'مجمع الذكاء').map(c => `<option value="${c}" ${selectedCenter===c?'selected':''}>${c}</option>`).join('')}</select>`;
     root.innerHTML = `
         <div class="date-nav-bar">
+            <span class="date-label">🏢 المركز:</span>
+            ${centerFilterHtml}
             <span class="date-label">📅 التاريخ:</span>
             <button class="nav-btn" onclick="changeCoordinationDate(-1)" title="اليوم السابق">‹</button>
             <input type="date" id="coordinationDatePicker" value="${selectedDate}">
             <button class="nav-btn" onclick="changeCoordinationDate(1)" title="اليوم التالي">›</button>
             <button class="today-btn" onclick="goToTodayCoordination()">📅 اليوم</button>
+            <button class="btn btn-primary btn-sm" onclick="applyCoordinationFilters()">🔍 بحث</button>
             <span class="date-display">${isToday ? '📌 اليوم' : formattedDate}</span>
         </div>
         <div class="coordination-stats-grid">
             <div class="stat-box"><div class="stat-number">${totalEmployees}</div><div class="stat-label">👥 إجمالي الموظفين</div></div>
-            <div class="stat-box" style="border-color:var(--good)"><div class="stat-number" style="color:var(--good)">${totalPresent}</div><div class="stat-label">✅ الحضور</div></div>
-            <div class="stat-box" style="border-color:var(--bad)"><div class="stat-number" style="color:var(--bad)">${totalAbsent}</div><div class="stat-label">❌ الغياب</div></div>
+            <div class="stat-box" style="border-color:var(--good)"><div class="stat-number" style="color:var(--good)">${totalPresent}</div><div class="stat-label">✅ إجمالي الحضور</div></div>
+            <div class="stat-box" style="border-color:var(--bad)"><div class="stat-number" style="color:var(--bad)">${totalAbsent}</div><div class="stat-label">❌ إجمالي الغياب</div></div>
             <div class="stat-box" style="border-color:var(--warn)"><div class="stat-number" style="color:var(--warn)">${totalLate}</div><div class="stat-label">⏰ متأخرين</div></div>
-            <div class="stat-box" style="border-color:var(--navy-700)"><div class="stat-number">${centerData.length}</div><div class="stat-label">🏢 عدد المراكز</div></div>
-            <div class="stat-box" style="border-color:var(--navy-600)"><div class="stat-number">${Math.round((totalPresent / (totalEmployees || 1)) * 100)}%</div><div class="stat-label">📊 نسبة الحضور</div></div>
+            <div class="stat-box" style="border-color:var(--navy-700)"><div class="stat-number">${totalFieldCount}</div><div class="stat-label">🚶 إجمالي المعاينات الميدانية</div></div>
+            <div class="stat-box" style="border-color:var(--navy-600)"><div class="stat-number">${totalOfficeCount}</div><div class="stat-label">🏢 إجمالي ما تم إدخاله مكتبيًا</div></div>
         </div>
-        <div style="overflow-x:auto;margin-bottom:20px"><table class="center-summary-table"><thead><tr><th>المركز</th><th>إجمالي</th><th>✅ حضور في الموعد</th><th>⏰ حضور متأخر</th><th>❌ غياب</th><th>📊 نسبة الحضور</th></tr></thead><tbody>${centerData.map(c => { const onTime = c.presentCount - c.lateCount; const attendancePercent = Math.round((c.presentCount / (c.totalEmployees || 1)) * 100); return `<tr><td><strong>${c.center}</strong></td><td>${c.totalEmployees}</td><td class="present-count">${onTime}</td><td class="late-count">${c.lateCount}</td><td class="absent-count">${c.absentCount}</td><td>${attendancePercent}%</td></tr>`; }).join('')}<tr class="total-row"><td><strong>الإجمالي</strong></td><td>${totalEmployees}</td><td class="present-count">${totalPresent - totalLate}</td><td class="late-count">${totalLate}</td><td class="absent-count">${totalAbsent}</td><td>${Math.round((totalPresent / (totalEmployees || 1)) * 100)}%</td></tr></tbody></table></div>
-        <div class="panel" style="padding:12px;margin-bottom:16px"><div class="panel-head"><h3>✅ تفاصيل الحضور</h3></div><div class="attendance-table-wrap"><table><thead><tr><th>المركز</th><th>الاسم</th><th>الوقت</th><th>الموقع</th><th>الحالة</th></tr></thead><tbody>${centerData.flatMap(c => c.presentList.map(p => `<tr><td>${c.center}</td><td>${p.name}</td><td>${fmtTime(p.time)}</td><td>${p.location}</td><td>${p.late ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">في الموعد</span>'}</td></tr>`)).join('') || '<tr><td colspan="5"><div class="empty-state">لا يوجد حضور</div></td></tr>'}</tbody></table></div></div>
-        <div class="panel" style="padding:12px"><div class="panel-head"><h3>❌ تفاصيل الغياب</h3></div><div class="attendance-table-wrap"><table><thead><tr><th>المركز</th><th>الاسم</th><th>الوظيفة</th></tr></thead><tbody>${centerData.flatMap(c => c.absentList.map(a => `<tr><td>${c.center}</td><td>${a.name}</td><td>${roleLabel(a.role)}</td></tr>`)).join('') || '<tr><td colspan="3"><div class="empty-state">لا يوجد غياب</div></td></tr>'}</tbody></table></div></div>
+        ${centersToShow.length > 1 ? `<div style="overflow-x:auto;margin-bottom:20px"><table class="center-summary-table"><thead><tr><th>المركز</th><th>إجمالي</th><th>✅ حضور في الموعد</th><th>⏰ حضور متأخر</th><th>❌ غياب</th><th>📊 نسبة الحضور</th></tr></thead><tbody>${centerData.map(c => { const onTime = c.presentCount - c.lateCount; const attendancePercent = Math.round((c.presentCount / (c.totalEmployees || 1)) * 100); return `<tr><td><strong>${c.center}</strong></td><td>${c.totalEmployees}</td><td class="present-count">${onTime}</td><td class="late-count">${c.lateCount}</td><td class="absent-count">${c.absentCount}</td><td>${attendancePercent}%</td></tr>`; }).join('')}<tr class="total-row"><td><strong>الإجمالي</strong></td><td>${totalEmployees}</td><td class="present-count">${totalPresent - totalLate}</td><td class="late-count">${totalLate}</td><td class="absent-count">${totalAbsent}</td><td>${Math.round((totalPresent / (totalEmployees || 1)) * 100)}%</td></tr></tbody></table></div>` : ''}
+        <div class="panel" style="padding:12px">
+            <div class="panel-head"><h3>📋 موقف ${centersToShow.length === 1 ? centersToShow[0] : 'كل المراكز'} — ${selectedDate}</h3></div>
+            <div class="attendance-table-wrap"><table><thead><tr>${centersToShow.length > 1 ? '<th>المركز</th>' : ''}<th>الاسم</th><th>حضر الساعة</th><th>انصرف الساعة</th><th>عمل ايه</th><th>الحالة</th></tr></thead><tbody>
+                ${centerData.flatMap(c => [
+                    ...c.presentList.map(p => `<tr>${centersToShow.length > 1 ? `<td>${c.center}</td>` : ''}<td>${p.name}</td><td>${fmtTime(p.time)}</td><td>${p.checkOutTime ? fmtTime(p.checkOutTime) : '-'}</td><td>${p.workSummary}</td><td>${p.late ? '<span class="chip late">⏰ متأخر</span>' : '<span class="chip approved">✅ حاضر</span>'}</td></tr>`),
+                    ...c.absentList.map(a => `<tr>${centersToShow.length > 1 ? `<td>${c.center}</td>` : ''}<td>${a.name}</td><td>-</td><td>-</td><td>${a.workSummary}</td><td><span class="chip rejected">❌ غائب</span></td></tr>`)
+                ]).join('') || `<tr><td colspan="${centersToShow.length > 1 ? 6 : 5}"><div class="empty-state">لا يوجد بيانات</div></td></tr>`}
+                <tr class="total-row"><td colspan="${centersToShow.length > 1 ? 3 : 2}"><strong>الإجمالي</strong></td><td colspan="${centersToShow.length > 1 ? 1 : 2}">🚶 ${totalFieldCount} / 🏢 ${totalOfficeCount}</td><td>✅ ${totalPresent} / ❌ ${totalAbsent}</td></tr>
+            </tbody></table></div>
+        </div>
         <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap"><button class="btn btn-gold btn-sm" onclick="exportCoordinationExcel('${selectedDate}')">📊 تصدير Excel</button></div>
     `;
     const datePicker = document.getElementById('coordinationDatePicker');
     if (datePicker) datePicker.addEventListener('change', function() { const newDate = this.value; if (newDate) { localStorage.setItem('coordinationDate', newDate); goPage('coordination', true); } });
+    window.applyCoordinationFilters = function() {
+        const newDate = document.getElementById('coordinationDatePicker')?.value || selectedDate;
+        const newCenter = isCenterAdminCoord ? CURRENT_USER.center : (document.getElementById('coordinationCenterPicker')?.value || '');
+        localStorage.setItem('coordinationDate', newDate);
+        localStorage.setItem('coordinationCenter', newCenter);
+        goPage('coordination', true);
+    };
 }
 window.changeCoordinationDate = function(delta) { const currentDate = localStorage.getItem('coordinationDate') || getEgyptDateKey(getEgyptNow()); const dateObj = new Date(currentDate + 'T00:00:00'); dateObj.setDate(dateObj.getDate() + delta); const newDate = getEgyptDateKey(dateObj); localStorage.setItem('coordinationDate', newDate); goPage('coordination', true); };
 window.goToTodayCoordination = function() { const today = getEgyptDateKey(getEgyptNow()); localStorage.setItem('coordinationDate', today); goPage('coordination', true); };
@@ -3458,8 +3511,31 @@ async function setupPushNotifications() {
     } catch (e) { /* لا نزعج المستخدم لو فشل إعداد الإشعارات */ }
 }
 
+async function showCheckInReminderIfNeeded() {
+    if (!CURRENT_USER) return;
+    if (!['CENTER_ADMIN', 'ENGINEER', 'TECHNICIAN'].includes(CURRENT_USER.role)) return; // مدير النظام مثلًا لا يسجل حضور
+    // لا نزاحم نافذة أخرى مفتوحة بالفعل (مثل نافذة التكليفات الجديدة)
+    if (document.getElementById('modalOverlay')?.classList.contains('show')) return;
+    const today = getEgyptDateKey(getEgyptNow());
+    const checkInKey = 'attendance_checkin_' + CURRENT_USER.id + '_' + today;
+    if (localStorage.getItem(checkInKey) === '1') return;
+    try {
+        const already = await hasCheckedInToday(CURRENT_USER.id);
+        if (already) { localStorage.setItem(checkInKey, '1'); return; }
+    } catch (e) { return; }
+    if (document.getElementById('modalOverlay')?.classList.contains('show')) return; // تأكيد ثانٍ بعد انتظار الطلب
+    openModal(`
+        <h3>🕐 لم تسجل حضورك اليوم</h3>
+        <p style="font-size:13.5px;color:var(--ink-600);margin-bottom:16px">برجاء تسجيل حضورك الآن حتى يتم احتساب يومك بشكل صحيح.</p>
+        <div class="modal-close-row">
+            <button class="btn btn-outline" onclick="closeModal()">لاحقًا</button>
+            <button class="btn btn-primary" onclick="closeModal(); goPage('attendance', false, true);">✅ تسجيل الحضور الآن</button>
+        </div>
+    `);
+}
+
 /* =====================================================================
-   صندوق إشعار التكليفات الجديدة عند الدخول (قبول / رفض مع سبب)
+   صندوق إشعار التكليفات الجديدة عند الدخول (قبول)
    ===================================================================== */
 async function showPendingAssignmentsPrompt() {
     try {
@@ -3484,7 +3560,6 @@ function renderPendingAssignmentsQueue(list) {
         </div>
         <div style="font-size:12px;color:var(--ink-400);margin-bottom:10px">تكليف ${list.length > 1 ? `(${list.length} تكليفات فى الانتظار)` : ''}</div>
         <div class="modal-close-row">
-            <button class="btn btn-danger" onclick="rejectPendingAssignmentPrompt('${a.id}')">✖ رفض</button>
             <button class="btn btn-primary" onclick="acceptPendingAssignmentPrompt('${a.id}')">✅ قبول التكليف</button>
         </div>
     `);
@@ -3494,18 +3569,6 @@ window.acceptPendingAssignmentPrompt = async function(id) {
     try {
         await api('respondAssignment', { assignmentId: id, accept: true, requesterId: CURRENT_USER.id });
         showToast('✅ تم قبول التكليف', 'ok');
-        const rest = (window.__pendingAssignQueue || []).filter(x => x.id !== id);
-        renderPendingAssignmentsQueue(rest);
-    } catch(e) { showToast('فشل: ' + e.message, 'err'); }
-};
-window.rejectPendingAssignmentPrompt = function(id) {
-    openModal(`<h3>سبب رفض التكليف</h3><div class="field"><textarea id="rejAssignReason" rows="3" placeholder="اكتب سبب الرفض..."></textarea></div><div class="modal-close-row"><button class="btn btn-outline" onclick="renderPendingAssignmentsQueue(window.__pendingAssignQueue || [])">تراجع</button><button class="btn btn-danger" onclick="confirmRejectPendingAssignment('${id}')">تأكيد الرفض</button></div>`);
-};
-window.confirmRejectPendingAssignment = async function(id) {
-    const reason = val('rejAssignReason');
-    try {
-        await api('respondAssignment', { assignmentId: id, accept: false, reason: reason || 'بدون سبب', requesterId: CURRENT_USER.id });
-        showToast('تم رفض التكليف', 'ok');
         const rest = (window.__pendingAssignQueue || []).filter(x => x.id !== id);
         renderPendingAssignmentsQueue(rest);
     } catch(e) { showToast('فشل: ' + e.message, 'err'); }
