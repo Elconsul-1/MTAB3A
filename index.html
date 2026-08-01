@@ -1149,24 +1149,18 @@ async function renderDashboard(filters={}){
   const center = filters.center !== undefined ? filters.center : (CURRENT_USER.role===ROLE.MANAGER ? CURRENT_USER.center : '');
   const search = (filters.search || '').trim();
 
-  const rangeFrom = filters.rangeFrom || firstOfMonthKey();
-  const rangeTo = filters.rangeTo || todayKey();
-  const rangeCenter = filters.rangeCenter !== undefined ? filters.rangeCenter : (CURRENT_USER.role===ROLE.MANAGER ? CURRENT_USER.center : '');
-
   const [users, attRows] = await Promise.all([ fetchScopedUsers(center), fetchAttendanceByDate(date, center) ]);
   const attByUid = {}; attRows.forEach(r => attByUid[r.uid] = r);
 
-  let present=0, checkedOut=0, late=0, absent=0;
+  let present=0, late=0, absent=0;
   const weekend = isWeekendKey(date);
   users.forEach(u => {
     const r = attByUid[u.id];
     if (r){
       present++;
-      if (r.checkOutTime) checkedOut++;
       if (r.checkInStatus === 'LATE') late++;
     } else if (!weekend) absent++;
   });
-  const centersCount = CURRENT_USER.role===ROLE.MANAGER ? 1 : CENTERS.length;
 
   let rows = users.map(u => ({ user:u, att: attByUid[u.id] || null }));
   if (search){
@@ -1177,36 +1171,33 @@ async function renderDashboard(filters={}){
 
   const content = document.getElementById('pageContent');
   content.innerHTML = `
-    <div class="panel-head" style="border:none;padding:0;margin-bottom:8px"><h3>📅 إحصائيات اليوم — ${fmtDateLabel(date)} ${weekend ? '<span class="chip late">عطلة أسبوعية</span>' : ''}</h3></div>
-    <div class="summary-grid">
-      <div class="summary-card"><div class="summary-label">👤 عدد الحضور</div><div class="summary-value">${present}</div></div>
-      <div class="summary-card"><div class="summary-label">❌ عدد الغياب</div><div class="summary-value">${absent}</div></div>
-      <div class="summary-card"><div class="summary-label">⏰ عدد المتأخرين (بعد 10 ص)</div><div class="summary-value">${late}</div></div>
-      <div class="summary-card"><div class="summary-label">🚪 المنصرفون</div><div class="summary-value">${checkedOut}</div></div>
-      <div class="summary-card"><div class="summary-label">🏢 عدد المراكز</div><div class="summary-value">${centersCount}</div></div>
-    </div>
     <div class="panel">
-      <div class="panel-head"><h3>الفلاتر</h3></div>
+      <div class="panel-head"><h3>📅 لوحة المؤشرات — ${fmtDateLabel(date)} ${weekend ? '<span class="chip late">عطلة أسبوعية</span>' : ''}</h3></div>
       <div class="filters-bar">
         <div class="field"><label>📅 التاريخ</label><input type="date" id="fDate" value="${date}"></div>
         ${CURRENT_USER.role===ROLE.ADMIN ? `<div class="field"><label>🏢 المركز</label><select id="fCenter">${centerOptions(true, center)}</select></div>` : ''}
         <div class="field"><label>🔎 بحث بالاسم</label><input type="text" id="fSearch" placeholder="ابحث عن موظف..." value="${esc(search)}"></div>
-        <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn btn-primary" id="applyFiltersBtn">تطبيق</button></div>
+      </div>
+      <div class="summary-grid">
+        <div class="summary-card"><div class="summary-label">👥 عدد الموظفين</div><div class="summary-value">${users.length}</div></div>
+        <div class="summary-card"><div class="summary-label">✅ عدد الحاضرين</div><div class="summary-value">${present}</div></div>
+        <div class="summary-card"><div class="summary-label">❌ عدد الغياب</div><div class="summary-value">${absent}</div></div>
+        <div class="summary-card"><div class="summary-label">⏰ عدد المتأخرين</div><div class="summary-value">${late}</div></div>
       </div>
     </div>
     <div class="panel">
-      <div class="panel-head"><h3>✅ الحاضرون — ${fmtDateLabel(date)} (${rows.filter(r=>r.att).length})</h3></div>
+      <div class="panel-head"><h3>✅ الحاضرون (${rows.filter(r=>r.att).length})</h3></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>الموظف</th><th>المركز</th><th>وقت الحضور</th><th>وقت الانصراف</th><th>إجمالي الإنجازات</th><th>حالة الحضور</th><th>حالة الانصراف</th></tr></thead>
+          <thead><tr><th>الموظف</th><th>المركز</th><th>وقت الحضور</th><th>وقت الانصراف</th><th>الحالة</th></tr></thead>
           <tbody>
-            ${rows.filter(r=>r.att).length ? rows.filter(r=>r.att).map(r => dashboardRowHtml(r, date)).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="ic">📭</div>لا يوجد حاضرون بعد</div></td></tr>`}
+            ${rows.filter(r=>r.att).length ? rows.filter(r=>r.att).map(r => dashboardRowHtml(r, date)).join('') : `<tr><td colspan="5"><div class="empty-state"><div class="ic">📭</div>لا يوجد حاضرون بعد</div></td></tr>`}
           </tbody>
         </table>
       </div>
     </div>
     <div class="panel">
-      <div class="panel-head"><h3>❌ الغائبون — ${fmtDateLabel(date)} (${weekend ? 0 : rows.filter(r=>!r.att).length})</h3></div>
+      <div class="panel-head"><h3>❌ الغائبون (${weekend ? 0 : rows.filter(r=>!r.att).length})</h3></div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>الموظف</th><th>المركز</th></tr></thead>
@@ -1218,103 +1209,32 @@ async function renderDashboard(filters={}){
         </table>
       </div>
     </div>
-
-    <div class="panel">
-      <div class="panel-head"><h3>📊 إحصائيات فترة محددة</h3></div>
-      <div class="filters-bar">
-        <div class="field"><label>📅 من تاريخ</label><input type="date" id="rFrom" value="${rangeFrom}"></div>
-        <div class="field"><label>📅 إلى تاريخ</label><input type="date" id="rTo" value="${rangeTo}"></div>
-        ${CURRENT_USER.role===ROLE.ADMIN ? `<div class="field"><label>🏢 المركز</label><select id="rCenter">${centerOptions(true, rangeCenter)}</select></div>` : ''}
-        <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn btn-primary" id="applyRangeBtn">تطبيق</button></div>
-      </div>
-      <div class="table-wrap" id="rangeStatsWrap"><div class="loader"><div class="spinner"></div></div></div>
-    </div>
   `;
   const applyMainFilters = () => {
     renderDashboard({
       date: val('fDate'),
       center: document.getElementById('fCenter') ? val('fCenter') : center,
-      search: val('fSearch'),
-      rangeFrom, rangeTo, rangeCenter
+      search: val('fSearch')
     });
   };
-  const applyRangeFilters = () => {
-    renderDashboard({
-      date, center, search,
-      rangeFrom: val('rFrom'), rangeTo: val('rTo'),
-      rangeCenter: document.getElementById('rCenter') ? val('rCenter') : rangeCenter
-    });
-  };
-  document.getElementById('applyFiltersBtn').addEventListener('click', applyMainFilters);
-  document.getElementById('applyRangeBtn').addEventListener('click', applyRangeFilters);
-  // فلترة تلقائية بدون الحاجة لضغط الأزرار
   document.getElementById('fDate').addEventListener('change', applyMainFilters);
   document.getElementById('fCenter')?.addEventListener('change', applyMainFilters);
   document.getElementById('fSearch').addEventListener('input', debounce(applyMainFilters, 400));
-  document.getElementById('rFrom').addEventListener('change', applyRangeFilters);
-  document.getElementById('rTo').addEventListener('change', applyRangeFilters);
-  document.getElementById('rCenter')?.addEventListener('change', applyRangeFilters);
 
   content.querySelectorAll('tr[data-uid]').forEach(tr => {
     tr.addEventListener('click', () => goPage('employeedetail', { uid: tr.dataset.uid, date: tr.dataset.date, dateFrom:null, dateTo:null }));
   });
-
-  loadRangeStats(rangeFrom, rangeTo, rangeCenter);
 }
 function dashboardRowHtml(r, date){
   const u = r.user, a = r.att;
-  const t = accTotals(a?.accomplishments);
   const inChip = !a ? (isWeekendKey(date) ? `<span class="chip notyet">عطلة أسبوعية</span>` : `<span class="chip absent">غائب</span>`) : (a.checkInStatus==='LATE' ? `<span class="chip late">متأخر</span>` : `<span class="chip present">حاضر</span>`);
-  const outChip = !a ? `<span class="chip notyet">-</span>` : (a.checkOutTime ? `<span class="chip done">منصرف</span>` : `<span class="chip notyet">لم ينصرف</span>`);
   return `<tr class="clickable" data-uid="${u.id}" data-date="${date}">
     <td>${nameCellHtml(u.fullName, u.photoUrl)}</td>
     <td>${esc(canonicalCenterName(u.center)||'-')}</td>
     <td>${a ? fmtTime(a.checkInTime) : '-'}</td>
     <td>${a && a.checkOutTime ? fmtTime(a.checkOutTime) : '-'}</td>
-    <td>${t.total}</td>
     <td>${inChip}</td>
-    <td>${outChip}</td>
   </tr>`;
-}
-
-/* ---------- إحصائيات الفترة المحددة مجمّعة على مستوى المركز ---------- */
-async function loadRangeStats(dateFrom, dateTo, centerFilter){
-  const wrap = document.getElementById('rangeStatsWrap');
-  if (!wrap) return;
-  if (!dateFrom || !dateTo || dateFrom > dateTo){
-    wrap.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>يرجى اختيار فترة صحيحة (من تاريخ أقدم من أو يساوي إلى تاريخ)</div>`;
-    return;
-  }
-  const snap = await db.collection('attendance').where('date','>=',dateFrom).where('date','<=',dateTo).get();
-  let rows = snap.docs.map(d => d.data());
-  if (CURRENT_USER.role === ROLE.MANAGER) rows = rows.filter(r => sameCenter(r.center, CURRENT_USER.center));
-  else if (centerFilter) rows = rows.filter(r => sameCenter(r.center, centerFilter));
-
-  const byCenter = {};
-  rows.forEach(r => {
-    const c = canonicalCenterName(r.center) || 'غير محدد';
-    if (!byCenter[c]) byCenter[c] = { presentDays:0, office:0, field:0, other:0, total:0 };
-    byCenter[c].presentDays++;
-    const t = accTotals(r.accomplishments);
-    byCenter[c].office += t.office;
-    byCenter[c].field += t.field;
-    byCenter[c].other += t.other;
-    byCenter[c].total += t.total;
-  });
-
-  const centerNames = Object.keys(byCenter).sort();
-  dashboardCache.rangeFrom = dateFrom; dashboardCache.rangeTo = dateTo;
-
-  if (!centerNames.length){
-    wrap.innerHTML = `<div class="empty-state"><div class="ic">📭</div>لا توجد بيانات في هذه الفترة</div>`;
-    return;
-  }
-  wrap.innerHTML = `<table><thead><tr><th>المركز</th><th>عدد أيام الحضور المسجلة</th><th>🖥️ مكتبي</th><th>🚗 ميداني</th><th>أخرى</th><th>الإجمالي</th></tr></thead><tbody>
-    ${centerNames.map(c => `<tr class="clickable" data-center="${esc(c)}"><td><b>${esc(c)}</b></td><td>${byCenter[c].presentDays}</td><td>${byCenter[c].office}</td><td>${byCenter[c].field}</td><td>${byCenter[c].other}</td><td><b>${byCenter[c].total}</b></td></tr>`).join('')}
-  </tbody></table>`;
-  wrap.querySelectorAll('tr[data-center]').forEach(tr => {
-    tr.addEventListener('click', () => goPage('centerDetail', { center: tr.dataset.center, dateFrom, dateTo }));
-  });
 }
 
 /* =====================================================================
@@ -2380,16 +2300,53 @@ async function saveDayEdit(uid, dateStr, userName, existing){
    التقارير (PDF / Excel / طباعة)
    ===================================================================== */
 async function renderReports(filters={}){
-  const date = filters.date || todayKey();
-  const center = filters.center !== undefined ? filters.center : (CURRENT_USER.role===ROLE.MANAGER ? CURRENT_USER.center : '');
+  const mode = filters.mode || 'range';
+  const day = filters.day || todayKey();
+  const from = filters.from || firstOfMonthKey();
+  const to = filters.to || todayKey();
+  const reportType = filters.reportType || 'attendance';
+  const scope = filters.scope || 'all';
+  const centerVal = filters.centerVal !== undefined ? filters.centerVal : (CURRENT_USER.role===ROLE.MANAGER ? CURRENT_USER.center : '');
+  const uid = filters.uid || '';
+
   const content = document.getElementById('pageContent');
   content.innerHTML = `
     <div class="panel no-print">
-      <div class="panel-head"><h3>فلاتر التقرير</h3></div>
+      <div class="panel-head"><h3>📊 التقارير</h3></div>
       <div class="filters-bar">
-        <div class="field"><label>📅 التاريخ</label><input type="date" id="rDate" value="${date}"></div>
-        ${CURRENT_USER.role===ROLE.ADMIN ? `<div class="field"><label>🏢 المركز</label><select id="rCenter">${centerOptions(true, center)}</select></div>` : ''}
-        <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn btn-primary" id="rApply">تحميل البيانات</button></div>
+        <div class="field"><label>🗓️ الفترة</label>
+          <select id="repMode">
+            <option value="range" ${mode==='range'?'selected':''}>فترة محددة</option>
+            <option value="day" ${mode==='day'?'selected':''}>يوم محدد</option>
+          </select>
+        </div>
+        <div class="field" id="repDayField" style="display:${mode==='day'?'block':'none'}"><label>📅 اليوم</label><input type="date" id="repDay" value="${day}"></div>
+        <div class="field" id="repFromField" style="display:${mode==='range'?'block':'none'}"><label>📅 من تاريخ</label><input type="date" id="repFrom" value="${from}"></div>
+        <div class="field" id="repToField" style="display:${mode==='range'?'block':'none'}"><label>📅 إلى تاريخ</label><input type="date" id="repTo" value="${to}"></div>
+      </div>
+      <div class="filters-bar">
+        <div class="field"><label>📋 نوع التقرير</label>
+          <select id="repType">
+            <option value="attendance" ${reportType==='attendance'?'selected':''}>تقرير حضور وغياب</option>
+            <option value="achievements" ${reportType==='achievements'?'selected':''}>تقرير الإنجازات</option>
+          </select>
+        </div>
+        <div class="field"><label>🎯 النطاق</label>
+          <select id="repScope">
+            <option value="all" ${scope==='all'?'selected':''}>كل الموظفين</option>
+            <option value="center" ${scope==='center'?'selected':''}>مركز محدد</option>
+            <option value="individual" ${scope==='individual'?'selected':''}>فرد محدد</option>
+          </select>
+        </div>
+        <div class="field" id="repCenterField" style="display:none">
+          <label>🏢 المركز</label>
+          <select id="repCenter" ${CURRENT_USER.role===ROLE.MANAGER?'disabled':''}>${centerOptions(CURRENT_USER.role!==ROLE.MANAGER, CURRENT_USER.role===ROLE.MANAGER?CURRENT_USER.center:centerVal)}</select>
+        </div>
+        <div class="field" id="repEmployeeField" style="display:none">
+          <label>👤 الموظف</label>
+          <select id="repEmployee"><option value="">اختر المركز أولاً</option></select>
+        </div>
+        <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn btn-primary" id="repApply">عرض التقرير</button></div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
         <button class="btn btn-outline btn-sm" id="rExportExcel">📊 تصدير Excel</button>
@@ -2398,120 +2355,102 @@ async function renderReports(filters={}){
       </div>
     </div>
     <div class="panel" id="reportPrintArea">
-      <h3 style="margin-top:0">تقرير الحضور والإنجازات — <span id="reportDateLabel">${fmtDateLabel(date)}</span></h3>
-      <div class="table-wrap" id="reportTableWrap"><div class="loader"><div class="spinner"></div></div></div>
-    </div>
-
-    <div class="panel no-print">
-      <div class="panel-head"><h3>📊 تقرير تفصيلي</h3></div>
-      <div class="filters-bar">
-        <div class="field"><label>📋 نوع التقرير</label>
-          <select id="detRepType">
-            <option value="achievements">تقرير الإنجازات</option>
-            <option value="attendance">تقرير الحضور والغياب</option>
-          </select>
-        </div>
-        <div class="field"><label>🎯 النطاق</label>
-          <select id="detRepScope">
-            <option value="all">كل الموظفين</option>
-            <option value="center">مركز محدد</option>
-            <option value="individual">فرد محدد</option>
-          </select>
-        </div>
-        <div class="field" id="detRepCenterField" style="display:none">
-          <label>🏢 المركز</label>
-          <select id="detRepCenter" ${CURRENT_USER.role===ROLE.MANAGER?'disabled':''}>${centerOptions(CURRENT_USER.role!==ROLE.MANAGER, CURRENT_USER.role===ROLE.MANAGER?CURRENT_USER.center:'')}</select>
-        </div>
-        <div class="field" id="detRepEmployeeField" style="display:none">
-          <label>👤 الموظف</label>
-          <select id="detRepEmployee"><option value="">اختر المركز أولاً</option></select>
-        </div>
-      </div>
-      <div class="filters-bar">
-        <div class="field"><label>📅 من تاريخ</label><input type="date" id="detRepFrom" value="${firstOfMonthKey()}"></div>
-        <div class="field"><label>📅 إلى تاريخ</label><input type="date" id="detRepTo" value="${todayKey()}"></div>
-        <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn btn-primary" id="detRepApply">عرض التقرير</button></div>
-      </div>
-      <div id="detRepResults"></div>
+      <h3 style="margin-top:0" id="reportTitleLabel">تقرير الحضور والغياب</h3>
+      <div id="reportResults"><div class="loader"><div class="spinner"></div></div></div>
     </div>
   `;
-  function detRepUpdateVisibility(){
-    const scope = val('detRepScope');
-    document.getElementById('detRepCenterField').style.display = (scope === 'center' || scope === 'individual') ? 'block' : 'none';
-    document.getElementById('detRepEmployeeField').style.display = (scope === 'individual') ? 'block' : 'none';
+
+  function repUpdateVisibility(){
+    const m = val('repMode');
+    document.getElementById('repDayField').style.display = m === 'day' ? 'block' : 'none';
+    document.getElementById('repFromField').style.display = m === 'range' ? 'block' : 'none';
+    document.getElementById('repToField').style.display = m === 'range' ? 'block' : 'none';
+    const sc = val('repScope');
+    document.getElementById('repCenterField').style.display = (sc === 'center' || sc === 'individual') ? 'block' : 'none';
+    document.getElementById('repEmployeeField').style.display = (sc === 'individual') ? 'block' : 'none';
   }
-  async function loadDetRepEmployees(centerVal){
-    const sel = document.getElementById('detRepEmployee');
+  async function loadRepEmployees(centerForList){
+    const sel = document.getElementById('repEmployee');
     if (!sel) return;
     sel.innerHTML = `<option value="">جارٍ التحميل...</option>`;
-    const users = await fetchScopedUsers(centerVal);
+    const users = await fetchScopedUsers(centerForList);
     sel.innerHTML = users.length
       ? `<option value="">اختر الموظف</option>` + users.map(u => `<option value="${u.id}">${esc(u.fullName)}</option>`).join('')
       : `<option value="">لا يوجد موظفون</option>`;
   }
-  document.getElementById('detRepScope').addEventListener('change', () => {
-    detRepUpdateVisibility();
-    if (val('detRepScope') === 'individual') loadDetRepEmployees(val('detRepCenter'));
+  document.getElementById('repMode').addEventListener('change', repUpdateVisibility);
+  document.getElementById('repScope').addEventListener('change', () => {
+    repUpdateVisibility();
+    if (val('repScope') === 'individual') loadRepEmployees(val('repCenter'));
   });
-  document.getElementById('detRepCenter').addEventListener('change', () => {
-    if (val('detRepScope') === 'individual') loadDetRepEmployees(val('detRepCenter'));
+  document.getElementById('repCenter').addEventListener('change', () => {
+    if (val('repScope') === 'individual') loadRepEmployees(val('repCenter'));
   });
-  document.getElementById('detRepApply').addEventListener('click', async () => {
-    const reportType = val('detRepType');
-    const scope = val('detRepScope');
-    const centerVal = document.getElementById('detRepCenterField').style.display !== 'none' ? val('detRepCenter') : (CURRENT_USER.role===ROLE.MANAGER ? CURRENT_USER.center : '');
-    const uid = scope === 'individual' ? val('detRepEmployee') : '';
-    const from = val('detRepFrom') || firstOfMonthKey();
-    const to = val('detRepTo') || todayKey();
-    const resWrap = document.getElementById('detRepResults');
-    if (scope === 'individual' && !uid){ showToast('يرجى اختيار الموظف أولًا', 'err'); return; }
-    if (from > to){ showToast('يرجى اختيار فترة صحيحة', 'err'); return; }
+  document.getElementById('repApply').addEventListener('click', loadReportData);
+  repUpdateVisibility();
+  if (scope === 'individual') { await loadRepEmployees(centerVal); if (uid) document.getElementById('repEmployee').value = uid; }
+
+  async function loadReportData(){
+    const m = val('repMode');
+    const d = document.getElementById('repDay') ? val('repDay') : day;
+    const f = m === 'day' ? d : (val('repFrom') || firstOfMonthKey());
+    const t = m === 'day' ? d : (val('repTo') || todayKey());
+    const rType = val('repType');
+    const sc = val('repScope');
+    const cVal = document.getElementById('repCenterField').style.display !== 'none' ? val('repCenter') : (CURRENT_USER.role===ROLE.MANAGER ? CURRENT_USER.center : '');
+    const empUid = sc === 'individual' ? val('repEmployee') : '';
+    const resWrap = document.getElementById('reportResults');
+    document.getElementById('reportTitleLabel').textContent = rType === 'achievements' ? 'تقرير الإنجازات' : 'تقرير الحضور والغياب';
+
+    if (sc === 'individual' && !empUid){ resWrap.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>يرجى اختيار الموظف أولًا</div>`; return; }
+    if (f > t){ resWrap.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>يرجى اختيار فترة صحيحة</div>`; return; }
     resWrap.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
+
     try {
       let users;
-      if (scope === 'individual'){
-        const uDoc = await db.collection('users').doc(uid).get();
+      if (sc === 'individual'){
+        const uDoc = await db.collection('users').doc(empUid).get();
         users = uDoc.exists ? [{ id: uDoc.id, ...uDoc.data() }] : [];
-      } else if (scope === 'center'){
-        users = await fetchScopedUsers(centerVal);
+      } else if (sc === 'center'){
+        users = await fetchScopedUsers(cVal);
       } else {
         users = await fetchScopedUsers(CURRENT_USER.role===ROLE.MANAGER ? CURRENT_USER.center : '');
       }
-      const attSnap = await db.collection('attendance').where('date','>=',from).where('date','<=',to).get();
+      const attSnap = await db.collection('attendance').where('date','>=',f).where('date','<=',t).get();
       const uidSet = new Set(users.map(u => u.id));
-      const attRows = attSnap.docs.map(d => d.data()).filter(r => uidSet.has(r.uid));
+      const attRows = attSnap.docs.map(dd => dd.data()).filter(r => uidSet.has(r.uid));
       const byUid = {};
       attRows.forEach(r => {
         if (!byUid[r.uid]) byUid[r.uid] = { presentDays:0, lateDays:0, office:0, field:0 };
         byUid[r.uid].presentDays++;
         if (r.checkInStatus === 'LATE') byUid[r.uid].lateDays++;
-        const t = accTotals(r.accomplishments);
-        byUid[r.uid].office += t.office;
-        byUid[r.uid].field += t.field;
+        const acc = accTotals(r.accomplishments);
+        byUid[r.uid].office += acc.office;
+        byUid[r.uid].field += acc.field;
       });
       const reportRows = users.map(u => {
         const s = byUid[u.id] || { presentDays:0, lateDays:0, office:0, field:0 };
-        const workDays = effectiveWorkDaysForUser(u, from, to);
+        const workDays = effectiveWorkDaysForUser(u, f, t);
         const absentDays = Math.max(workDays - s.presentDays, 0);
         return { user:u, ...s, absentDays };
       });
 
-      const periodLabel = `الفترة: من ${fmtDateLabel(from)} إلى ${fmtDateLabel(to)}`;
+      const periodLabel = m === 'day' ? `اليوم: ${fmtDateLabel(d)}` : `الفترة: من ${fmtDateLabel(f)} إلى ${fmtDateLabel(t)}`;
       if (!reportRows.length){
         resWrap.innerHTML = `<div class="empty-state"><div class="ic">📭</div>لا توجد بيانات مطابقة</div>`;
         return;
       }
-      if (reportType === 'achievements'){
+      if (rType === 'achievements'){
         const totalOffice = reportRows.reduce((s,r)=>s+r.office,0);
         const totalField = reportRows.reduce((s,r)=>s+r.field,0);
         resWrap.innerHTML = `
-          <div style="font-size:13px;color:var(--ink-400);margin:12px 0 8px">${periodLabel}</div>
+          <div style="font-size:13px;color:var(--ink-400);margin:0 0 8px">${periodLabel}</div>
           <div class="summary-grid">
             <div class="summary-card"><div class="summary-label">🚗 إجمالي المعاينات (ميداني)</div><div class="summary-value">${totalField}</div></div>
             <div class="summary-card"><div class="summary-label">🖥️ إجمالي الإدخال على المنظومة (مكتبي)</div><div class="summary-value">${totalOffice}</div></div>
           </div>
           <div class="table-wrap" style="margin-top:10px">
-            <table id="detRepTable"><thead><tr><th>الموظف</th><th>المركز</th><th>🖥️ مكتبي</th><th>🚗 ميداني</th><th>الإجمالي</th></tr></thead><tbody>
+            <table id="reportTable"><thead><tr><th>الموظف</th><th>المركز</th><th>🖥️ مكتبي</th><th>🚗 ميداني</th><th>الإجمالي</th></tr></thead><tbody>
               ${reportRows.map(r => `<tr><td>${esc(r.user.fullName)}</td><td>${esc(canonicalCenterName(r.user.center)||'-')}</td><td>${r.office}</td><td>${r.field}</td><td><b>${r.office+r.field}</b></td></tr>`).join('')}
             </tbody></table>
           </div>
@@ -2521,15 +2460,15 @@ async function renderReports(filters={}){
         const totalAbsent = reportRows.reduce((s,r)=>s+r.absentDays,0);
         const totalLate = reportRows.reduce((s,r)=>s+r.lateDays,0);
         resWrap.innerHTML = `
-          <div style="font-size:13px;color:var(--ink-400);margin:12px 0 8px">${periodLabel}</div>
+          <div style="font-size:13px;color:var(--ink-400);margin:0 0 8px">${periodLabel}</div>
           <div class="summary-grid">
             <div class="summary-card"><div class="summary-label">👤 إجمالي أيام الحضور</div><div class="summary-value">${totalPresent}</div></div>
             <div class="summary-card"><div class="summary-label">❌ إجمالي أيام الغياب</div><div class="summary-value">${totalAbsent}</div></div>
             <div class="summary-card"><div class="summary-label">⏰ إجمالي أيام التأخير</div><div class="summary-value">${totalLate}</div></div>
           </div>
           <div class="table-wrap" style="margin-top:10px">
-            <table id="detRepTable"><thead><tr><th>الموظف</th><th>المركز</th><th>أيام الحضور</th><th>أيام الغياب</th><th>أيام التأخير</th></tr></thead><tbody>
-              ${reportRows.map(r => `<tr><td>${esc(r.user.fullName)}</td><td>${esc(canonicalCenterName(r.user.center)||'-')}</td><td>${r.presentDays}</td><td>${r.absentDays}</td><td>${r.lateDays}</td></tr>`).join('')}
+            <table id="reportTable"><thead><tr><th>الموظف</th><th>المركز</th><th>أيام الحضور</th><th>أيام الغياب</th><th>أيام التأخير</th><th>ما تم إنجازه</th></tr></thead><tbody>
+              ${reportRows.map(r => `<tr><td>${esc(r.user.fullName)}</td><td>${esc(canonicalCenterName(r.user.center)||'-')}</td><td>${r.presentDays}</td><td>${r.absentDays}</td><td>${r.lateDays}</td><td>${r.office+r.field}</td></tr>`).join('')}
             </tbody></table>
           </div>
         `;
@@ -2537,34 +2476,14 @@ async function renderReports(filters={}){
     } catch(e){
       resWrap.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>حدث خطأ: ${esc(e.message)}</div>`;
     }
-  });
-  detRepUpdateVisibility();
-  async function loadReportData(){
-    const d = val('rDate') || date;
-    const c = document.getElementById('rCenter') ? val('rCenter') : center;
-    document.getElementById('reportDateLabel').textContent = fmtDateLabel(d);
-    const [users, attRows] = await Promise.all([ fetchScopedUsers(c), fetchAttendanceByDate(d, c) ]);
-    const attByUid = {}; attRows.forEach(r => attByUid[r.uid] = r);
-    const wrap = document.getElementById('reportTableWrap');
-    wrap.innerHTML = `<table id="reportTable"><thead><tr><th>الموظف</th><th>البريد الإلكتروني</th><th>المركز</th><th>وقت الحضور</th><th>وقت الانصراف</th><th>عدد الإنجازات</th><th>حالة الحضور</th></tr></thead><tbody>
-      ${users.length ? users.map(u => { const a = attByUid[u.id];
-        const t = accTotals(a?.accomplishments);
-        return `<tr class="clickable" data-uid="${u.id}"><td>${esc(u.fullName)}</td><td>${esc(u.email||'-')}</td><td>${esc(canonicalCenterName(u.center)||'-')}</td><td>${a?fmtTime(a.checkInTime):'-'}</td><td>${a&&a.checkOutTime?fmtTime(a.checkOutTime):'-'}</td><td>${t.total}</td><td>${!a?(isWeekendKey(d)?'عطلة أسبوعية':'غائب'):(a.checkInStatus==='LATE'?'متأخر':'حاضر')}</td></tr>`;
-      }).join('') : `<tr><td colspan="7"><div class="empty-state">لا توجد بيانات</div></td></tr>`}
-    </tbody></table>`;
-    wrap.querySelectorAll('tr[data-uid]').forEach(tr => {
-      tr.addEventListener('click', () => goPage('employeedetail', { uid: tr.dataset.uid, date: d, dateFrom:null, dateTo:null }));
-    });
   }
-  document.getElementById('rApply').addEventListener('click', loadReportData);
+
   document.getElementById('rExportExcel').addEventListener('click', exportReportExcel);
   document.getElementById('rExportPdf').addEventListener('click', exportReportPdf);
   document.getElementById('rPrint').addEventListener('click', () => window.print());
-  // فلترة تلقائية عند تغيير التاريخ أو المركز بدون الحاجة لضغط الزر
-  document.getElementById('rDate').addEventListener('change', loadReportData);
-  document.getElementById('rCenter')?.addEventListener('change', loadReportData);
   await loadReportData();
 }
+
 function exportReportExcel(){
   const table = document.getElementById('reportTable');
   if (!table){ showToast('لا توجد بيانات للتصدير', 'warn'); return; }
@@ -2754,19 +2673,18 @@ async function loadTasksAndAssignments() {
     assignContainer.innerHTML = `
       <div class="table-wrap">
         <table>
-          <thead><tr><th>الموظف</th><th>المهمة</th><th>المركز</th><th>تاريخ الإنجاز</th><th>الحالة</th>${canManageDone ? '<th>إجراء</th>' : ''}</tr></thead>
+          <thead><tr><th>الموظف</th><th>المركز</th><th>🖥️ مكتبي</th><th>🚗 ميداني</th><th>تفاصيل</th>${canManageDone ? '<th>إجراء</th>' : ''}</tr></thead>
           <tbody>
             ${doneRows.map(r => {
               const t = accTotals(r.accomplishments);
-              const desc = (r.workDescription && r.workDescription.trim()) || `🖥️ ${t.office} مكتبي / 🚗 ${t.field} ميداني`;
               const pending = !!r.needsApproval && !r.approved;
               return `
               <tr data-assign="${r.id}">
                 <td>${nameCellHtml(r.userName, usersMapForDone[r.uid]?.photoUrl)}</td>
-                <td class="assign-notes-cell">${esc(desc)}</td>
                 <td>${esc(canonicalCenterName(r.center) || '-')}</td>
-                <td>${fmtDateLabel(r.date)} — ${fmtTime(r.checkOutTime)}</td>
-                <td><span class="chip ${pending ? 'pending' : 'done'}">${pending ? 'قيد المراجعة' : 'معتمد'}</span></td>
+                <td>${t.office}</td>
+                <td>${t.field}</td>
+                <td><button class="btn btn-outline btn-sm" data-view-assign="${r.id}">📄 تفاصيل</button></td>
                 ${canManageDone ? `<td>
                   <button class="btn btn-outline btn-sm" data-edit-assign="${r.id}">✏️ تعديل</button>
                   ${pending ? `<button class="btn btn-success btn-sm" data-approve-assign="${r.id}">اعتماد</button>` : ''}
@@ -2778,6 +2696,7 @@ async function loadTasksAndAssignments() {
         </table>
       </div>
     `;
+    assignContainer.querySelectorAll('[data-view-assign]').forEach(b => b.addEventListener('click', () => viewAssignmentDetails(b.dataset.viewAssign)));
     if (canManageDone){
       assignContainer.querySelectorAll('[data-edit-assign]').forEach(b => b.addEventListener('click', () => editAssignmentNotes(b.dataset.editAssign)));
       assignContainer.querySelectorAll('[data-approve-assign]').forEach(b => b.addEventListener('click', () => setAssignmentStatus(b.dataset.approveAssign)));
@@ -2786,22 +2705,112 @@ async function loadTasksAndAssignments() {
   }
 }
 
+/* ---------- عرض تفاصيل الإنجاز (الوصف الكامل + الأرقام) ---------- */
+async function viewAssignmentDetails(attId){
+  showSaving('جارٍ التحميل...');
+  try {
+    const doc = await db.collection('attendance').doc(attId).get();
+    if (!doc.exists){ showToast('السجل غير موجود', 'err'); return; }
+    const r = doc.data();
+    const t = accTotals(r.accomplishments);
+    const pending = !!r.needsApproval && !r.approved;
+    openModal(`
+      <h3>📄 تفاصيل الإنجاز</h3>
+      <div class="info-grid" style="margin-bottom:12px">
+        <div class="info-item"><span>الموظف</span><b>${esc(r.userName||'-')}</b></div>
+        <div class="info-item"><span>المركز</span><b>${esc(canonicalCenterName(r.center)||'-')}</b></div>
+        <div class="info-item"><span>التاريخ</span><b>${fmtDateLabel(r.date)}</b></div>
+        <div class="info-item"><span>وقت الانصراف</span><b>${r.checkOutTime?fmtTime(r.checkOutTime):'-'}</b></div>
+        <div class="info-item"><span>🖥️ مكتبي</span><b>${t.office}</b></div>
+        <div class="info-item"><span>🚗 ميداني</span><b>${t.field}</b></div>
+        <div class="info-item"><span>الحالة</span><b>${pending?'قيد المراجعة':'معتمد'}</b></div>
+      </div>
+      <div class="field"><label>الوصف</label><div style="white-space:pre-wrap;padding:10px;border:1px solid var(--line);border-radius:10px;background:#f8f9fb;font-size:13.5px;line-height:1.8">${esc(r.workDescription || 'بدون وصف')}</div></div>
+      <div class="modal-close-row"><button class="btn btn-outline" onclick="closeModal()">إغلاق</button></div>
+    `);
+  } catch(e){
+    showToast('خطأ: ' + e.message, 'err');
+  } finally {
+    hideSaving();
+  }
+}
+
+/* ---------- محرر أعداد إنجاز صف في جدول المهام المنجزة ---------- */
+let editAssignCounts = { office:{}, field:{} };
+function assignEditSectionHtml(kind){
+  const title = kind === 'office' ? '🖥️ الأعمال المكتبية' : '🚗 الأعمال الميدانية';
+  let subtotal = 0;
+  WORK_CATEGORIES.forEach(c => subtotal += Number(editAssignCounts[kind][c]) || 0);
+  return `
+  <div style="margin-bottom:14px">
+    <div style="font-weight:800;color:var(--navy-900);margin-bottom:8px;font-size:13.5px">${title}</div>
+    ${WORK_CATEGORIES.map(c => `
+      <div class="field-row" style="align-items:center;margin-bottom:8px">
+        <label style="font-size:13px;font-weight:700;margin:0">${esc(c)}</label>
+        <input class="ae-input" type="number" min="0" inputmode="numeric" data-kind="${kind}" data-cat="${esc(c)}" value="${esc(editAssignCounts[kind][c])}">
+      </div>
+    `).join('')}
+    <div style="text-align:left;font-size:12px;color:var(--ink-400)">إجمالي ${kind==='office'?'المكتبي':'الميداني'}: <span id="ae-subtotal-${kind}">${subtotal}</span></div>
+  </div>`;
+}
+function wireAssignEditInputs(){
+  document.querySelectorAll('.ae-input').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const kind = inp.dataset.kind, cat = inp.dataset.cat;
+      editAssignCounts[kind][cat] = inp.value;
+      let sub = 0; WORK_CATEGORIES.forEach(c => sub += Number(editAssignCounts[kind][c]) || 0);
+      const el = document.getElementById(`ae-subtotal-${kind}`);
+      if (el) el.textContent = sub;
+    });
+  });
+}
+
 /* ---------- تعديل/اعتماد صف في جدول المهام المنجزة (بيانات مأخوذة من تسجيل الانصراف) ---------- */
 async function editAssignmentNotes(attId){
-  const row = document.querySelector(`tr[data-assign="${attId}"] .assign-notes-cell`);
-  const current = row ? row.textContent : '';
+  showSaving('جارٍ التحميل...');
+  let r = null;
+  try {
+    const doc = await db.collection('attendance').doc(attId).get();
+    r = doc.exists ? doc.data() : null;
+  } catch(e){}
+  hideSaving();
+  if (!r){ showToast('تعذر العثور على السجل', 'err'); return; }
+
+  editAssignCounts = { office: blankCounts(), field: blankCounts() };
+  (r.accomplishments || []).forEach(it => {
+    if (editAssignCounts[it.mode]) editAssignCounts[it.mode][it.category] = it.count;
+  });
+
   openModal(`
-    <h3>✏️ تعديل وصف الإنجاز</h3>
-    <div class="field"><label>الوصف</label><textarea id="editAssignNotes" rows="3">${esc(current)}</textarea></div>
+    <h3>✏️ تعديل الإنجاز — ${esc(r.userName||'')}</h3>
+    <div id="assignEditWrap">
+      ${assignEditSectionHtml('office')}
+      ${assignEditSectionHtml('field')}
+    </div>
+    <div class="field"><label>الوصف</label><textarea id="editAssignNotes" rows="3">${esc(r.workDescription||'')}</textarea></div>
     <div class="modal-close-row">
       <button class="btn btn-outline" onclick="closeModal()">إلغاء</button>
       <button class="btn btn-primary" id="saveAssignEditBtn">💾 حفظ</button>
     </div>
   `);
+  wireAssignEditInputs();
   document.getElementById('saveAssignEditBtn').addEventListener('click', async () => {
     showSaving('جارٍ الحفظ...');
     try {
-      await db.collection('attendance').doc(attId).update({ workDescription: val('editAssignNotes') });
+      const items = [];
+      let totalCount = 0;
+      ['office','field'].forEach(kind => {
+        WORK_CATEGORIES.forEach(c => {
+          const n = Number(editAssignCounts[kind][c]) || 0;
+          totalCount += n;
+          if (n > 0) items.push({ mode: kind, category: c, count: n });
+        });
+      });
+      await db.collection('attendance').doc(attId).update({
+        accomplishments: items,
+        workDescription: val('editAssignNotes'),
+        needsApproval: totalCount > 100
+      });
       closeModal();
       showToast('✅ تم تحديث الإنجاز', 'ok');
       loadTasksAndAssignments();
@@ -3353,14 +3362,18 @@ async function loadExcellenceData(from, to, centerFilter){
     const medals = ['🥇','🥈','🥉'];
     const renderTop = (list) => {
       if (!list.length) return `<div class="empty-state"><div class="ic">🏆</div>لا توجد بيانات في هذه الفترة</div>`;
-      return `<div class="summary-grid">${list.map((u,i)=>`
-        <div class="summary-card" style="text-align:center;padding:20px">
-          <div style="font-size:38px;margin-bottom:8px">${medals[i]}</div>
-          <div class="profile-avatar" style="margin:0 auto 10px;width:70px;height:70px;font-size:26px">${u.photoUrl?`<img src="${esc(u.photoUrl)}">`:esc((u.name||'?').charAt(0))}</div>
-          <div style="font-weight:700;font-size:15px;margin-bottom:4px">${esc(u.name)}</div>
-          <div style="color:var(--ink-400);font-size:12.5px;margin-bottom:8px">🏢 ${esc(u.center)}</div>
-          <div class="summary-value" style="font-size:28px">${u.value}</div>
-          <div style="color:var(--ink-600);font-size:12px">إنجاز خلال ${u.days} يوم</div>
+      return `<div>${list.map((u,i)=>`
+        <div style="display:flex;align-items:center;gap:16px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:12px">
+          <div style="font-size:34px;flex-shrink:0">${medals[i]}</div>
+          <div class="profile-avatar" style="width:64px;height:64px;font-size:24px;flex-shrink:0">${u.photoUrl?`<img src="${esc(u.photoUrl)}">`:esc((u.name||'?').charAt(0))}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:800;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(u.name)}</div>
+            <div style="color:var(--ink-400);font-size:12.5px;margin-top:2px">🏢 ${esc(u.center)}</div>
+          </div>
+          <div style="text-align:center;flex-shrink:0">
+            <div class="summary-value" style="font-size:26px">${u.value}</div>
+            <div style="color:var(--ink-600);font-size:11px;white-space:nowrap">إنجاز خلال ${u.days} يوم</div>
+          </div>
         </div>`).join('')}</div>`;
     };
 
