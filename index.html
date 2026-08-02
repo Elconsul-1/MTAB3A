@@ -1569,15 +1569,60 @@ async function submitCheckout(){
 
   const btn = document.getElementById('finalCheckoutBtn');
   btn.disabled = true; btn.textContent = 'جارٍ الحفظ...';
+  await attemptCheckoutWithLocation(items, description, totalCount);
+}
+
+/* ---------- محاولة تحديد الموقع أثناء الانصراف؛ عند التعذّر تُعرض خيارات إعادة المحاولة أو المتابعة بدون موقع ---------- */
+async function attemptCheckoutWithLocation(items, description, totalCount){
   showSaving('جارٍ تسجيل الانصراف...', 'يتم تحديد موقعك وحفظ الإنجازات');
+  let loc;
   try {
-    const loc = await captureLocation();
+    loc = await captureLocation();
+  } catch(locErr){
+    hideSaving();
+    const btn = document.getElementById('finalCheckoutBtn');
+    if (btn){ btn.disabled = false; btn.textContent = '🚪 تسجيل الانصراف'; }
+    openCheckoutLocationPromptModal(items, description, totalCount);
+    return;
+  }
+  await finalizeCheckout(items, description, totalCount, loc);
+}
+
+/* ---------- عند تعذّر الوصول للموقع أثناء الانصراف: تفعيل الموقع والمحاولة مرة أخرى، أو المتابعة بدون موقع ---------- */
+function openCheckoutLocationPromptModal(items, description, totalCount){
+  openModal(`
+    <h3>📍 تعذّر تحديد موقعك</h3>
+    <p style="font-size:14px;color:var(--ink-600);line-height:1.8;margin:10px 0">
+      يبدو أن خدمة الموقع غير مفعّلة أو تم رفض إذن الوصول إليها على جهازك.
+      يمكنك تفعيل خدمة الموقع من إعدادات المتصفح/الجهاز ثم المحاولة مرة أخرى،
+      أو المتابعة وتسجيل انصرافك بشكل عادي بدون تحديد الموقع. لن تفقد الإنجازات التي أدخلتها.
+    </p>
+    <div class="modal-close-row">
+      <button class="btn btn-outline" id="coLocSkipBtn">المتابعة بدون موقع</button>
+      <button class="btn btn-primary" id="coLocRetryBtn">🔄 حاول مرة أخرى</button>
+    </div>
+  `);
+  document.getElementById('coLocRetryBtn').addEventListener('click', () => {
+    closeModal();
+    attemptCheckoutWithLocation(items, description, totalCount);
+  });
+  document.getElementById('coLocSkipBtn').addEventListener('click', () => {
+    closeModal();
+    finalizeCheckout(items, description, totalCount, null);
+  });
+}
+
+/* ---------- إتمام حفظ تسجيل الانصراف فعليًا (بموقع أو بدونه) ---------- */
+async function finalizeCheckout(items, description, totalCount, loc){
+  showSaving('جارٍ تسجيل الانصراف...');
+  const btn = document.getElementById('finalCheckoutBtn');
+  try {
     const now = new Date();
     const today = todayKey();
     const docId = `${CURRENT_USER.id}_${today}`;
     await db.collection('attendance').doc(docId).update({
       checkOutTime: firebase.firestore.Timestamp.fromDate(now),
-      checkOutLocation: loc,
+      checkOutLocation: loc || null,
       workMode: checkoutMode,
       accomplishments: items,
       workDescription: description || null,
@@ -1601,7 +1646,7 @@ async function submitCheckout(){
       } catch(e){ console.warn('pendingApprovals write failed', e); }
     }
     closeModal();
-    showToast('✅ تم تسجيل الانصراف بنجاح', 'ok');
+    showToast(loc ? '✅ تم تسجيل الانصراف بنجاح' : '✅ تم تسجيل الانصراف بنجاح (بدون تحديد الموقع)', 'ok');
     goPage('myattendance');
   } catch(e){
     showToast('❌ تعذر تسجيل الانصراف: ' + e.message, 'err');
