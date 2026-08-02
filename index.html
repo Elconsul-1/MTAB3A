@@ -972,6 +972,7 @@ const NAV_ITEMS = {
     { id:'tasks', label:'التكليفات والمهام', ic:'📋' },
     { id:'liveMap', label:'المتواجدون الآن', ic:'📍' },
     { id:'employees', label:'الموظفون', ic:'👥' },
+    { id:'excellence', label:'التميز', ic:'🏆' },
     { id:'reports', label:'التقارير', ic:'🖨️' },
     { id:'profile', label:'ملفي الشخصي', ic:'👤' },
   ],
@@ -981,6 +982,7 @@ const NAV_ITEMS = {
     { id:'tasks', label:'التكليفات والمهام', ic:'📋' },
     { id:'liveMap', label:'المتواجدون الآن', ic:'📍' },
     { id:'employees', label:'موظفو المركز', ic:'👥' },
+    { id:'excellence', label:'التميز', ic:'🏆' },
     { id:'reports', label:'التقارير', ic:'🖨️' },
     { id:'profile', label:'ملفي الشخصي', ic:'👤' },
   ],
@@ -989,6 +991,7 @@ const NAV_ITEMS = {
     { id:'myTasks', label:'تكليفات', ic:'📋' },
     { id:'myhistory', label:'سجل إنجازاتي', ic:'📋' },
     { id:'liveMap', label:'المتواجدون الآن', ic:'📍' },
+    { id:'excellence', label:'التميز', ic:'🏆' },
     { id:'profile', label:'ملفي الشخصي', ic:'👤' },
   ]
 };
@@ -1003,7 +1006,7 @@ function renderNav(){
 }
 
 const PAGE_TITLES = {
-  dashboard:'لوحة المؤشرات', employees:'الموظفون', centers:'إدارة المراكز',
+  dashboard:'لوحة المؤشرات', employees:'الموظفون', centers:'إدارة المراكز', excellence:'قائمة التميز',
   reports:'التقارير', notifications:'الإشعارات', profile:'ملفي الشخصي',
   myattendance:'الحضور والانصراف', myhistory:'سجل إنجازاتي', employeedetail:'تفاصيل الموظف',
   tasks:'التكليفات والمهام', liveMap:'المتواجدون الآن', myTasks:'تكليفات', centerDetail:'تفاصيل المركز'
@@ -1030,6 +1033,7 @@ async function goPage(page, params={}){
     if (page === 'dashboard') await renderDashboard();
     else if (page === 'employees') await renderEmployees();
     else if (page === 'centers') await renderCenters();
+    else if (page === 'excellence') await renderExcellence();
     else if (page === 'reports') await renderReports();
     else if (page === 'notifications') await renderNotificationsPage();
     else if (page === 'profile') await renderProfile();
@@ -1136,7 +1140,7 @@ function isWeekendKey(key){
 async function renderDashboard(filters={}){
   const date = filters.date || todayKey();
   const center = filters.center !== undefined ? filters.center : (CURRENT_USER.role===ROLE.MANAGER ? CURRENT_USER.center : '');
-  const search = (filters.search || '').trim();
+  const empFilter = filters.emp || '';
 
   const [users, attRows] = await Promise.all([ fetchScopedUsers(center), fetchAttendanceByDate(date, center) ]);
   const attByUid = {}; attRows.forEach(r => attByUid[r.uid] = r);
@@ -1152,8 +1156,8 @@ async function renderDashboard(filters={}){
   });
 
   let rows = users.map(u => ({ user:u, att: attByUid[u.id] || null }));
-  if (search){
-    rows = rows.filter(r => r.user.fullName && r.user.fullName.includes(search));
+  if (empFilter){
+    rows = rows.filter(r => r.user.id === empFilter);
   }
 
   dashboardCache = { rows, users, date, center };
@@ -1166,7 +1170,7 @@ async function renderDashboard(filters={}){
       <div class="filters-bar">
         <div class="field"><label>📅 التاريخ</label><input type="date" id="fDate" value="${date}"></div>
         ${CURRENT_USER.role===ROLE.ADMIN ? `<div class="field"><label>🏢 المركز</label><select id="fCenter">${centerOptions(true, center)}</select></div>` : ''}
-        <div class="field"><label>🔎 بحث بالاسم</label><input type="text" id="fSearch" placeholder="ابحث عن موظف..." value="${esc(search)}"></div>
+        <div class="field"><label>👤 الموظف</label><select id="fEmp"><option value="">كل الموظفين</option>${users.map(u => `<option value="${u.id}" ${empFilter===u.id?'selected':''}>${esc(u.fullName)}</option>`).join('')}</select></div>
       </div>
       <div class="summary-grid">
         <div class="summary-card"><div class="summary-label">👥 عدد الموظفين</div><div class="summary-value">${users.length}</div></div>
@@ -1174,10 +1178,6 @@ async function renderDashboard(filters={}){
         <div class="summary-card"><div class="summary-label">❌ عدد الغياب</div><div class="summary-value">${absent}</div></div>
         <div class="summary-card"><div class="summary-label">⏰ عدد المتأخرين</div><div class="summary-value">${late}</div></div>
       </div>
-    </div>
-    <div class="panel">
-      <div class="panel-head"><h3>🏆 أبطال الشهر (حتى اليوم)</h3></div>
-      <div id="dashTopWrap"><div class="loader"><div class="spinner"></div></div></div>
     </div>
     <div class="panel">
       <div class="panel-head"><h3>✅ الحاضرون (${rows.filter(r=>r.att).length})</h3></div>
@@ -1208,12 +1208,14 @@ async function renderDashboard(filters={}){
     renderDashboard({
       date: val('fDate'),
       center: document.getElementById('fCenter') ? val('fCenter') : center,
-      search: val('fSearch')
+      emp: val('fEmp')
     });
   };
   document.getElementById('fDate').addEventListener('change', applyMainFilters);
-  document.getElementById('fCenter')?.addEventListener('change', applyMainFilters);
-  document.getElementById('fSearch').addEventListener('input', debounce(applyMainFilters, 400));
+  document.getElementById('fCenter')?.addEventListener('change', () => {
+    renderDashboard({ date: val('fDate'), center: val('fCenter'), emp: '' });
+  });
+  document.getElementById('fEmp').addEventListener('change', applyMainFilters);
 
   content.querySelectorAll('tr[data-uid]').forEach(tr => {
     tr.addEventListener('click', () => goPage('employeedetail', { uid: tr.dataset.uid, date: tr.dataset.date, dateFrom:null, dateTo:null }));
@@ -1224,20 +1226,6 @@ async function renderDashboard(filters={}){
       openDayEditModal(btn.dataset.editDayUid, date, btn.dataset.editDayName);
     });
   });
-
-  // ودجت أبطال الشهر — من أول الشهر حتى اليوم، بنفس فلتر المركز الحالي
-  const topWrap = document.getElementById('dashTopWrap');
-  try {
-    const { topField, topOffice } = await computeTopPerformers(firstOfMonthKey(), todayKey(), center);
-    topWrap.innerHTML = `
-      <div style="font-weight:800;color:var(--navy-900);margin-bottom:8px;font-size:13.5px">🚗 أفضل 3 ميداني</div>
-      ${topPerformerCardsHtml(topField)}
-      <div style="font-weight:800;color:var(--navy-900);margin:14px 0 8px;font-size:13.5px">🖥️ أفضل 3 مكتبي</div>
-      ${topPerformerCardsHtml(topOffice)}
-    `;
-  } catch(e){
-    topWrap.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>تعذر تحميل بيانات التميز</div>`;
-  }
 }
 function dashboardRowHtml(r, date, isAdmin){
   const u = r.user, a = r.att;
@@ -1413,17 +1401,54 @@ async function doCheckIn(){
     const existing = await db.collection('attendance').doc(docId).get();
     if (existing.exists){ showToast('تم تسجيل حضورك اليوم بالفعل', 'warn'); hideSaving(); goPage('myattendance'); return; }
 
-    const loc = await captureLocation();
+    let loc;
+    try {
+      loc = await captureLocation();
+    } catch(locErr){
+      hideSaving();
+      btn.disabled = false; btn.textContent = '✅ تسجيل حضور';
+      openLocationPromptModal(docId);
+      return;
+    }
+    await finalizeCheckIn(docId, loc);
+  } catch(e){
+    showToast('❌ تعذر تسجيل الحضور: ' + (e.message || 'حدث خطأ غير متوقع'), 'err');
+    btn.disabled = false; btn.textContent = '✅ تسجيل حضور';
+    hideSaving();
+  }
+}
+
+/* ---------- عند تعذّر الوصول للموقع: تفعيل الموقع والمحاولة مرة أخرى، أو المتابعة بدون موقع ---------- */
+function openLocationPromptModal(docId){
+  openModal(`
+    <h3>📍 تعذّر تحديد موقعك</h3>
+    <p style="font-size:14px;color:var(--ink-600);line-height:1.8;margin:10px 0">
+      يبدو أن خدمة الموقع غير مفعّلة أو تم رفض إذن الوصول إليها على جهازك.
+      يمكنك تفعيل خدمة الموقع من إعدادات المتصفح/الجهاز ثم المحاولة مرة أخرى،
+      أو المتابعة وتسجيل حضورك بشكل عادي بدون تحديد الموقع.
+    </p>
+    <div class="modal-close-row">
+      <button class="btn btn-outline" id="locSkipBtn">المتابعة بدون موقع</button>
+      <button class="btn btn-primary" id="locRetryBtn">🔄 حاول مرة أخرى</button>
+    </div>
+  `);
+  document.getElementById('locRetryBtn').addEventListener('click', () => { closeModal(); doCheckIn(); });
+  document.getElementById('locSkipBtn').addEventListener('click', () => { closeModal(); finalizeCheckIn(docId, null); });
+}
+
+/* ---------- إتمام حفظ تسجيل الحضور فعليًا (بموقع أو بدونه) ---------- */
+async function finalizeCheckIn(docId, loc){
+  showSaving('جارٍ تسجيل الحضور...');
+  try {
     const now = new Date();
     const isLate = isLateCheckIn(now);
-
     await db.collection('attendance').doc(docId).set({
       uid: CURRENT_USER.id,
       userName: CURRENT_USER.fullName,
       center: CURRENT_USER.center,
-      date: today,
+      date: todayKey(),
       checkInTime: firebase.firestore.Timestamp.fromDate(now),
-      checkInLocation: loc,
+      checkInLocation: loc || null,
       checkInStatus: isLate ? 'LATE' : 'PRESENT',
       checkOutTime: null,
       checkOutLocation: null,
@@ -1431,12 +1456,15 @@ async function doCheckIn(){
       accomplishments: [],
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    showToast('✅ تم تسجيل الحضور بنجاح', 'ok');
+    showToast(loc ? '✅ تم تسجيل الحضور بنجاح' : '✅ تم تسجيل الحضور بنجاح (بدون تحديد الموقع)', 'ok');
     goPage('myattendance');
   } catch(e){
-    showToast('❌ تعذر تسجيل الحضور: ' + (e.message || 'تأكد من تفعيل خدمة الموقع'), 'err');
-    btn.disabled = false; btn.textContent = '✅ تسجيل حضور';
-  } finally { hideSaving(); }
+    showToast('❌ تعذر تسجيل الحضور: ' + e.message, 'err');
+    const btn = document.getElementById('checkInBtn');
+    if (btn){ btn.disabled = false; btn.textContent = '✅ تسجيل حضور'; }
+  } finally {
+    hideSaving();
+  }
 }
 
 /* =====================================================================
@@ -1645,15 +1673,17 @@ async function renderMyHistory(filters={}){
 /* =====================================================================
    صفحة الموظفين (اعتماد / إدارة + إضافة مستخدم يدوي + تعديل بيانات موظف)
    ===================================================================== */
-async function renderEmployees(){
+async function renderEmployees(filters={}){
   const isAdmin = CURRENT_USER.role === ROLE.ADMIN;
   const isManager = CURRENT_USER.role === ROLE.MANAGER;
   const canImportUsers = isAdmin || isManager; // مدير المركز يقدر يضيف موظفين جدد لمركزه فقط
   const canEditUsers = isAdmin; // تعديل/حذف بيانات موظف قائم: مدير النظام فقط
+  const centerFilter = filters.center || '';
   let q = db.collection('users');
   const snap = await q.get();
   let all = snap.docs.map(d => ({ id:d.id, ...d.data() }));
   if (!isAdmin) all = all.filter(u => sameCenter(u.center, CURRENT_USER.center));
+  else if (centerFilter) all = all.filter(u => sameCenter(u.center, centerFilter));
   const pending = all.filter(u => u.status === 'PENDING');
   const others = all.filter(u => u.status !== 'PENDING');
 
@@ -1685,6 +1715,7 @@ async function renderEmployees(){
     </div>
     <div class="panel">
       <div class="panel-head"><h3>${isAdmin?'جميع الموظفين':'موظفو المركز'} (${others.length})</h3></div>
+      ${isAdmin ? `<div class="filters-bar"><div class="field"><label>🏢 تصفية حسب المركز</label><select id="empCenterFilter">${centerOptions(true, centerFilter)}</select></div></div>` : ''}
       <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الوظيفة</th><th>المركز</th><th>الهاتف</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>
         ${others.length ? others.map(u => `<tr>
           <td>${nameCellHtml(u.fullName, u.photoUrl)}</td><td>${esc(ROLE_LABEL[u.role]||u.job||'-')}</td><td>${esc(canonicalCenterName(u.center)||'-')}</td><td>${esc(u.phone||'-')}</td>
@@ -1698,6 +1729,7 @@ async function renderEmployees(){
       </tbody></table></div>
     </div>
   `;
+  document.getElementById('empCenterFilter')?.addEventListener('change', () => renderEmployees({ center: val('empCenterFilter') }));
   content.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => setUserStatus(b.dataset.approve, 'APPROVED')));
   content.querySelectorAll('[data-reject]').forEach(b => b.addEventListener('click', () => setUserStatus(b.dataset.reject, 'REJECTED')));
   content.querySelectorAll('[data-delete]').forEach(b => b.addEventListener('click', () => deleteUser(b.dataset.delete)));
@@ -2292,7 +2324,6 @@ async function renderReports(filters={}){
           <select id="repType">
             <option value="attendance" ${reportType==='attendance'?'selected':''}>تقرير حضور وغياب</option>
             <option value="achievements" ${reportType==='achievements'?'selected':''}>تقرير الإنجازات</option>
-            <option value="excellence" ${reportType==='excellence'?'selected':''}>تقرير التميز</option>
           </select>
         </div>
         <div class="field" id="repScopeField">
@@ -2323,13 +2354,8 @@ async function renderReports(filters={}){
   `;
 
   function repRefreshCenterField(){
-    const rType = val('repType');
     const wrap = document.getElementById('repCenterField');
-    if (rType === 'excellence'){
-      wrap.innerHTML = `<label>🏢 المركز</label><select id="repCenter">${centerOptions(true, centerVal)}</select>`;
-    } else {
-      wrap.innerHTML = `<label>🏢 المركز</label><select id="repCenter" ${CURRENT_USER.role===ROLE.MANAGER?'disabled':''}>${centerOptions(CURRENT_USER.role!==ROLE.MANAGER, CURRENT_USER.role===ROLE.MANAGER?CURRENT_USER.center:centerVal)}</select>`;
-    }
+    wrap.innerHTML = `<label>🏢 المركز</label><select id="repCenter" ${CURRENT_USER.role===ROLE.MANAGER?'disabled':''}>${centerOptions(CURRENT_USER.role!==ROLE.MANAGER, CURRENT_USER.role===ROLE.MANAGER?CURRENT_USER.center:centerVal)}</select>`;
     document.getElementById('repCenter').addEventListener('change', () => {
       if (val('repScope') === 'individual') loadRepEmployees(val('repCenter'));
     });
@@ -2340,17 +2366,9 @@ async function renderReports(filters={}){
     document.getElementById('repFromField').style.display = m === 'range' ? 'block' : 'none';
     document.getElementById('repToField').style.display = m === 'range' ? 'block' : 'none';
 
-    const rType = val('repType');
-    if (rType === 'excellence'){
-      document.getElementById('repScopeField').style.display = 'none';
-      document.getElementById('repCenterField').style.display = 'block';
-      document.getElementById('repEmployeeField').style.display = 'none';
-    } else {
-      document.getElementById('repScopeField').style.display = 'block';
-      const sc = val('repScope');
-      document.getElementById('repCenterField').style.display = (sc === 'center' || sc === 'individual') ? 'block' : 'none';
-      document.getElementById('repEmployeeField').style.display = (sc === 'individual') ? 'block' : 'none';
-    }
+    const sc = val('repScope');
+    document.getElementById('repCenterField').style.display = (sc === 'center' || sc === 'individual') ? 'block' : 'none';
+    document.getElementById('repEmployeeField').style.display = (sc === 'individual') ? 'block' : 'none';
     repRefreshCenterField();
   }
   async function loadRepEmployees(centerForList){
@@ -2370,7 +2388,7 @@ async function renderReports(filters={}){
   });
   document.getElementById('repApply').addEventListener('click', loadReportData);
   repUpdateVisibility();
-  if (scope === 'individual' && reportType !== 'excellence') { await loadRepEmployees(centerVal); if (uid) document.getElementById('repEmployee').value = uid; }
+  if (scope === 'individual') { await loadRepEmployees(centerVal); if (uid) document.getElementById('repEmployee').value = uid; }
 
   async function loadReportData(){
     const m = val('repMode');
@@ -2379,15 +2397,9 @@ async function renderReports(filters={}){
     const t = m === 'day' ? d : (val('repTo') || todayKey());
     const rType = val('repType');
     const resWrap = document.getElementById('reportResults');
-    document.getElementById('reportTitleLabel').textContent = rType === 'achievements' ? 'تقرير الإنجازات' : rType === 'excellence' ? 'تقرير التميز' : 'تقرير الحضور والغياب';
+    document.getElementById('reportTitleLabel').textContent = rType === 'achievements' ? 'تقرير الإنجازات' : 'تقرير الحضور والغياب';
 
     if (f > t){ resWrap.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>يرجى اختيار فترة صحيحة</div>`; return; }
-
-    if (rType === 'excellence'){
-      const cValEx = document.getElementById('repCenterField').style.display !== 'none' ? val('repCenter') : '';
-      await loadExcellenceReportBlock(f, t, cValEx);
-      return;
-    }
 
     const sc = val('repScope');
     const cVal = document.getElementById('repCenterField').style.display !== 'none' ? val('repCenter') : (CURRENT_USER.role===ROLE.MANAGER ? CURRENT_USER.center : '');
@@ -2508,6 +2520,16 @@ async function renderTasks() {
   const isManager = CURRENT_USER.role === ROLE.MANAGER;
 
   content.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h3>📊 إحصائيات المراكز (مكتبي / ميداني) — ما تم حتى الآن</h3></div>
+      <div id="taskCenterStatsWrap"><div class="loader"><div class="spinner"></div></div></div>
+      <div class="panel-head" style="border:none;padding:0;margin:18px 0 8px"><h3 style="font-size:14.5px">📅 التفصيل اليومي</h3></div>
+      <div id="taskCenterDailyWrap"></div>
+      <div class="panel-head" style="border:none;padding:0;margin:18px 0 8px"><h3 style="font-size:14.5px">👤 إنجازات عضو معيّن يومًا بيوم</h3></div>
+      ${employeeDrilldownFieldHtml('tcs')}
+      <div id="tcsEmpResult"></div>
+    </div>
+
     <div class="panel no-print">
       <div class="panel-head">
         <h3>📋 التكليفات والمهام</h3>
@@ -2522,23 +2544,6 @@ async function renderTasks() {
         ${isAdmin ? `<div class="field"><label>🏢 المركز</label><select id="taskCenterFilter">${centerOptions(true, '')}</select></div>` : ''}
         <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn btn-primary" id="applyTaskFilter">تطبيق</button></div>
       </div>
-    </div>
-
-    <div class="panel no-print">
-      <div class="panel-head"><h3>📊 إحصائيات المراكز (مكتبي / ميداني)</h3></div>
-      <div class="filters-bar">
-        <div class="field"><label>🗓️ الفترة</label>
-          <select id="tcsMode">
-            <option value="range" selected>فترة محددة</option>
-            <option value="day">يوم محدد</option>
-          </select>
-        </div>
-        <div class="field" id="tcsDayField" style="display:none"><label>📅 اليوم</label><input type="date" id="tcsDay" value="${todayKey()}"></div>
-        <div class="field" id="tcsFromField"><label>📅 من تاريخ</label><input type="date" id="tcsFrom" value="${firstOfMonthKey()}"></div>
-        <div class="field" id="tcsToField"><label>📅 إلى تاريخ</label><input type="date" id="tcsTo" value="${todayKey()}"></div>
-        <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn btn-primary" id="tcsApply">تطبيق</button></div>
-      </div>
-      <div id="taskCenterStatsWrap"><div class="loader"><div class="spinner"></div></div></div>
     </div>
 
     <div class="panel">
@@ -2562,66 +2567,71 @@ async function renderTasks() {
   document.getElementById('taskDateTo').addEventListener('change', loadTasksAndAssignments);
   document.getElementById('taskCenterFilter')?.addEventListener('change', loadTasksAndAssignments);
 
-  function tcsUpdateVisibility(){
-    const m = val('tcsMode');
-    document.getElementById('tcsDayField').style.display = m === 'day' ? 'block' : 'none';
-    document.getElementById('tcsFromField').style.display = m === 'range' ? 'block' : 'none';
-    document.getElementById('tcsToField').style.display = m === 'range' ? 'block' : 'none';
-  }
-  document.getElementById('tcsMode').addEventListener('change', tcsUpdateVisibility);
-  document.getElementById('tcsApply').addEventListener('click', loadCenterTaskStats);
   await loadCenterTaskStats();
-
   await loadTasksAndAssignments();
 }
 
-/* ---------- إحصائيات إجمالي الأعمال المكتبية/الميدانية لكل مركز (لصفحة التكليفات) ---------- */
+/* ---------- إحصائيات إجمالي الأعمال المكتبية/الميدانية لكل مركز — تراكمية منذ البداية حتى اليوم (بدون فلاتر) ---------- */
+const TASK_STATS_EPOCH = '2000-01-01';
 async function loadCenterTaskStats(){
   const wrap = document.getElementById('taskCenterStatsWrap');
+  const dailyWrap = document.getElementById('taskCenterDailyWrap');
   if (!wrap) return;
-  const m = val('tcsMode');
-  const day = document.getElementById('tcsDay') ? val('tcsDay') : todayKey();
-  const f = m === 'day' ? day : (val('tcsFrom') || firstOfMonthKey());
-  const t = m === 'day' ? day : (val('tcsTo') || todayKey());
-  if (f > t){ wrap.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>يرجى اختيار فترة صحيحة</div>`; return; }
+  const to = todayKey();
   wrap.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
   try {
-    const snap = await db.collection('attendance').where('date','>=',f).where('date','<=',t).get();
+    const snap = await db.collection('attendance').where('date','<=',to).get();
     let rows = snap.docs.map(d => d.data());
     if (CURRENT_USER.role === ROLE.MANAGER) rows = rows.filter(r => sameCenter(r.center, CURRENT_USER.center));
 
     const byCenter = {};
+    const byDate = {};
     rows.forEach(r => {
       const c = canonicalCenterName(r.center) || 'غير محدد';
       if (!byCenter[c]) byCenter[c] = { office:0, field:0 };
+      if (!byDate[r.date]) byDate[r.date] = { office:0, field:0 };
       const acc = accTotals(r.accomplishments);
       byCenter[c].office += acc.office;
       byCenter[c].field += acc.field;
+      byDate[r.date].office += acc.office;
+      byDate[r.date].field += acc.field;
     });
     const centers = Object.keys(byCenter).sort((a,b) => a.localeCompare(b,'ar'));
-    const periodLabel = m === 'day' ? `اليوم: ${fmtDateLabel(day)}` : `الفترة: من ${fmtDateLabel(f)} إلى ${fmtDateLabel(t)}`;
     if (!centers.length){
-      wrap.innerHTML = `<div style="font-size:13px;color:var(--ink-400);margin:0 0 8px">${periodLabel}</div><div class="empty-state"><div class="ic">📭</div>لا توجد بيانات في هذه الفترة</div>`;
-      return;
+      wrap.innerHTML = `<div class="empty-state"><div class="ic">📭</div>لا توجد بيانات مسجَّلة حتى الآن</div>`;
+      dailyWrap.innerHTML = '';
+    } else {
+      const totalOffice = centers.reduce((s,c) => s + byCenter[c].office, 0);
+      const totalField = centers.reduce((s,c) => s + byCenter[c].field, 0);
+      wrap.innerHTML = `
+        <div class="summary-grid">
+          <div class="summary-card"><div class="summary-label">🖥️ إجمالي المكتبي</div><div class="summary-value">${totalOffice}</div></div>
+          <div class="summary-card"><div class="summary-label">🚗 إجمالي الميداني</div><div class="summary-value">${totalField}</div></div>
+        </div>
+        <div class="table-wrap" style="margin-top:10px">
+          <table><thead><tr><th>المركز</th><th>🖥️ مكتبي</th><th>🚗 ميداني</th><th>الإجمالي</th></tr></thead><tbody>
+            ${centers.map(c => `<tr><td>${esc(c)}</td><td>${byCenter[c].office}</td><td>${byCenter[c].field}</td><td><b>${byCenter[c].office+byCenter[c].field}</b></td></tr>`).join('')}
+          </tbody></table>
+        </div>
+      `;
+      const dateKeys = Object.keys(byDate).sort((a,b) => b.localeCompare(a));
+      dailyWrap.innerHTML = `
+        <div class="table-wrap" style="max-height:320px;overflow-y:auto">
+          <table><thead><tr><th>التاريخ</th><th>🖥️ مكتبي</th><th>🚗 ميداني</th><th>الإجمالي</th></tr></thead><tbody>
+            ${dateKeys.map(dk => `<tr><td>${fmtDateLabel(dk)}</td><td>${byDate[dk].office}</td><td>${byDate[dk].field}</td><td><b>${byDate[dk].office+byDate[dk].field}</b></td></tr>`).join('')}
+          </tbody></table>
+        </div>
+      `;
     }
-    const totalOffice = centers.reduce((s,c) => s + byCenter[c].office, 0);
-    const totalField = centers.reduce((s,c) => s + byCenter[c].field, 0);
-    wrap.innerHTML = `
-      <div style="font-size:13px;color:var(--ink-400);margin:0 0 8px">${periodLabel}</div>
-      <div class="summary-grid">
-        <div class="summary-card"><div class="summary-label">🖥️ إجمالي المكتبي</div><div class="summary-value">${totalOffice}</div></div>
-        <div class="summary-card"><div class="summary-label">🚗 إجمالي الميداني</div><div class="summary-value">${totalField}</div></div>
-      </div>
-      <div class="table-wrap" style="margin-top:10px">
-        <table><thead><tr><th>المركز</th><th>🖥️ مكتبي</th><th>🚗 ميداني</th><th>الإجمالي</th></tr></thead><tbody>
-          ${centers.map(c => `<tr><td>${esc(c)}</td><td>${byCenter[c].office}</td><td>${byCenter[c].field}</td><td><b>${byCenter[c].office+byCenter[c].field}</b></td></tr>`).join('')}
-        </tbody></table>
-      </div>
-    `;
+
+    // قائمة الموظفين لتصفح إنجازاتهم اليومية (مقصورة على مركز مدير المركز إن وُجد)
+    const employees = await fetchScopedUsers(CURRENT_USER.role===ROLE.MANAGER ? CURRENT_USER.center : '');
+    await wireEmployeeDrilldown('tcs', employees, TASK_STATS_EPOCH, to);
   } catch(e){
     wrap.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>خطأ: ${esc(e.message)}</div>`;
   }
 }
+
 
 function taskCardHtml(t){
   const statusChip = t.status === 'completed' ? '<span class="chip done">منجز</span>' : t.status === 'in_progress' ? '<span class="chip pending">قيد التنفيذ</span>' : '<span class="chip notyet">قيد الانتظار</span>';
@@ -3362,25 +3372,33 @@ async function renderProfile(){
 }
 
 /* =====================================================================
-   تقرير التميز (مدمج داخل صفحة التقارير) — أفضل 3 ميداني / أفضل 3 مكتبي + جدول مجهود المراكز
+   قائمة التميز — قسم مستقل: أفضل 3 ميداني/مكتبي بكروت ملوّنة + تصفح إنجازات أي موظف يوميًا
    ===================================================================== */
-/* ---------- حساب أفضل 3 ميداني/مكتبي (يُستخدم في لوحة المؤشرات وتقرير التميز) ---------- */
+/* ---------- حساب أفضل 3 ميداني/مكتبي (يُستخدم في لوحة المؤشرات وقائمة التميز) ---------- */
+const RANK_STYLES = [
+  { bg:'linear-gradient(135deg,#fff7e0,#ffe9b3)', border:'#e8b923', shadow:'rgba(232,185,35,.35)' },
+  { bg:'linear-gradient(135deg,#f3f5f8,#dfe4ea)', border:'#9aa5b1', shadow:'rgba(154,165,177,.35)' },
+  { bg:'linear-gradient(135deg,#fdece0,#f3c9a4)', border:'#c97a3d', shadow:'rgba(201,122,61,.35)' },
+];
 function topPerformerCardsHtml(list){
   const medals = ['🥇','🥈','🥉'];
   if (!list.length) return `<div class="empty-state"><div class="ic">🏆</div>لا توجد بيانات في هذه الفترة</div>`;
-  return `<div>${list.map((u,i)=>`
-    <div style="display:flex;align-items:center;gap:16px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:12px">
+  return `<div>${list.map((u,i)=>{
+    const s = RANK_STYLES[i] || RANK_STYLES[2];
+    return `
+    <div style="display:flex;align-items:center;gap:16px;background:${s.bg};border:2px solid ${s.border};border-radius:16px;padding:14px 18px;margin-bottom:12px;box-shadow:0 6px 18px -6px ${s.shadow}">
       <div style="font-size:34px;flex-shrink:0">${medals[i]}</div>
-      <div class="profile-avatar" style="width:64px;height:64px;font-size:24px;flex-shrink:0">${u.photoUrl?`<img src="${esc(u.photoUrl)}">`:esc((u.name||'?').charAt(0))}</div>
+      <div class="profile-avatar" style="width:64px;height:64px;font-size:24px;flex-shrink:0;border-color:${s.border}">${u.photoUrl?`<img src="${esc(u.photoUrl)}">`:esc((u.name||'?').charAt(0))}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:800;font-size:16px;line-height:1.4;word-break:break-word">${esc(u.name)}</div>
-        <div style="color:var(--ink-400);font-size:12.5px;margin-top:2px">🏢 ${esc(u.center)}</div>
+        <div style="font-weight:800;font-size:16px;line-height:1.4;word-break:break-word;color:var(--navy-950)">${esc(u.name)}</div>
+        <div style="color:var(--navy-700);font-size:12.5px;margin-top:2px">🏢 ${esc(u.center)}</div>
       </div>
       <div style="text-align:center;flex-shrink:0">
-        <div class="summary-value" style="font-size:26px">${u.value}</div>
-        <div style="color:var(--ink-600);font-size:11px;white-space:nowrap">إنجاز خلال ${u.days} يوم</div>
+        <div style="font-size:26px;font-weight:800;color:var(--navy-950)">${u.value}</div>
+        <div style="color:var(--navy-700);font-size:11px;white-space:nowrap">إنجاز خلال ${u.days} يوم</div>
       </div>
-    </div>`).join('')}</div>`;
+    </div>`;
+  }).join('')}</div>`;
 }
 async function computeTopPerformers(from, to, centerFilter){
   const snap = await db.collection('attendance').where('date','>=',from).where('date','<=',to).get();
@@ -3412,20 +3430,100 @@ async function computeTopPerformers(from, to, centerFilter){
   return { allUsers, topField, topOffice };
 }
 
-async function loadExcellenceReportBlock(from, to, centerFilter){
-  const resWrap = document.getElementById('reportResults');
-  resWrap.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
+/* ---------- عنصر عام: قائمة اختيار موظف تعرض إنجازاته اليومية بالتفصيل (يُستخدم هنا وفي صفحة التكليفات) ---------- */
+function employeeDrilldownFieldHtml(idPrefix){
+  return `<div class="field"><label>👤 اعرض إنجازات موظف يوميًا</label><select id="${idPrefix}EmpSelect"><option value="">اختر موظفًا...</option></select></div>`;
+}
+async function wireEmployeeDrilldown(idPrefix, employees, from, to){
+  const sel = document.getElementById(`${idPrefix}EmpSelect`);
+  if (!sel) return;
+  sel.innerHTML = `<option value="">اختر موظفًا...</option>` + employees.map(u => `<option value="${u.id}">${esc(u.fullName)} — ${esc(canonicalCenterName(u.center)||'')}</option>`).join('');
+  sel.addEventListener('change', async () => {
+    const uid = sel.value;
+    const wrap = document.getElementById(`${idPrefix}EmpResult`);
+    if (!wrap) return;
+    if (!uid){ wrap.innerHTML = ''; return; }
+    wrap.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
+    try {
+      const snap = await db.collection('attendance').where('uid','==',uid).get();
+      const rows = snap.docs.map(d => d.data())
+        .filter(r => r.date >= from && r.date <= to)
+        .sort((a,b) => (b.date||'').localeCompare(a.date||''));
+      if (!rows.length){ wrap.innerHTML = `<div class="empty-state"><div class="ic">📭</div>لا يوجد سجل لهذا الموظف في هذه الفترة</div>`; return; }
+      let rowsHtml = '';
+      rows.forEach(a => {
+        if (!a.accomplishments || !a.accomplishments.length){
+          rowsHtml += `<tr><td>${fmtDateLabel(a.date)}</td><td colspan="3" style="color:var(--ink-400)">حضر بدون تسجيل إنجازات</td></tr>`;
+        } else {
+          a.accomplishments.forEach(it => {
+            rowsHtml += `<tr><td>${fmtDateLabel(a.date)}</td><td>${it.mode==='office'?'مكتبي 🖥️':'ميداني 🚗'}</td><td>${esc(it.category)}</td><td><b>${it.count}</b></td></tr>`;
+          });
+        }
+      });
+      wrap.innerHTML = `<div class="table-wrap" style="max-height:360px;overflow-y:auto;margin-top:10px">
+        <table><thead><tr><th>التاريخ</th><th>طبيعة العمل</th><th>البند</th><th>العدد</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+      </div>`;
+    } catch(e){
+      wrap.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>خطأ: ${esc(e.message)}</div>`;
+    }
+  });
+}
+
+async function renderExcellence(filters={}){
+  const content = document.getElementById('pageContent');
+  const from = filters.from || firstOfMonthKey();
+  const to = filters.to || todayKey();
+  const center = filters.center !== undefined ? filters.center : ''; // على مستوى المحافظة بالكامل افتراضيًا، حتى لمدير المركز
+  content.innerHTML = `
+    <div class="panel no-print">
+      <div class="panel-head"><h3>🏆 قائمة التميز</h3></div>
+      <div class="filters-bar">
+        <div class="field"><label>📅 من تاريخ</label><input type="date" id="exFrom" value="${from}"></div>
+        <div class="field"><label>📅 إلى تاريخ</label><input type="date" id="exTo" value="${to}"></div>
+        <div class="field"><label>🏢 المركز</label><select id="exCenter">${centerOptions(true, center)}</select></div>
+        <div class="field" style="flex:0"><label>&nbsp;</label><button class="btn btn-primary" id="exApply">تطبيق</button></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>🚗 أفضل 3 في العمل الميداني</h3></div>
+      <div id="exFieldTop"><div class="loader"><div class="spinner"></div></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>🖥️ أفضل 3 في العمل المكتبي</h3></div>
+      <div id="exOfficeTop"><div class="loader"><div class="spinner"></div></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>📅 إنجازات موظف يومًا بيوم</h3></div>
+      ${employeeDrilldownFieldHtml('ex')}
+      <div id="exEmpResult"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>📋 جدول مجهود المراكز خلال الفترة (بأسماء الفنيين)</h3></div>
+      <div class="table-wrap" id="exCentersTable"><div class="loader"><div class="spinner"></div></div></div>
+    </div>`;
+  const apply = () => renderExcellence({ from: val('exFrom'), to: val('exTo'), center: val('exCenter') });
+  document.getElementById('exFrom').addEventListener('change', apply);
+  document.getElementById('exTo').addEventListener('change', apply);
+  document.getElementById('exApply').addEventListener('click', apply);
+  await loadExcellenceData(from, to, center);
+}
+async function loadExcellenceData(from, to, centerFilter){
+  const fieldWrap = document.getElementById('exFieldTop');
+  const officeWrap = document.getElementById('exOfficeTop');
+  const tableWrap = document.getElementById('exCentersTable');
   try {
     const { allUsers, topField, topOffice } = await computeTopPerformers(from, to, centerFilter);
+    fieldWrap.innerHTML = topPerformerCardsHtml(topField);
+    officeWrap.innerHTML = topPerformerCardsHtml(topOffice);
 
-    const periodLabel = `الفترة: من ${fmtDateLabel(from)} إلى ${fmtDateLabel(to)}`;
-    let html = `<div style="font-size:13px;color:var(--ink-400);margin:0 0 12px">${periodLabel}</div>`;
-    html += `<div class="panel-head" style="border:none;padding:0;margin-bottom:10px"><h3 style="font-size:15px">🚗 أفضل 3 في العمل الميداني</h3></div>${topPerformerCardsHtml(topField)}`;
-    html += `<div class="panel-head" style="border:none;padding:0;margin:18px 0 10px"><h3 style="font-size:15px">🖥️ أفضل 3 في العمل المكتبي</h3></div>${topPerformerCardsHtml(topOffice)}`;
+    // تصفح إنجازات أي موظف من ضمن نفس النطاق يومًا بيوم
+    const employeesForDrilldown = allUsers
+      .map(u => ({ id:u.uid, fullName:u.name, center:u.center }))
+      .sort((a,b) => a.fullName.localeCompare(b.fullName,'ar'));
+    await wireEmployeeDrilldown('ex', employeesForDrilldown, from, to);
 
     if (!allUsers.length){
-      html += `<div class="empty-state"><div class="ic">📭</div>لا توجد بيانات في هذه الفترة</div>`;
-      resWrap.innerHTML = html;
+      tableWrap.innerHTML = `<div class="empty-state"><div class="ic">📭</div>لا توجد بيانات في هذه الفترة</div>`;
       return;
     }
     const byCenter = {};
@@ -3434,18 +3532,18 @@ async function loadExcellenceReportBlock(from, to, centerFilter){
       byCenter[u.center].push(u);
     });
     const centerNames = Object.keys(byCenter).sort((a,b)=>a.localeCompare(b,'ar'));
-    let tableHtml = `<table id="reportTable"><thead><tr><th>المركز</th><th>الفني</th><th>🖥️ مكتبي</th><th>🚗 ميداني</th><th>الإجمالي</th><th>أيام الحضور</th></tr></thead><tbody>`;
+    let html = `<table><thead><tr><th>المركز</th><th>الفني</th><th>🖥️ مكتبي</th><th>🚗 ميداني</th><th>الإجمالي</th><th>أيام الحضور</th></tr></thead><tbody>`;
     centerNames.forEach(c => {
       const list = byCenter[c].sort((a,b)=>b.total-a.total);
       list.forEach((u,i) => {
-        tableHtml += `<tr><td>${i===0?`<b>${esc(c)}</b>`:''}</td><td>${esc(u.name)}</td><td>${u.office}</td><td>${u.field}</td><td><b>${u.total}</b></td><td>${u.days}</td></tr>`;
+        html += `<tr><td>${i===0?`<b>${esc(c)}</b>`:''}</td><td>${esc(u.name)}</td><td>${u.office}</td><td>${u.field}</td><td><b>${u.total}</b></td><td>${u.days}</td></tr>`;
       });
     });
-    tableHtml += `</tbody></table>`;
-    html += `<div class="panel-head" style="border:none;padding:0;margin:18px 0 10px"><h3 style="font-size:15px">📋 جدول مجهود المراكز خلال الفترة (بأسماء الفنيين)</h3></div><div class="table-wrap">${tableHtml}</div>`;
-    resWrap.innerHTML = html;
+    html += `</tbody></table>`;
+    tableWrap.innerHTML = html;
   } catch(e){
-    resWrap.innerHTML = `<div class="empty-state"><div class="ic">⚠️</div>خطأ: ${esc(e.message)}</div>`;
+    const msg = `<div class="empty-state"><div class="ic">⚠️</div>خطأ: ${esc(e.message)}</div>`;
+    fieldWrap.innerHTML = msg; officeWrap.innerHTML=''; tableWrap.innerHTML='';
   }
 }
 
